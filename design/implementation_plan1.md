@@ -33,6 +33,8 @@ The plan keeps that rule as its architecture invariant. Review surpluses and gap
 | Code editing is assumed to be done by "the LLM" | No code-editor subsystem named | **Pi** (`@earendil-works/pi-coding-agent`) is the code editor, driven over its **JSONL RPC protocol** from the async Rust runtime. |
 | "Modular code" | Implied by capability objects | Nexus **plugin module contract** (manifest with stable `uri`) is the unit of code; every module is registered in Phase 2. |
 | ULIDs for IDs (§87, `rdf-codec` convention) | Consistent across utilities | Adopted verbatim: lowercase ULID Crockford strings; IRIs `<https://metamind.dev/data/{ulid}>`. |
+| External utilities are reused in place | Assumed reusable | **External modules and code are references only; the needed parts are copied into Metamind and integrated as Metamind-owned source** (§7). |
+| Logging and provenance | Event log and provenance described, not specified | **Detailed structured logging (§10): `mm-log`, five sinks, immutable audit records, ULID correlation, redaction, and a `logs verify` gate in every phase.** |
 | Strong testing at every phase | Implied | §9 testing strategy + per-phase pass gates; replay/determinism required from Phase 1. |
 
 **Non-goals** (design §108): no giant symbolic common-sense base, no hand-coded personality matrix, no
@@ -50,7 +52,7 @@ self-modification, model confidence never overrides authoritative external state
 | SQLite | `sqlite3 3.46.1`, `libsqlite3.so` | WAL mode; `sqlx` 0.8 (`sqlite`, `runtime-tokio`) as used by `nexus` `monad-sql` |
 | Oxigraph | `librocksdb.so.9.11` present | `oxigraph = "0.5"`, feature `rocksdb-pkg-config` (mandatory, per `rust_symbolic` build directive) |
 | ONNX Runtime | `libonnxruntime.so.1.23` | For `kg-embed` BGE-small embeddings |
-| Pi | `pi 0.85.1` at `~/.nvm/.../bin/pi` | `@earendil-works/pi-coding-agent`; provider `dojo_dev` (OpenAI-compatible, `http://bobs-mac.local:4000/v1`) |
+| Pi | `pi 0.85.1` at `~/.nvm/.../bin/pi` | `@earendil-works/pi-coding-agent`; uses an OpenAI-compatible provider configured in Pi's own settings |
 | LLM provider | OpenAI-compatible endpoint (env `OPENAI_BASE_URL`, `OPENAI_API_KEY`) | Same endpoint Pi and the runtime use |
 
 System packages already installed. The workspace must build with **zero warnings** and
@@ -112,6 +114,7 @@ meta-analysis improves.**
 ├── design/                    # source designs + this plan
 ├── crates/                    # the runtime, one responsibility per crate
 │   ├── mm-core                # IDs (ULID), time, errors, config, shared traits
+│   ├── mm-log                 # tracing setup, structured JSONL + audit sinks, redaction
 │   ├── mm-store-sqlite        # tabular store (sqlx + migrations)
 │   ├── mm-store-graph         # Oxigraph actor + rdf-codec integration + SHACL
 │   ├── mm-eventlog            # append-only bitemporal event log + replay
@@ -135,12 +138,13 @@ meta-analysis improves.**
 │   ├── tools/<name>/
 │   ├── io/<name>/
 │   └── registry.json          # generated index of modules (see Phase 2)
+├── vendor/                    # external code COPIED IN and integrated (§7): <origin>/ + COPYING.md
 ├── ontology/
 │   ├── mm.ttl                 # Metamind T-Box (being, memory, epistemic, library, code)
 │   ├── code.ttl               # mmc: code-metadata vocabulary
 │   └── shapes/*.ttl           # SHACL shapes (generated OWL→SHACL where possible)
 ├── pi/                        # Pi system prompt, skills, prompt templates, extensions
-├── data/                      # runtime data (gitignored): metamind.db, graph/, events/, sandbox/
+├── data/                      # runtime data (gitignored): metamind.db, graph/, events/, logs/, sandbox/
 ├── bench/                     # benchmark, adversarial, and historical replay corpora (committed)
 └── tests/                     # cross-crate integration + end-to-end suites
 ```
@@ -224,13 +228,21 @@ event log contract; `rust_symbolic::rdf-codec` provides `RdfContext`, `Namespace
 
 ---
 
-# 7. Component reuse matrix
+# 7. External components: reference, copy in, integrate
 
-Reuse is via **path dependencies inside the Metamind workspace where possible** (workspace-local
-vendoring or `[patch]`/git submodule). Components are adapted behind `mm-*` traits so the runtime never
-couples to a utility's internal types.
+**External modules and code — `nexus`, `rust_symbolic`, `rust_extract`, and any other source — are used
+as references only. The parts the system needs are copied into the Metamind workspace and integrated as
+first-class, Metamind-owned source, not consumed as external crates, git submodules, or path
+dependencies.** Copying is deliberate: the runtime cannot depend on unowned code that may change
+underneath it, and self-modification (Phase 11) must be able to edit any module, including copied ones.
 
-| Need (design §) | Reused component | Source | Adaptation |
+Every copied file records its provenance — origin repo, path, revision, and license — in the
+code-metadata graph (`mmc:copiedFrom`) during the Phase 2 scan, so meta-analysis can always trace a file
+back to the reference it came from. Copied code is adapted behind `mm-*` traits so the runtime never
+couples to a reference's internal types, and it is then tested and maintained like any other Metamind
+code.
+
+| Need (design §) | Reference component | Reference source | How it is copied in and integrated |
 |---|---|---|---|
 | Modular code system, plugin lifecycle, T-Box/A-Box | `nexus-core`, `nexus-abi`, `nexus-launcher`, plugin contract | nexus | `modules/*` are nexus plugins; the runtime loads capability modules through nexus lifecycle |
 | Execution engine for cognitive programs | `monad-executor`, `monad-scheduler`, `monad-context`, `dsl-compiler`, `nexus-monad-types` | nexus | Cognitive programs compile to the DAG/`ExecutionDocument` form; deterministic nodes run here |
@@ -259,9 +271,11 @@ couples to a utility's internal types.
 | SPARQL over Oxigraph | nexus `monad-sparql` plugin | nexus | Module-level graph access |
 | SQLite over `sqlx` | nexus `monad-sql` plugin | nexus | Module-level tabular access |
 
-Vendoring: add each source repo as a **git submodule under `vendor/`** (or path dependency via
-`../..`) and expose only the needed crates through `mm-*` re-exports. A `[patch]` section is avoided
-unless a genuine bug fix is required upstream.
+**Integration rule.** Copy only the needed source into `vendor/<origin>/…` **inside the Metamind
+workspace**, as workspace members. Keep a `vendor/<origin>/COPYING.md` recording origin repo, revision,
+and license, and emit `mmc:copiedFrom` triples in the Phase 2 scan. No git submodules, no external path
+dependencies, no `[patch]` on unowned code. Once copied, the code is Metamind's to adapt, test, and —
+from Phase 11 — to modify; re-copying an updated reference is itself a reviewed change-set.
 
 ---
 
@@ -320,13 +334,93 @@ Contract rules (enforced by `mm-cli codex verify`):
 | Benchmark | `bench/` harness with baseline comparison | Every self-improvement must beat or match a baseline on a labeled set |
 | End-to-end | `tests/e2e/*.rs` + `mm-cli` subprocess tests | Each phase's gate is an actual runnable command |
 | Determinism | event-log replay + content hashes | Any phase run can be reproduced from `(code version, event log, config)` |
+| Detailed logging | `mm-log` + `mm-cli logs verify` | Every operation emits structured records; audit completeness; ULID correlation; redaction suite |
 
-**Rule:** no phase is complete until its pass gate runs green as a plain command and the earlier phases'
-gates still pass. Do not weaken assertions to pass; fix the cause.
+**Rule:** no phase is complete until its pass gate runs green as a plain command, its logging verification
+(`mm-cli logs verify`, §10) passes, and the earlier phases' gates still pass. Do not weaken assertions to
+pass; fix the cause.
 
 ---
 
-# 10. Pi integration contract (the code-editor system)
+# 10. Detailed logging, tracing, and observability
+
+**Principle:** if the system did something, it can be reconstructed and audited. Logging is not debug
+garnish — it is the substrate for meta-analysis, calibration, replay, and safe self-modification. No
+library code uses `println!`; everything goes through `mm-log`.
+
+**Stack (copied in and integrated, like every other component).** Built on `tracing` +
+`tracing-subscriber` (env-filter) — the stack already used by nexus and rust_extract — following
+`nexus-core::logging` structured-logger conventions. `mm-log` depends only on `mm-core`.
+
+**Every record is structured.** Fields: `ts` (RFC 3339, ns), `level`, `target` (crate/module path),
+`event` (stable dotted code, e.g. `store.event.append`, `llm.call`, `firewall.decide`), `msg`, plus
+correlation fields where applicable: `trace_id` (ULID), `span_id`, `episode_id`, `action_id`,
+`change_set_id`, `module_uri`, `result`, `latency_ms`, `cost`, and `error` with its full cause chain.
+A record never interpolates secrets into `msg`.
+
+**Spans.** Long-lived units of work open a span carrying a ULID: `episode`, `cognitive_op`, `llm_call`,
+`tool_call`, `firewall_run`, `decision`, `promotion`, `pi_session`, `graph_tx`, `sql_tx`, `replay`.
+Child records inherit the span's `trace_id` — the same ULID that keys the event log and RDF provenance —
+so `mm-cli logs trace <ulid>` reconstructs the entire timeline from a single identifier.
+
+**Five sinks (fan-out via subscriber layers).**
+1. Console (pretty) — human-facing; level from `MM_LOG`.
+2. `data/logs/YYYY-MM-DD.jsonl` — machine JSONL, one object per line, append-only; the ingest source.
+3. **Event log** (authoritative audit) — every state-changing operation is written here transactionally
+   with the mutation it describes: committed state without its audit record is impossible.
+4. `/provenance` graph — consequential decisions, promotions, and Pi edits mirrored as RDF.
+5. SQLite queryable tables — `log_events`, plus the domain tables (`llm_calls`, `decisions`, `tool_calls`,
+   `action_ledger`, `firewall_runs`, `promotions`, `budgets`).
+
+**Two categories.** *Operational logs* are verbose, high-volume, retention-bounded, rotated daily, and
+safe to drop. *Audit records* are append-only, immutable, never deleted or rewritten (state mutations,
+epistemic status changes, permission grants, decisions, promotions, Pi sessions/edits, identity-relevant
+events); they follow `temporal-store` immutability semantics, are indexed by a monotonic sequence number,
+and a gap in that sequence is a hard error.
+
+**Levels.** `ERROR < WARN < INFO < DEBUG < TRACE`, with per-target overrides; default `INFO` in
+production and `DEBUG` in development; `TRACE` for store/replay internals. Errors always carry the full
+cause chain and never swallow context.
+
+**Redaction.** A `Redactor` runs on the log path before any sink: API keys, bearer tokens, passwords, and
+PII are never emitted; free-text fields are length-bounded and optionally content-hashed. A redaction
+test asserts that a suite of known secret patterns never appears in any sink, including ERROR paths.
+
+**Determinism.** Logging must never change behavior. Audit writes are transactional with their event;
+operational writes are best-effort. Logs are excluded from state hashes, and replay is exact whether or
+not logging is enabled.
+
+**Required records per phase** (minimum; in addition to the global fields above):
+
+| Phase | Must log |
+|---|---|
+| 1 | store open/close, migrations applied, every event append→apply→commit with its sequence number, replay start/progress/end, ontology load, SHACL counts, audit-sequence integrity |
+| 2 | scan start/stop, each module and file discovered with stable URI and content hash, dependency edges, `codex verify` results, drift detections, registry writes, every `mmc:copiedFrom` record |
+| 3 | every LLM call: purpose, model, routing decision and reason, prompt hash, token counts, cost, latency, cache hit/miss, schema-validation result, repair attempts and outcome |
+| 4 | identity/invariant checks (passes and violation attempts), belief status/confidence changes (old→new), goal/commitment transitions, relationship updates, every budget debit with remaining balance |
+| 5 | memory add/retrieve/consolidate/forget with utility inputs and score, retrieval scores, access-history updates, protected-record refusals, mistake/near-miss creation |
+| 6 | claim/evidence/observation ingest, epistemic-status assignments and rejected promotions, contradiction creation with both sides, dependency cascades, temporal-validity decisions |
+| 7 | library extraction/validation (accepted/rejected per shape), frame selection, technique applicability scores, policy version/parent/fitness changes |
+| 8 | scan inputs, compiled program, each `CognitiveOp` with its `OperationValue` components, budget before/after, stopping reason, trace id |
+| 9 | each decision question + answer + confidence + features, firewall outcome and reason codes, hard-prohibition short-circuits, comparison-validity verdicts, risk-measure inputs/outputs |
+| 10 | every tool call (args redacted, permission check, result, latency), sandbox denials, action-ledger entries, observation provenance, rollback steps and restored-state hash |
+| 11 | meta-analysis triggers and diagnosis, calibration metrics per cycle, change-set lifecycle stages, every Pi session/command/tool-call/edit ingested from Pi JSONL, build/test/benchmark results, gate decision with written reason, budget usage |
+| 12 | loop iterations, self-model divergence metrics, debt findings and GC actions, design-doc revisions, module hot-loads, identity-invariant checks |
+
+**Ingestion and analysis.** A `mm-log` ingester reads the JSONL files into `log_events` (idempotent by
+record hash) so meta-analysis (Phase 11) can query behavior without disturbing the event log's
+authoritative ordering. `mm-cli logs {tail, trace <ulid>, stats, verify, audit}`.
+
+**Verification gate (`mm-cli logs verify`), run inside every phase gate.**
+- Every record validates against the log schema.
+- Every committed state-changing operation has exactly one matching audit record.
+- The audit sequence has no gaps; ULID correlation links operational logs, the event log, and RDF provenance.
+- The redaction suite finds no secret pattern in any sink.
+- Replay produces identical state with logging enabled and disabled.
+
+---
+
+# 11. Pi integration contract (the code-editor system)
 
 Pi is the **only** code editor. The cognitive runtime never writes production source directly; it
 drives Pi and then verifies Pi's output deterministically.
@@ -347,14 +441,15 @@ drives Pi and then verifies Pi's output deterministically.
   so every generated line has provenance.
 - **Isolation.** Pi runs only inside `data/sandbox/<changeset-ulid>/` (a git worktree/copy), with an
   isolated session dir. It may not touch the production tree; promotion copies verified artifacts.
-- **Model/provider.** Uses the same OpenAI-compatible endpoint (default provider `dojo_dev`). The
-  runtime's LLM and Pi share `.env`/`pi/` config so routing can move workloads between them.
+- **Model/provider.** Uses the OpenAI-compatible endpoint configured via environment
+  (`OPENAI_BASE_URL`, `OPENAI_API_KEY`); **no endpoint URL is hard-coded anywhere in the system**. The
+  runtime's LLM and Pi share the same env/prompt config so routing can move workloads between them.
 - **Fallback.** If subprocess RPC is unavailable, the Node SDK (`AgentSession`) can be embedded via a
   thin Node sidecar exposing the same JSONL contract; the `mm-pi` interface is unchanged.
 
 ---
 
-# 11. Phase dependency graph
+# 12. Phase dependency graph
 
 ```
 P1 Foundation ──┬── P2 Codex/module metadata ──────────────┐
@@ -388,7 +483,7 @@ adds exactly one new organ and must not regress earlier gates.
 
 ---
 
-# 12. The 12 phases
+# 13. The 12 phases
 
 Each phase has: **Goal · Reused components · New code/ontology · Steps · Testing · Pass gate**.
 
@@ -400,12 +495,14 @@ Each phase has: **Goal · Reused components · New code/ontology · Steps · Tes
 async traits, an append-only event log with replay, `ontology v0`, and the test harness every later
 phase depends on. No self-modification, no cognition.
 
-**Reused components.** `rdf-codec` (ULIDs, namespaces, RDF encode/decode), `temporal-store` (immutability/
+**Reference components (copied in and integrated).** `rdf-codec` (ULIDs, namespaces, RDF encode/decode), `temporal-store` (immutability/
 replay contract), nexus plugin lifecycle skeleton (`nexus-abi`/`nexus-core` patterns) for `modules/`.
 
 **New code / ontology.**
 - `mm-core`: `Id`, `Ulid` factory, `Timestamp` (integer seconds+nanos, as in `nexus-abi`
   `HiResTimestamp`), `MmError`, `Config`, and async traits `Tabular`, `Graph`, `EventSink`.
+- `mm-log`: `tracing` subscriber wiring, console + JSONL + audit sinks, ULID/span correlation,
+  `Redactor`, and the redaction-secret test (see §10).
 - `mm-store-sqlite`: `sqlx` SQLite pool, WAL, migrations (identity, events, and empty forward tables);
   `sqlx::migrate!` applied on open.
 - `mm-store-graph`: Oxigraph **actor** (single writer, async handle), named-graph manager, `rdf-codec`
@@ -435,6 +532,8 @@ migration up-then-down; `doctor` integration test; SHACL validates an empty inst
 - Property tests: 100k ULIDs all unique; 10k-triple graph export→reimport gives an identical content hash.
 - Event-log replay from an empty log reconstructs a mutated state byte-identically; a killed writer replays with no double-apply.
 - `mm-cli graph validate` reports 0 SHACL violations for a clean instance and ≥1 for a deliberately broken one.
+- `mm-cli logs verify` passes: every record schema-valid, audit sequence gapless, ULID correlation
+  intact, and the redaction suite finds no secret in any sink.
 
 ---
 
@@ -444,7 +543,7 @@ migration up-then-down; `doctor` integration test; SHACL validates an empty inst
 gets a **stable RDF identifier** in a dedicated code graph, enabling the meta-analysis (§62/§85/§105)
 and the Pi-driven self-build later. This must exist before any self-modification.
 
-**Reused components.** nexus plugin contract + `plugin.toml` (`monad-llm` shows the `uri` convention);
+**Reference components (copied in and integrated).** nexus plugin contract + `plugin.toml` (`monad-llm` shows the `uri` convention);
 nexus `monad-rust`/`nexus-rust-ast` and `rust_extract::::kg-diagram` for derived views; `rdf-codec`
 for canonical emission; `rdf-shacl` for shape validation.
 
@@ -488,7 +587,7 @@ for canonical emission; `rdf-shacl` for shape validation.
 **Goal.** One typed, cached, accountable LLM interface used by everything. The LLM must never be called
 ad-hoc; every call is schema-validated, budgeted, logged, and replayable offline.
 
-**Reused components.** `kg-llm` (`LlmClient`, `MockLlmClient`, `CachedLlmClient`, `OpenAiLlmClient`,
+**Reference components (copied in and integrated).** `kg-llm` (`LlmClient`, `MockLlmClient`, `CachedLlmClient`, `OpenAiLlmClient`,
 structured-output schema, request hashing); `nexus-agentstream` and `rust_symbolic::llm-agentstream`
 as alternative backends; `nexus` `monad-llm` for DSL-level access.
 
@@ -526,7 +625,7 @@ fixtures; adversarial malformed payloads never crash and never produce a typed v
 traits (persistent) vs affect (transient), user model with epistemic status, relationship dimensions,
 goals/commitments/desires, and a resource economy with enforced budgets.
 
-**Reused components.** `provenance-ir` (claim/source/trust) and `epistemic-ir` (belief) for the user
+**Reference components (copied in and integrated).** `provenance-ir` (claim/source/trust) and `epistemic-ir` (belief) for the user
 model's status; `event-ir` for goal/commitment lifecycle events; SQLite for authoritative rows;
 Oxigraph for relational structure.
 
@@ -571,7 +670,7 @@ affect trait/state separation; SHACL conformance of the being graph.
 **Goal.** The ten memory classes from §32 as typed, provenance-bearing traces with deterministic
 retrieval, episodic→semantic consolidation, deliberate forgetting, and mistake/near-miss retention.
 
-**Reused components.** `memory-ir` (`MemoryEngine`, `MemoryKind`, `Consolidation`, `ReasoningTrajectory`);
+**Reference components (copied in and integrated).** `memory-ir` (`MemoryEngine`, `MemoryKind`, `Consolidation`, `ReasoningTrajectory`);
 `kg-embed` (BGE-small) for semantic retrieval; `temporal-store` for validity intervals.
 
 **New code / ontology.**
@@ -616,7 +715,7 @@ observations, inferences, hypotheses, assumptions, predictions with explicit `Ep
 assumption ledger; contradiction detection; epistemic dependency graph with propagation and
 "never silently promote" enforcement.
 
-**Reused components.** `provenance-ir` (claims/sources/trust/conflicts), `epistemic-ir` (belief/Kripke),
+**Reference components (copied in and integrated).** `provenance-ir` (claims/sources/trust/conflicts), `epistemic-ir` (belief/Kripke),
 `event-ir` (temporal validity), `kg-validate` (`EvidenceValidator`, `ClaimValidator`, RDF emission,
 conformance), `rdf-shacl`.
 
@@ -660,7 +759,7 @@ SHACL + symbolic consistency; property test that the dependency graph is a DAG a
 techniques, patterns, cases, anti-patterns, skills, policies — plus temporary **conceptual frames** and a
 **policy genome**. This is where the system stops rediscovering reasoning and starts reusing it.
 
-**Reused components.** `analogy-ir` (`Case`, `Correspondence`, `TransferCandidate`), `evolution-ir`
+**Reference components (copied in and integrated).** `analogy-ir` (`Case`, `Correspondence`, `TransferCandidate`), `evolution-ir`
 (populations, fitness), `mechanism-ir`, `learning-ir`; `rust_extract`'s extraction pattern (`kg-extract`
 + `kg-llm` + `kg-validate`) for LLM-populated, schema-validated library entries; `rdf-shacl`.
 
@@ -701,7 +800,7 @@ ID resolves); case-retrieval gold set; policy version monotonicity; duplicate-de
 cognition is needed*, then compiles a temporary **cognitive program** — optimizing for **minimum
 sufficient cognition**, not maximum.
 
-**Reused components.** `decision-ir` (bounded selection), `logic-planner` (`Planner` cost model),
+**Reference components (copied in and integrated).** `decision-ir` (bounded selection), `logic-planner` (`Planner` cost model),
 `nexus` `monad-executor` + `dsl-compiler` + `nexus-monad-types` to execute the compiled program as a DAG,
 `nexus-mpyir` for LLM-authored one-shot blocks.
 
@@ -743,7 +842,7 @@ abstraction answers typed questions (choice/score/yes-no) over shared state; a `
 assumptions, comparisons, contradictions, feasibility, missing steps, risk, reversibility, and authority
 into one outcome; comparison integrity (§20) gets its own subsystem.
 
-**Reused components.** `decision-ir` (`DecisionEngine`, `RiskMeasure` VaR/CVaR, `BayesianProblem`, `Mdp`),
+**Reference components (copied in and integrated).** `decision-ir` (`DecisionEngine`, `RiskMeasure` VaR/CVaR, `BayesianProblem`, `Mdp`),
 `ensemble-ir` (multi-lens disagreement), `logic-ir`/`backend-registry`/`logic-planner` for constraint
 feasibility and formal checks, `causal-ir` for risk structure.
 
@@ -789,7 +888,7 @@ every decision and firewall run logged with enough features to calibrate.
 deterministic executor; the tool registry and permission engine are authoritative; execution returns
 **authoritative observations**; verification tools (compiler/tests/symbolic) run; rollback exists.
 
-**Reused components.** `logic-planner::sandbox` (capabilities/filesystem/network), `backend-registry`
+**Reference components (copied in and integrated).** `logic-planner::sandbox` (capabilities/filesystem/network), `backend-registry`
 (SAT/SMT/TPTP), `math-runtime` (residual verifier), `llm-interface` (tool catalog/orchestration/repair),
 nexus `monad-process`/`monad-file`/`monad-sparql`/`monad-sql`/`monad-resource` for concrete tools.
 
@@ -832,7 +931,7 @@ ledger is calibrated; mistakes become regression tests; candidate improvements p
 regression → adversarial → benchmark → shadow → promote/reject) decides — never the LLM. This is the
 largest phase and the point at which the system begins building new modules itself.
 
-**Reused components.** `mm-pi` (new) wrapping Pi's RPC; `kg-llm` for diagnosis; `causal-ir` for root-cause
+**Reference components (copied in and integrated).** `mm-pi` (new) wrapping Pi's RPC; `kg-llm` for diagnosis; `causal-ir` for root-cause
 and intervention reasoning; `learning-ir`/`evolution-ir` for policy/gene fitness; nexus plugin loader to
 load a promoted module; `rust_extract`'s versioned JSONL artifact + replay pattern for change sets;
 `rdf-shacl` to validate emitted metadata.
@@ -894,7 +993,7 @@ test/benchmark → promotion → new capability — and updates its own design d
 full provenance and reproducible replay. Also implemented: self-model divergence (§62), architectural
 debt/GC (§85–86), multi-timescale scheduling (§31), and the continuous dev loop of §103.
 
-**Reused components.** Everything above; `evolution-ir` for population/fitness; `ensemble-ir` for
+**Reference components (copied in and integrated).** Everything above; `evolution-ir` for population/fitness; `ensemble-ir` for
 multi-lens self-evaluation; `nexus-launcher`/plugin loader to hot-load newly promoted modules.
 
 **New code / ontology.**
@@ -935,7 +1034,7 @@ promotion gate.
 
 ---
 
-# 13. Pass-gate summary
+# 14. Pass-gate summary
 
 | Phase | Organ added | Pass gate in one line |
 |---|---|---|
@@ -952,11 +1051,12 @@ promotion gate.
 | 11 | Self-engineering + Pi module construction | Gap→ChangeSet→Pi→test/benchmark→promote/reject with reason; mistake→test; calibration improves; budgets held |
 | 12 | Closed-loop autonomy | Novel goal → design+code+test+promote+hot-load with no human edits; replayable; suite green; no invariant violated |
 
-Every gate is run as a plain command (through `mm-cli` or `cargo`), and earlier gates must still pass.
+Every gate is run as a plain command (through `mm-cli` or `cargo`), includes the logging verification
+`mm-cli logs verify` (§10), and earlier gates must still pass.
 
 ---
 
-# 14. Design traceability
+# 15. Design traceability
 
 | Design section | Phase |
 |---|---|
@@ -991,12 +1091,12 @@ Every gate is run as a plain command (through `mm-cli` or `cargo`), and earlier 
 | §87–90 ontology, runtime model, ops, backend map | 1, 6, 8, 10 |
 | §91–102 bootstrap phases 0–10 | 1–11 (mapped) |
 | §103–107 continuous integration, control plane, self-knowledge | 11, 12 |
-| §108 what not to overbuild | guardrails (§16) |
+| §108 what not to overbuild | guardrails (§17) |
 | §109–110 invariants, final system | all |
 
 ---
 
-# 15. Risks and mitigations
+# 16. Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
@@ -1006,12 +1106,12 @@ Every gate is run as a plain command (through `mm-cli` or `cargo`), and earlier 
 | Self-modification damages the system | Immutable identity invariants, budgets, change-set rollback, promotion gate, event-log replay; production never written directly (Phases 4, 10, 11) |
 | Ontology/SHACL drift from code | Code metadata generated from source + `codex verify` in CI (Phase 2) |
 | LLM cost/latency explosion | Routing, caching, budget enforcement, Jev→local distillation, minimum-sufficient-cognition (Phases 3, 8, 9) |
-| Reused utilities drift from their origin repos | Vendor via submodule; wrap behind `mm-*` traits; pin revisions; upstream bug fixes via `[patch]` only when necessary |
+| Copied code diverges from its reference | Each copy records `mmc:copiedFrom` (repo, revision, license); keep a `COPYING.md` per copied tree; re-copying an updated reference goes through the promotion pipeline |
 | Over-building symbolic common sense | §108 guardrails; keep symbolic layer small and focused (design §50) |
 
 ---
 
-# 16. Guardrails and definition of done
+# 17. Guardrails and definition of done
 
 **Anti-overbuild guardrails** (design §108, enforced in review): no giant commonsense DB; no hand-coded
 personality matrix; no premature giant ontology; not every thought persisted; no LLM arithmetic; no Jev
