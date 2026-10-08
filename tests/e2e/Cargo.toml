@@ -1,0 +1,48 @@
+[package]
+name = "mm-e2e"
+description = "Metamind end-to-end tests: kernel boot, replay determinism, CLI doctor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 1
+capability = "mm:MmE2e"
+[lints]
+workspace = true
+
+[lib]
+name = "mm_e2e"
+path = "lib.rs"
+
+[[test]]
+name = "kernel_boot"
+path = "kernel_boot.rs"
+
+[[test]]
+name = "replay_determinism"
+path = "replay_determinism.rs"
+
+[[test]]
+name = "cli_doctor"
+path = "cli_doctor.rs"
+
+[[test]]
+name = "cli_being"
+path = "cli_being.rs"
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }
+mm-eventlog = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

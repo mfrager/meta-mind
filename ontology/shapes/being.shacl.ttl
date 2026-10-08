@@ -1,0 +1,230 @@
+# Being SHACL shapes (Phase 4).
+#
+# `mm-cli graph validate --graph being` must find zero violations on a clean graph
+# and at least one on a broken one: `tests/e2e/cli_doctor.rs` seeds
+# `tests/fixtures/ontology/{clean,broken}.ttl` and requires exactly that.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`,
+# `sh:path`, `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`,
+# `sh:nodeKind`, `sh:severity`. The vendored validator treats every other predicate
+# as a hard error, so this file carries no prose inside a shape: documentation of a
+# constraint belongs in a comment here.
+#
+# One rule cannot be stated in this fragment and is enforced elsewhere on purpose:
+# an `mm:AffectState` carries numeric axes only and *no* status-bearing predicate,
+# which is what keeps a simulated feeling from being read back as a fact. It is
+# enforced by the `affect_impulses` CHECK constraints, by `being verify`, and by a
+# test in `mm-being`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# An Identity names itself with an IRI and records exactly one creation instant.
+# Both are written once, at creation, and never change.
+mm:BeingIdentityShape a sh:NodeShape ;
+    sh:targetClass mm:Identity ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:iri ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:created ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:selfDescription ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:invariantOf ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A core block is always bounded and always labelled: an unbounded block is how a
+# prompt silently grows past the window it was designed for.
+mm:CoreBlockShape a sh:NodeShape ;
+    sh:targetClass mm:CoreBlock ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:blockKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:label ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:contentLength ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .
+
+# Affect is seven numeric axes. Nothing about it is a claim.
+mm:AffectShape a sh:NodeShape ;
+    sh:targetClass mm:AffectState ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:valence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:arousal ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:engagement ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:warmth ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:caution ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:curiosity ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:energy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A belief always names its status, who holds it, and how confident it is. The
+# evidence gate itself is a Rust invariant, not a shape.
+mm:UserBeliefShape a sh:NodeShape ;
+    sh:targetClass mm:UserBelief ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:beliefStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:heldBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:confidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A relationship is dimensional and always names the user it is about.
+mm:RelationshipShape a sh:NodeShape ;
+    sh:targetClass mm:Relationship ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:inRelationshipWith ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:trusts ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A goal has exactly one status. Desire is not a promise, so this shape is on the
+# goal itself and not on the commitment.
+mm:GoalShape a sh:NodeShape ;
+    sh:targetClass mm:Goal ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:goalStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A commitment names who it was made to and where it stands.
+mm:CommitmentShape a sh:NodeShape ;
+    sh:targetClass mm:Commitment ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:madeTo ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:commitmentStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An account is a machine-checked amount plus the unit it is counted in.
+mm:ResourceAccountShape a sh:NodeShape ;
+    sh:targetClass mm:ResourceAccount ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:budgetLimit ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:unit ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

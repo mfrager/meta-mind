@@ -1,0 +1,31 @@
+# Metamind module manifest.
+#
+# The `uri` is stable and path-derived: it follows this module's position in the
+# repository, so moving the directory is the only thing that changes it and no
+# other module may reuse the value.
+
+[plugin]
+name = "being"
+uri = "https://metamind.dev/code/module/cognition/being"
+version = "0.1.0"
+
+[metadata]
+category = "cognition"
+owned_by_phase = 4
+capability = "mm:BeingState"
+
+[tbox.functions]
+"being.identity" = { source = "handlers::identity" }
+"being.personality" = { source = "handlers::personality" }
+"being.affect" = { source = "handlers::affect" }
+"being.beliefs" = { source = "handlers::beliefs" }
+"being.relationships" = { source = "handlers::relationships" }
+"being.goals" = { source = "handlers::goals" }
+"being.resources" = { source = "handlers::resources" }
+
+[monad.operations]
+name = "cognition"
+arity = 0
+
+[build]
+rust_edition = "2021"

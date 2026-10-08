@@ -1,0 +1,32 @@
+[package]
+name = "mm-store-graph"
+description = "Metamind RDF store: Oxigraph behind a single-writer actor, named graphs, canonical hashing, SHACL validation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 1
+capability = "mm:MmStoreGraph"
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+oxigraph = { workspace = true }
+oxrdf = { workspace = true }
+rdf-codec = { workspace = true }
+rdf-shacl = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }

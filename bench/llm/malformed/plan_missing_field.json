@@ -1,0 +1,19 @@
+{
+  "name": "plan_missing_field",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["summary", "steps"],
+    "properties": {
+      "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "steps": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1,
+        "maxItems": 8
+      }
+    }
+  },
+  "payload": "{\"summary\":\"ok\"}",
+  "expect": "missing_field"
+}

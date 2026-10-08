@@ -1,0 +1,5 @@
+---
+source: crates/mm-log/tests/golden_records.rs
+expression: audited.to_json()
+---
+{"record_id":"01h00000000000000000000000","at":"2023-11-14T22:13:20.000000000Z","level":"info","event_code":"eventlog.commit","target":"mm.kernel","trace_id":"01h00000000000000000000001","span":"kernel.boot","fields":{"id":"01h00000000000000000000000","seq":1},"audit":true}

@@ -1,0 +1,12 @@
+# A deliberately invalid kernel graph. It violates two shapes at once:
+#   * mm:iri is a literal, not an IRI  (sh:nodeKind sh:IRI)
+#   * mm:created has two values       (sh:maxCount 1)
+# Used to prove `graph validate` fails loudly instead of passing everything.
+@prefix mm:  <https://metamind.dev/ontology#> .
+@prefix mmd: <https://metamind.dev/data/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+mmd:identity02 a mm:Identity ;
+    mm:iri "not-an-iri" ;
+    mm:created "2026-01-01T00:00:00.000000000Z"^^xsd:dateTime ,
+               "2026-01-02T00:00:00.000000000Z"^^xsd:dateTime .

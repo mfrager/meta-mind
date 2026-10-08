@@ -1,0 +1,23 @@
+# VENDORED — copied from ~/Scripts/rust_symbolic/crates/math-types
+# Origin: git@github.com:mfrager/blanc-scripts.git @ c03aee5fb3a9947da1c7f21e491aa52f43d6f09d
+# See ../COPYING.md. Transitive dependency of rdf-codec/rdf-shacl; not a Metamind crate.
+[package]
+name = "math-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 1
+capability = "mm:MathTypes"
+origin = "rust_symbolic"
+copied_from = "https://github.com/mfrager/blanc-scripts@c03aee5fb3a9947da1c7f21e491aa52f43d6f09d"
+license = "unspecified"
+
+# Vendored code is not held to Metamind's zero-warning bar; only `mm-*` crates are.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "allow", priority = -1 }

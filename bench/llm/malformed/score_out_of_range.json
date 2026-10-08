@@ -1,0 +1,14 @@
+{
+  "name": "score_out_of_range",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "score"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "score": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  },
+  "payload": "{\"name\":\"a\",\"score\":42}",
+  "expect": "out_of_range"
+}

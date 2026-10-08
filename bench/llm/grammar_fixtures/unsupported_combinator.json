@@ -1,0 +1,7 @@
+{
+  "name": "unsupported_combinator",
+  "schema": { "oneOf": [] },
+  "valid": null,
+  "mutated": null,
+  "expect_compile_error": true
+}

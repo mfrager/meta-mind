@@ -1,0 +1,14 @@
+{
+  "name": "schema_extra_field",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "score"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "score": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  },
+  "payload": "{\"name\":\"a\",\"score\":3,\"extra\":true}",
+  "expect": "extra_field"
+}

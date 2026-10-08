@@ -1,0 +1,178 @@
+{
+  "_comment": "Generated, committed. Regenerate with `mm-cli codex scan`; the file is deterministic, so an unchanged tree produces an unchanged file. Only `registry.json` and `codex.lock` are committed under `modules/`; the per-module `metadata.ttl` files are generated and git-ignored.",
+  "schema": 2,
+  "generated_by": "mm-cli codex scan",
+  "graph_hash": "57c7930bcbb857662b136a8c16b878e6a91e3e2ef4c5e62b75e578ec5b9d3789",
+  "modules": [
+    {
+      "name": "being",
+      "uri": "https://metamind.dev/code/module/cognition/being",
+      "path": "modules/cognition/being",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 4,
+      "capability": "mm:BeingState",
+      "tbox_functions": [
+        "being.affect",
+        "being.beliefs",
+        "being.goals",
+        "being.identity",
+        "being.personality",
+        "being.relationships",
+        "being.resources"
+      ]
+    },
+    {
+      "name": "mm-being",
+      "uri": "https://metamind.dev/code/module/crates/mm-being",
+      "path": "crates/mm-being",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 4,
+      "capability": "mm:BeingState",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-cli",
+      "uri": "https://metamind.dev/code/module/crates/mm-cli",
+      "path": "crates/mm-cli",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmCli",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-codex",
+      "uri": "https://metamind.dev/code/module/crates/mm-codex",
+      "path": "crates/mm-codex",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 2,
+      "capability": "mm:MmCodex",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-core",
+      "uri": "https://metamind.dev/code/module/crates/mm-core",
+      "path": "crates/mm-core",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmCore",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-eventlog",
+      "uri": "https://metamind.dev/code/module/crates/mm-eventlog",
+      "path": "crates/mm-eventlog",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmEventlog",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-llm",
+      "uri": "https://metamind.dev/code/module/crates/mm-llm",
+      "path": "crates/mm-llm",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 3,
+      "capability": "mm:MmLlm",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-log",
+      "uri": "https://metamind.dev/code/module/crates/mm-log",
+      "path": "crates/mm-log",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmLog",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-store-graph",
+      "uri": "https://metamind.dev/code/module/crates/mm-store-graph",
+      "path": "crates/mm-store-graph",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmStoreGraph",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-store-sqlite",
+      "uri": "https://metamind.dev/code/module/crates/mm-store-sqlite",
+      "path": "crates/mm-store-sqlite",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmStoreSqlite",
+      "tbox_functions": []
+    },
+    {
+      "name": "kernel-bootstrap",
+      "uri": "https://metamind.dev/code/module/system/kernel-bootstrap",
+      "path": "modules/system/kernel-bootstrap",
+      "version": "0.1.0",
+      "category": "system",
+      "owned_by_phase": 1,
+      "capability": "mm:KernelBootstrap",
+      "tbox_functions": [
+        "system.boot_plan"
+      ]
+    },
+    {
+      "name": "mm-e2e",
+      "uri": "https://metamind.dev/code/module/tests/e2e",
+      "path": "tests/e2e",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MmE2e",
+      "tbox_functions": []
+    },
+    {
+      "name": "math-core",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/math-core",
+      "path": "vendor/rust_symbolic/math-core",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MathCore",
+      "tbox_functions": []
+    },
+    {
+      "name": "math-types",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/math-types",
+      "path": "vendor/rust_symbolic/math-types",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:MathTypes",
+      "tbox_functions": []
+    },
+    {
+      "name": "rdf-codec",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/rdf-codec",
+      "path": "vendor/rust_symbolic/rdf-codec",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:RdfCodec",
+      "tbox_functions": []
+    },
+    {
+      "name": "rdf-shacl",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/rdf-shacl",
+      "path": "vendor/rust_symbolic/rdf-shacl",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 1,
+      "capability": "mm:RdfShacl",
+      "tbox_functions": []
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Planted defect: the SAME `uri` as `modules/alpha/plugin.toml`. The rest of this
+# manifest is well formed, so the duplicate URI is the only finding.
+
+[plugin]
+name = "beta"
+uri = "https://metamind.dev/code/module/duplicated"
+version = "0.1.0"
+description = "Second module claiming the duplicated URI."
+
+[metadata]
+category = "system"
+owned_by_phase = 2
+capability = "mm:Beta"
+
+[tbox.functions]
+"system.beta" = { source = "handlers::beta" }
+
+[build]
+rust_edition = "2021"

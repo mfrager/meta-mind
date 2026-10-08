@@ -1,0 +1,14 @@
+# Planted defect (half two): `beta` depends back on `alpha`, which closes the
+# cycle. Everything else in this manifest is well formed.
+
+[package]
+name = "beta"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+alpha = { path = "../alpha" }
+
+[package.metadata.metamind]
+owned_by_phase = 2
+capability = "mm:Beta"

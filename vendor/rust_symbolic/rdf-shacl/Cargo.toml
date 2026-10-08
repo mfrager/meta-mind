@@ -1,0 +1,31 @@
+# VENDORED — copied from ~/Scripts/rust_symbolic/crates/rdf-shacl
+# Origin: git@github.com:mfrager/blanc-scripts.git @ c03aee5fb3a9947da1c7f21e491aa52f43d6f09d
+# See ../COPYING.md.
+#
+# Omitted from the copy: `tests/pipeline.rs` (dev-dep on `math-ontology`, which is
+# outside the copied subtree). Metamind drives the validator through
+# `mm-store-graph`'s SHACL conformance tests instead.
+[package]
+name = "rdf-shacl"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+math-core = { path = "../math-core" }
+rdf-codec = { path = "../rdf-codec" }
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 1
+capability = "mm:RdfShacl"
+origin = "rust_symbolic"
+copied_from = "https://github.com/mfrager/blanc-scripts@c03aee5fb3a9947da1c7f21e491aa52f43d6f09d"
+license = "unspecified"
+
+# Vendored code is not held to Metamind's zero-warning bar; only `mm-*` crates are.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "allow", priority = -1 }

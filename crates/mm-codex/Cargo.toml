@@ -1,0 +1,37 @@
+[package]
+name = "mm-codex"
+description = "Metamind code metadata: deterministic scanner, symbol extractor, emitter, verifier, meta engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 2
+capability = "mm:MmCodex"
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }
+rdf-codec = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+syn = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-rust = { workspace = true }
+sha1 = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }

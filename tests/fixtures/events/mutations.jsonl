@@ -1,0 +1,10 @@
+{"kind":"store.mutation","payload":{"i":0,"op":"create"}}
+{"kind":"store.mutation","payload":{"i":1,"op":"update"}}
+{"kind":"store.mutation","payload":{"i":2,"op":"update"}}
+{"kind":"store.mutation","payload":{"i":3,"op":"create"}}
+{"kind":"store.mutation","payload":{"i":4,"op":"delete"}}
+{"kind":"store.mutation","payload":{"i":5,"op":"update"}}
+{"kind":"store.mutation","payload":{"i":6,"op":"create"}}
+{"kind":"store.mutation","payload":{"i":7,"op":"delete"}}
+{"kind":"store.mutation","payload":{"i":8,"op":"update"}}
+{"kind":"store.mutation","payload":{"i":9,"op":"update"}}

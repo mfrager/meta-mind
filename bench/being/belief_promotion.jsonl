@@ -1,0 +1,24 @@
+# Belief-promotion fixtures (plan §7, §8).
+#
+# Each line seeds a belief at `from` and asks `UserModel::promote` for `to` with
+# `evidence`. `expect` is `allowed` or `denied`; the test refuses the run unless
+# every line lands where it says. A promotion may never be *coerced*: when it is
+# denied the belief keeps the status it had.
+#
+# The initial belief holds no evidence, so an upgrade must bring at least one
+# record, and `OBSERVED`/`VERIFIED` additionally need one/two records respectively.
+
+{"name":"assumed_to_observed_without_evidence","from":"ASSUMED","to":"OBSERVED","evidence":[],"expect":"denied"}
+{"name":"assumed_to_observed_with_one_observation","from":"ASSUMED","to":"OBSERVED","evidence":["ev-1"],"expect":"allowed"}
+{"name":"reported_to_observed_with_one_observation","from":"REPORTED","to":"OBSERVED","evidence":["ev-1"],"expect":"allowed"}
+{"name":"inferred_to_observed_without_evidence","from":"INFERRED","to":"OBSERVED","evidence":[],"expect":"denied"}
+{"name":"reported_to_verified_with_one_record","from":"REPORTED","to":"VERIFIED","evidence":["ev-1"],"expect":"denied"}
+{"name":"reported_to_verified_with_two_records","from":"REPORTED","to":"VERIFIED","evidence":["ev-1","ev-2"],"expect":"allowed"}
+{"name":"observed_to_verified_with_one_record","from":"OBSERVED","to":"VERIFIED","evidence":["ev-1"],"expect":"denied"}
+{"name":"observed_to_verified_with_two_records","from":"OBSERVED","to":"VERIFIED","evidence":["ev-1","ev-2"],"expect":"allowed"}
+{"name":"assumed_to_verified_with_two_records","from":"ASSUMED","to":"VERIFIED","evidence":["ev-1","ev-2"],"expect":"allowed"}
+{"name":"assumed_to_verified_with_one_record","from":"ASSUMED","to":"VERIFIED","evidence":["ev-1"],"expect":"denied"}
+{"name":"hypothetical_to_predicted_without_evidence","from":"HYPOTHETICAL","to":"PREDICTED","evidence":[],"expect":"allowed"}
+{"name":"fictional_to_assumed_without_evidence","from":"FICTIONAL","to":"ASSUMED","evidence":[],"expect":"denied"}
+{"name":"observed_to_assumed_without_evidence","from":"OBSERVED","to":"ASSUMED","evidence":[],"expect":"allowed"}
+{"name":"hypothetical_to_unknown_without_evidence","from":"HYPOTHETICAL","to":"UNKNOWN","evidence":[],"expect":"allowed"}

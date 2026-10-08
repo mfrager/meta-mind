@@ -1,0 +1,20 @@
+# Goal/commitment lifecycle fixtures (plan §7, §8).
+#
+# Each line asks the lifecycle to move a `subject` (`goal` or `commitment`) from
+# `from` to `to`. `expect` is `allowed` or `denied`. A terminal status is history:
+# nothing may move out of it, and a no-op re-assertion of the current status is
+# allowed because a retry must be indistinguishable from an idempotent call.
+
+{"name":"a_goal_moves_from_active_to_fulfilled","subject":"goal","from":"active","to":"fulfilled","expect":"allowed"}
+{"name":"a_goal_moves_from_active_to_blocked","subject":"goal","from":"active","to":"blocked","expect":"allowed"}
+{"name":"a_goal_moves_from_pending_to_active","subject":"goal","from":"pending","to":"active","expect":"allowed"}
+{"name":"a_goal_may_reassert_its_status","subject":"goal","from":"active","to":"active","expect":"allowed"}
+{"name":"a_fulfilled_goal_may_not_be_reopened","subject":"goal","from":"fulfilled","to":"active","expect":"denied"}
+{"name":"an_abandoned_goal_may_not_be_revived","subject":"goal","from":"abandoned","to":"pending","expect":"denied"}
+{"name":"a_superseded_goal_may_not_be_reopened","subject":"goal","from":"superseded","to":"active","expect":"denied"}
+{"name":"a_commitment_moves_from_active_to_fulfilled","subject":"commitment","from":"active","to":"fulfilled","expect":"allowed"}
+{"name":"a_commitment_moves_from_active_to_revoked","subject":"commitment","from":"active","to":"revoked","expect":"allowed"}
+{"name":"a_commitment_may_reassert_its_status","subject":"commitment","from":"active","to":"active","expect":"allowed"}
+{"name":"a_fulfilled_commitment_may_not_be_revoked","subject":"commitment","from":"fulfilled","to":"revoked","expect":"denied"}
+{"name":"a_revoked_commitment_may_not_be_reopened","subject":"commitment","from":"revoked","to":"active","expect":"denied"}
+{"name":"a_superseded_commitment_may_not_be_fulfilled","subject":"commitment","from":"superseded","to":"fulfilled","expect":"denied"}

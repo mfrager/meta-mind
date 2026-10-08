@@ -1,0 +1,13 @@
+{
+  "name": "rating_v1",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["label"],
+    "properties": {
+      "label": { "type": "string", "enum": ["low", "medium", "high"] }
+    }
+  },
+  "valid": { "label": "low" },
+  "mutated": { "label": "nope" }
+}

@@ -1,0 +1,55 @@
+name: ci
+
+# The Phase 1 pass gate (§8 of the foundation build plan) as CI. Everything here
+# is a plain command that a human can run locally: build, clippy, tests, then the
+# four operator commands from the gate.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  gate:
+    name: phase-1 gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Oxigraph is built with the `rocksdb-pkg-config` feature, so the build needs
+      # a system RocksDB that pkg-config can find (§9 risk: RocksDB build failure).
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config clang libsqlite3-dev librocksdb-dev
+
+      # Reads the pinned channel and components from rust-toolchain.toml.
+      - name: Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --workspace
+
+      # `zero warnings`: clippy with -D warnings is the workspace's warning gate.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Kernel gates
+        run: |
+          cargo run -p mm-cli -- doctor
+          cargo run -p mm-cli -- graph validate --graph being
+          cargo run -p mm-cli -- logs verify
+          cargo run -p mm-cli -- replay --from 0

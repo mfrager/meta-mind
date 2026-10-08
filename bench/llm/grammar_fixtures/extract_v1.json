@@ -1,0 +1,14 @@
+{
+  "name": "extract_v1",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "score"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "score": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  },
+  "valid": { "name": "a", "score": 3 },
+  "mutated": { "name": "a", "score": 3, "extra": 1 }
+}

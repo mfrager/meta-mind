@@ -1,0 +1,5 @@
+---
+source: crates/mm-codex/tests/golden.rs
+expression: report.graph_hash
+---
+b70d64af4351fda72d7f0ed369cabc1825ac4cd1230270e968e101fdd504d2c9

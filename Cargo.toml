@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mm-core",
+    "crates/mm-log",
+    "crates/mm-store-sqlite",
+    "crates/mm-store-graph",
+    "crates/mm-eventlog",
+    "crates/mm-codex",
+    "crates/mm-llm",
+    "crates/mm-being",
+    "crates/mm-memory",
+    "crates/mm-cli",
+    "modules/system/kernel-bootstrap",
+    "modules/cognition/being",
+    "modules/cognition/memory-recall",
+    "tests/e2e",
+    "vendor/rust_symbolic/math-types",
+    "vendor/rust_symbolic/math-core",
+    "vendor/rust_symbolic/rdf-codec",
+    "vendor/rust_symbolic/rdf-shacl",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "private"
+publish = false
+
+[workspace.dependencies]
+# --- shared async/runtime ---
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "net", "io-util"] }
+futures = "0.3"
+
+# --- serialization / errors ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+async-trait = "0.1"
+
+# --- identity / hashing ---
+ulid = { version = "2", features = ["serde"] }
+sha2 = "0.10"
+
+# --- tabular store ---
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+
+# --- RDF store ---
+oxigraph = { version = "0.5", default-features = false, features = ["rocksdb", "rocksdb-pkg-config"] }
+oxrdf = "0.3"
+
+# --- config + CLI ---
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+
+# --- source analysis ---
+syn = { version = "2", features = ["full", "parsing", "printing", "extra-traits"] }
+tree-sitter = "0.27"
+tree-sitter-rust = "0.24"
+walkdir = "2"
+sha1 = "0.10"
+
+# --- Metamind crates ---
+mm-core = { path = "crates/mm-core" }
+mm-log = { path = "crates/mm-log" }
+mm-store-sqlite = { path = "crates/mm-store-sqlite" }
+mm-store-graph = { path = "crates/mm-store-graph" }
+mm-eventlog = { path = "crates/mm-eventlog" }
+mm-codex = { path = "crates/mm-codex" }
+mm-llm = { path = "crates/mm-llm" }
+mm-being = { path = "crates/mm-being" }
+mm-memory = { path = "crates/mm-memory" }
+
+# --- vendored reference code ---
+rdf-codec = { path = "vendor/rust_symbolic/rdf-codec" }
+rdf-shacl = { path = "vendor/rust_symbolic/rdf-shacl" }
+
+# --- dev ---
+proptest = "1"
+insta = { version = "1", features = ["json"] }
+tempfile = "3"
+
+# Metamind crates opt into these with `[lints] workspace = true`. Vendored reference
+# code sets its own, looser policy (it is not held to the zero-warning bar).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

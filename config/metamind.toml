@@ -1,0 +1,18 @@
+# Metamind kernel configuration (Phase 1).
+# Every path is written relative to the repository root and resolved against it,
+# so this file works regardless of the working directory mm-cli is run from.
+
+[kernel]
+name = "metamind"
+codename = "mm"
+
+[store]
+data_dir = "data"
+sqlite_file = "data/metamind.db"
+graph_dir = "data/graph"
+
+[log]
+level = "info"
+dir = "data/logs"
+console = true
+jsonl = true

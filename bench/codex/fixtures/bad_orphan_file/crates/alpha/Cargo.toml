@@ -1,0 +1,11 @@
+[package]
+name = "alpha"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+beta = { path = "../beta" }
+
+[package.metadata.metamind]
+owned_by_phase = 2
+capability = "mm:Alpha"

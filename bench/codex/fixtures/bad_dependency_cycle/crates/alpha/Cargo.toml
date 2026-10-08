@@ -1,0 +1,14 @@
+# Planted defect (half one): `alpha` depends on `beta`. `beta` depends back on
+# `alpha`, so the module dependency graph contains a cycle.
+
+[package]
+name = "alpha"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+beta = { path = "../beta" }
+
+[package.metadata.metamind]
+owned_by_phase = 2
+capability = "mm:Alpha"

@@ -1,0 +1,391 @@
+# Metamind ontology v0 (T-Box).
+#
+# Design §87: the vocabulary the whole system speaks. Phase 1 declares it and
+# loads it; only mm:Being and mm:Identity receive instance data before Phase 4.
+#
+# Validation lives in ontology/shapes/mm-shapes.ttl. This file is the T-Box only:
+# it declares classes and relations, and asserts nothing about instances.
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+@prefix mmc:  <https://metamind.dev/code#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+
+mm: a owl:Ontology ;
+    rdfs:label "Metamind ontology" ;
+    rdfs:comment "Version 0. Classes and relations only; no instance data." ;
+    owl:versionInfo "0.1.0" .
+
+# --------------------------------------------------------------------- identity
+
+mm:Being a owl:Class ;
+    rdfs:label "Being" ;
+    rdfs:comment "The self-maintaining system as a whole." .
+mm:Identity a owl:Class ;
+    rdfs:label "Identity" ;
+    rdfs:comment "The immutable core: stable IRI, creation instant, identity invariants." .
+mm:User a owl:Class ;
+    rdfs:label "User" .
+mm:Relationship a owl:Class ;
+    rdfs:label "Relationship" .
+mm:Goal a owl:Class ;
+    rdfs:label "Goal" .
+mm:Commitment a owl:Class ;
+    rdfs:label "Commitment" .
+
+# ----------------------------------------------------------------------- memory
+# Phase 5: the ten classes of design §32, plus the retrieval, consolidation, and
+# failure vocabulary the `/memory` mirror writes. Only declarations here — the
+# enforced constraints live in `ontology/shapes/memory.ttl`.
+
+mm:Memory a owl:Class ;
+    rdfs:label "Memory" ;
+    rdfs:comment "A typed, provenance-bearing memory trace." .
+mm:Episode a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:Summary a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+
+# The ten memory classes.
+mm:EpisodicMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:SemanticMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:ProceduralMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:WorkingMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:AutobiographicalMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:RelationalMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:PredictionMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:Mistake a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:NearMiss a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+# The immutable developmental ledger. A record of this class is never archived,
+# which is what `mm:protected true` asserts on every one of them.
+mm:DevelopmentalMemory a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+
+mm:RetrievalCue a owl:Class .
+mm:Consolidation a owl:Class .
+mm:SummaryNode a owl:Class ;
+    rdfs:subClassOf mm:Memory .
+mm:Community a owl:Class .
+mm:CorrectiveRule a owl:Class .
+mm:FailureRecord a owl:Class .
+# The individual a memory points at when it has no recorded source. Its presence
+# is what makes "a source or an explicit unknown source" checkable without a
+# disjunction in the shapes graph.
+mm:unknownSource a owl:NamedIndividual .
+
+# --- memory predicates -------------------------------------------------------
+mm:memoryKind a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:string .
+mm:tier a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:string .
+mm:status a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:string .
+mm:content a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:string .
+mm:source a owl:ObjectProperty ;
+    rdfs:range mm:unknownSource .
+mm:utility a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:double .
+mm:retention a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:double .
+mm:validFrom a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:dateTime .
+mm:validUntil a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:dateTime .
+mm:recordedAt a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:dateTime .
+mm:protected a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory ;
+    rdfs:range xsd:boolean .
+mm:retrievalCue a owl:DatatypeProperty ;
+    rdfs:domain mm:Memory .
+mm:relatedEntity a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:derivedFrom a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:consolidatedFrom a owl:ObjectProperty ;
+    rdfs:domain mm:Consolidation .
+mm:consolidatedInto a owl:ObjectProperty ;
+    rdfs:domain mm:Consolidation .
+mm:consolidationMethod a owl:DatatypeProperty ;
+    rdfs:domain mm:Consolidation ;
+    rdfs:range xsd:string .
+mm:summarizes a owl:ObjectProperty .
+mm:summarizedBy a owl:ObjectProperty ;
+    rdfs:domain mm:SummaryNode .
+mm:treeLevel a owl:DatatypeProperty ;
+    rdfs:domain mm:SummaryNode ;
+    rdfs:range xsd:integer .
+mm:communityLabel a owl:DatatypeProperty ;
+    rdfs:domain mm:Community ;
+    rdfs:range xsd:string .
+mm:modularity a owl:DatatypeProperty ;
+    rdfs:domain mm:Community ;
+    rdfs:range xsd:double .
+mm:accessedBy a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:servesCommitment a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:supports a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:contradicts a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:similarTo a owl:ObjectProperty ;
+    rdfs:domain mm:Memory .
+mm:failureMode a owl:DatatypeProperty ;
+    rdfs:domain mm:FailureRecord ;
+    rdfs:range xsd:string .
+mm:rootCause a owl:ObjectProperty ;
+    rdfs:domain mm:FailureRecord .
+mm:missedSignal a owl:DatatypeProperty ;
+    rdfs:domain mm:FailureRecord ;
+    rdfs:range xsd:string .
+mm:correctiveRule a owl:ObjectProperty ;
+    rdfs:domain mm:FailureRecord ;
+    rdfs:range mm:CorrectiveRule .
+mm:recurrenceRisk a owl:DatatypeProperty ;
+    rdfs:domain mm:FailureRecord ;
+    rdfs:range xsd:double .
+
+# ------------------------------------------------------------------ epistemology
+
+mm:Belief a owl:Class .
+mm:Claim a owl:Class .
+mm:Evidence a owl:Class .
+mm:Observation a owl:Class .
+mm:Assumption a owl:Class .
+mm:Inference a owl:Class .
+mm:Prediction a owl:Class .
+mm:Decision a owl:Class .
+mm:Action a owl:Class .
+mm:Outcome a owl:Class .
+mm:Experiment a owl:Class .
+mm:Evaluation a owl:Class .
+mm:Failure a owl:Class .
+mm:NearMiss a owl:Class .
+
+# ---------------------------------------------------------------------- knowing
+
+mm:Policy a owl:Class .
+mm:Doctrine a owl:Class .
+mm:Principle a owl:Class .
+mm:Heuristic a owl:Class .
+mm:Pattern a owl:Class .
+mm:Case a owl:Class .
+mm:AntiPattern a owl:Class .
+mm:Capability a owl:Class .
+mm:Technique a owl:Class .
+mm:Skill a owl:Class .
+mm:Frame a owl:Class .
+mm:EvolutionEvent a owl:Class .
+
+# --------------------------------------------------------------------- relations
+
+mm:dependsOn a owl:ObjectProperty .
+mm:supports a owl:ObjectProperty .
+mm:contradicts a owl:ObjectProperty .
+mm:derivedFrom a owl:ObjectProperty .
+mm:observedIn a owl:ObjectProperty .
+mm:caused a owl:ObjectProperty .
+mm:predicts a owl:ObjectProperty .
+mm:verifiedBy a owl:ObjectProperty .
+mm:similarTo a owl:ObjectProperty .
+mm:analogousTo a owl:ObjectProperty .
+mm:applicableWhen a owl:ObjectProperty .
+mm:inapplicableWhen a owl:ObjectProperty .
+mm:implementedBy a owl:ObjectProperty .
+mm:requires a owl:ObjectProperty .
+mm:improves a owl:ObjectProperty .
+mm:replaces a owl:ObjectProperty .
+mm:testedBy a owl:ObjectProperty .
+mm:triggeredBy a owl:ObjectProperty .
+
+# ------------------------------------------------------------------- kernel data
+
+mm:iri a owl:DatatypeProperty ;
+    rdfs:comment "The immutable IRI naming an Identity." ;
+    rdfs:range xsd:anyURI .
+mm:created a owl:DatatypeProperty ;
+    rdfs:domain mm:Identity ;
+    rdfs:comment "The instant the Identity was created. Never changes." ;
+    rdfs:range xsd:dateTime .
+mm:hasIdentity a owl:ObjectProperty ;
+    rdfs:domain mm:Being ;
+    rdfs:range mm:Identity .
+mm:name a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+
+# ------------------------------------------------------------------------ code
+
+mmc: a owl:Ontology ;
+    rdfs:label "Metamind code namespace" ;
+    rdfs:comment "Filled in by Phase 2; declared here so IRIs resolve from the start." .
+
+# ------------------------------------------------------------- being (Phase 4)
+#
+# The persistent self: what survives a model change, a context boundary, and a
+# restart. Declared here, in the shared `mm:` namespace, because the being is not
+# an optional subsystem — it is the thing the rest of the plan is about.
+
+mm:Invariant a owl:Class ;
+    rdfs:label "Invariant" ;
+    rdfs:comment "One of the four rules the immutable kernel enforces deterministically." .
+mm:CoreBlock a owl:Class ;
+    rdfs:label "CoreBlock" ;
+    rdfs:comment "A small, size-limited block that is always in context." .
+mm:PersonalityTrait a owl:Class ;
+    rdfs:label "PersonalityTrait" .
+mm:PersonalityValue a owl:Class ;
+    rdfs:label "PersonalityValue" .
+mm:Motivation a owl:Class ;
+    rdfs:label "Motivation" .
+mm:AffectState a owl:Class ;
+    rdfs:label "AffectState" ;
+    rdfs:comment "A control variable. It carries numeric axes and never a status-bearing predicate." .
+mm:AffectImpulse a owl:Class ;
+    rdfs:label "AffectImpulse" ;
+    rdfs:comment "A transient appraisal result. It cannot affect internal state or reasoning." .
+mm:UserBelief a owl:Class ;
+    rdfs:label "UserBelief" ;
+    rdfs:comment "A probabilistic belief about a user, gated by its evidence." .
+mm:RelationshipEvent a owl:Class ;
+    rdfs:label "RelationshipEvent" .
+mm:GoalTransition a owl:Class ;
+    rdfs:label "GoalTransition" .
+mm:ResourceAccount a owl:Class ;
+    rdfs:label "ResourceAccount" .
+mm:LedgerEntry a owl:Class ;
+    rdfs:label "LedgerEntry" .
+
+mm:invariantOf a owl:DatatypeProperty ;
+    rdfs:domain mm:Identity ;
+    rdfs:range xsd:string .
+mm:selfDescription a owl:DatatypeProperty ;
+    rdfs:domain mm:Identity ;
+    rdfs:range xsd:string .
+mm:version a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:blockKind a owl:DatatypeProperty ;
+    rdfs:domain mm:CoreBlock ;
+    rdfs:range xsd:string .
+mm:label a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:contentLength a owl:DatatypeProperty ;
+    rdfs:range xsd:integer .
+mm:limitChars a owl:DatatypeProperty ;
+    rdfs:range xsd:integer .
+mm:traitValue a owl:DatatypeProperty ;
+    rdfs:domain mm:PersonalityTrait ;
+    rdfs:range xsd:double .
+mm:valueWeight a owl:DatatypeProperty ;
+    rdfs:domain mm:PersonalityValue ;
+    rdfs:range xsd:double .
+mm:constraintKind a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:motivationStrength a owl:DatatypeProperty ;
+    rdfs:domain mm:Motivation ;
+    rdfs:range xsd:double .
+mm:valence a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:arousal a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:engagement a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:warmth a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:caution a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:curiosity a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:energy a owl:DatatypeProperty ;
+    rdfs:domain mm:AffectState ;
+    rdfs:range xsd:double .
+mm:beliefStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:UserBelief ;
+    rdfs:range xsd:string .
+mm:confidence a owl:DatatypeProperty ;
+    rdfs:domain mm:UserBelief ;
+    rdfs:range xsd:double .
+mm:about a owl:DatatypeProperty ;
+    rdfs:domain mm:UserBelief ;
+    rdfs:range xsd:string .
+mm:evidenceCount a owl:DatatypeProperty ;
+    rdfs:domain mm:UserBelief ;
+    rdfs:range xsd:integer .
+mm:heldBy a owl:ObjectProperty ;
+    rdfs:domain mm:UserBelief .
+mm:inRelationshipWith a owl:ObjectProperty ;
+    rdfs:domain mm:Relationship .
+mm:trusts a owl:DatatypeProperty ;
+    rdfs:domain mm:Relationship ;
+    rdfs:range xsd:double .
+mm:familiarity a owl:DatatypeProperty ;
+    rdfs:domain mm:Relationship ;
+    rdfs:range xsd:double .
+mm:unresolvedCount a owl:DatatypeProperty ;
+    rdfs:domain mm:Relationship ;
+    rdfs:range xsd:integer .
+mm:relationshipEvent a owl:ObjectProperty ;
+    rdfs:domain mm:Relationship ;
+    rdfs:range mm:RelationshipEvent .
+mm:hasGoal a owl:ObjectProperty ;
+    rdfs:domain mm:Being ;
+    rdfs:range mm:Goal .
+mm:goalStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:Goal ;
+    rdfs:range xsd:string .
+mm:priority a owl:DatatypeProperty ;
+    rdfs:domain mm:Goal ;
+    rdfs:range xsd:double .
+mm:commitmentFor a owl:ObjectProperty ;
+    rdfs:domain mm:Commitment ;
+    rdfs:range mm:Goal .
+mm:commitmentStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:Commitment ;
+    rdfs:range xsd:string .
+mm:madeTo a owl:ObjectProperty ;
+    rdfs:domain mm:Commitment ;
+    rdfs:range mm:User .
+mm:originatesFrom a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:budgetLimit a owl:DatatypeProperty ;
+    rdfs:domain mm:ResourceAccount ;
+    rdfs:range xsd:double .
+mm:unit a owl:DatatypeProperty ;
+    rdfs:domain mm:ResourceAccount ;
+    rdfs:range xsd:string .
+mm:ledgerEntry a owl:ObjectProperty ;
+    rdfs:domain mm:ResourceAccount ;
+    rdfs:range mm:LedgerEntry .
+
+# -------------------------------------------------------------------- provenance
+#
+# `prov:` terms are used on instance data (Phase 6 onward); this ontology only
+# declares the namespace so those IRIs resolve.

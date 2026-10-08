@@ -1,0 +1,48 @@
+---
+source: crates/mm-codex/tests/golden.rs
+expression: document
+---
+@prefix mmc: <https://metamind.dev/code#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+<https://metamind.dev/code/module/crates/alpha> a mmc:Module, mmc:RustCrate ;
+    mmc:path "crates/alpha" ;
+    mmc:uri "https://metamind.dev/code/module/crates/alpha" ;
+    mmc:version "0.1.0" ;
+    mmc:ownedByPhase <https://metamind.dev/phase/2> ;
+    mmc:implementsCapability <https://metamind.dev/code/capability/Alpha> ;
+    mmc:dependsOn <https://metamind.dev/code/module/crates/beta> ;
+    mmc:sourceFile <https://metamind.dev/code/file/crates/alpha/Cargo.toml@cbdb4a45468ae6b2bf8b4faf1f3c6024b7ebd5c20e4aa72ccc6923c8288a8eb2> ;
+    mmc:sourceFile <https://metamind.dev/code/file/crates/alpha/src/lib.rs@a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3> .
+<https://metamind.dev/code/file/crates/alpha/Cargo.toml@cbdb4a45468ae6b2bf8b4faf1f3c6024b7ebd5c20e4aa72ccc6923c8288a8eb2> a mmc:SourceFile ;
+    mmc:path "crates/alpha/Cargo.toml" ;
+    mmc:inModule <https://metamind.dev/code/module/crates/alpha> ;
+    mmc:contentHash "cbdb4a45468ae6b2bf8b4faf1f3c6024b7ebd5c20e4aa72ccc6923c8288a8eb2" ;
+    mmc:language "toml" ;
+    mmc:swhid "swh:1:cnt:495709a8e95f3e96e17dac4f5a509c438626f0b0" .
+<https://metamind.dev/code/file/crates/alpha/src/lib.rs@a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3> a mmc:SourceFile ;
+    mmc:path "crates/alpha/src/lib.rs" ;
+    mmc:inModule <https://metamind.dev/code/module/crates/alpha> ;
+    mmc:contentHash "a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3" ;
+    mmc:language "rust" ;
+    mmc:swhid "swh:1:cnt:7e303d2692eab7a64253d2b9354378962f989b89" .
+<https://metamind.dev/code/symbol/crates/alpha/src/lib.rs#alpha().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "alpha()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/crates/alpha/src/lib.rs@a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3> ;
+    mmc:byteStart 110 ;
+    mmc:byteEnd 152 .
+<https://metamind.dev/code/symbol/crates/alpha/src/lib.rs#tests%23> a mmc:Symbol ;
+    mmc:descriptor "tests#" ;
+    mmc:kind "module" ;
+    mmc:definedIn <https://metamind.dev/code/file/crates/alpha/src/lib.rs@a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3> ;
+    mmc:byteStart 167 ;
+    mmc:byteEnd 267 .
+<https://metamind.dev/code/symbol/crates/alpha/src/lib.rs#tests%23alpha_doubles_beta().> a mmc:Symbol ;
+    mmc:descriptor "tests#alpha_doubles_beta()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/crates/alpha/src/lib.rs@a3bd642d642cf87115c0f6850caa44db2160424be50212cc95117cb16c4e6fb3> ;
+    mmc:byteStart 195 ;
+    mmc:byteEnd 265 .
+<https://metamind.dev/code/capability/Alpha> a mmc:Capability ;
+    mmc:name "Alpha" ;
+    mmc:hasTest <https://metamind.dev/code/symbol/crates/alpha/src/lib.rs#tests%23alpha_doubles_beta().> .

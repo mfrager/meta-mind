@@ -1,0 +1,14 @@
+{
+  "name": "not_json",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "score"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "score": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  },
+  "payload": "this is not json at all",
+  "expect": "not_json"
+}

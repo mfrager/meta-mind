@@ -1,0 +1,4 @@
+[build]
+# Keep incremental artifacts and the pinned toolchain on the local filesystem.
+# (RocksDB must also be built against the system library: pkg-config finds librocksdb 9.11.)
+rustflags = []

@@ -1,0 +1,44 @@
+# Metamind LLM configuration (Phase 3).
+#
+# Model specs and policy only: which models exist, what they cost, how hard a task
+# each may take, and whether the semantic cache is allowed. There are no secrets
+# and no URLs here — the endpoint and the key come from `OPENAI_BASE_URL` and
+# `OPENAI_API_KEY` at construction — so a committed config can never pin a provider
+# host, and an unconfigured provider is reported rather than defaulted.
+
+[defaults]
+# Preferred decoder when the backend exposes logits:
+# llguidance | xgrammar | provider_native | none.
+decoder = "llguidance"
+# The semantic cache is opt-in per purpose. Consequential structured work
+# (extract, plan, critique) stays exact-hash only.
+semantic_cache_purposes = ["summarize"]
+semantic_cache_threshold = 0.97
+# How many repair passes a rejected structured call gets before it is rejected.
+max_repair_attempts = 1
+timeout_ms = 30000
+max_tokens = 1024
+
+[[model]]
+name = "small"
+input_cost_micros_per_1k = 150
+output_cost_micros_per_1k = 600
+typical_latency_ms = 400
+complexity_ceiling = "medium"
+
+[[model]]
+name = "frontier"
+input_cost_micros_per_1k = 2500
+output_cost_micros_per_1k = 10000
+typical_latency_ms = 2500
+complexity_ceiling = "very_high"
+
+# The deterministic client the tests and the recorded session replay use. It is
+# declared like any other model so routing and cost accounting exercise a real
+# spec rather than a special case.
+[[model]]
+name = "mock-small"
+input_cost_micros_per_1k = 100
+output_cost_micros_per_1k = 400
+typical_latency_ms = 5
+complexity_ceiling = "high"

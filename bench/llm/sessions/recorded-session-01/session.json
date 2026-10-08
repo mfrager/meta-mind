@@ -1,0 +1,69 @@
+{
+  "session_id": "recorded-session-01",
+  "records": [
+    {
+      "request": {
+        "purpose": "plan",
+        "model": "mock-small",
+        "messages": [
+          { "role": "user", "content": "Plan the migration of the llm ledger." }
+        ],
+        "schema": null,
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "cache": "replay",
+        "trace_id": null
+      },
+      "response": {
+        "model": "mock-small",
+        "text": "step one: add the ledger; step two: replay it",
+        "tokens_in": 24,
+        "tokens_out": 12,
+        "latency_ms": 40
+      }
+    },
+    {
+      "request": {
+        "purpose": "extract",
+        "model": "mock-small",
+        "messages": [
+          { "role": "system", "content": "Return only JSON." },
+          { "role": "user", "content": "Ada Lovelace, 1843." }
+        ],
+        "schema": "extract.v1",
+        "max_tokens": 128,
+        "temperature": 0.0,
+        "cache": "replay",
+        "trace_id": null
+      },
+      "response": {
+        "model": "mock-small",
+        "text": "{\"name\":\"Ada Lovelace\",\"score\":9}",
+        "tokens_in": 31,
+        "tokens_out": 14,
+        "latency_ms": 55
+      }
+    },
+    {
+      "request": {
+        "purpose": "summarize",
+        "model": "mock-small",
+        "messages": [
+          { "role": "user", "content": "Summarize the phase 3 gate." }
+        ],
+        "schema": null,
+        "max_tokens": 200,
+        "temperature": 0.0,
+        "cache": "replay",
+        "trace_id": null
+      },
+      "response": {
+        "model": "mock-small",
+        "text": "three commands, one ledger",
+        "tokens_in": 18,
+        "tokens_out": 6,
+        "latency_ms": 30
+      }
+    }
+  ]
+}

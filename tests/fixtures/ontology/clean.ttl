@@ -1,0 +1,17 @@
+# A conforming being graph: one Being with exactly one Identity that names itself
+# with one IRI, one creation instant, its own description, and the invariants it
+# binds. Those last two are what `ontology/shapes/being.shacl.ttl` requires of an
+# `mm:Identity`, and what the `/being` mirror always writes.
+@prefix mm:  <https://metamind.dev/ontology#> .
+@prefix mmd: <https://metamind.dev/data/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+mmd:being01 a mm:Being ;
+    mm:name "Metamind" ;
+    mm:hasIdentity mmd:identity01 .
+
+mmd:identity01 a mm:Identity ;
+    mm:iri mmd:identity01 ;
+    mm:created "2026-01-01T00:00:00.000000000Z"^^xsd:dateTime ;
+    mm:selfDescription "A conforming being graph." ;
+    mm:invariantOf "no_history_rewrite" .

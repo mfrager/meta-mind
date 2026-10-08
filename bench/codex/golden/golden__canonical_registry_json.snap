@@ -1,0 +1,32 @@
+---
+source: crates/mm-codex/tests/golden.rs
+expression: document
+---
+{
+  "_comment": "Generated, committed. Regenerate with `mm-cli codex scan`; the file is deterministic, so an unchanged tree produces an unchanged file. Only `registry.json` and `codex.lock` are committed under `modules/`; the per-module `metadata.ttl` files are generated and git-ignored.",
+  "schema": 2,
+  "generated_by": "mm-cli codex scan",
+  "graph_hash": "b70d64af4351fda72d7f0ed369cabc1825ac4cd1230270e968e101fdd504d2c9",
+  "modules": [
+    {
+      "name": "alpha",
+      "uri": "https://metamind.dev/code/module/crates/alpha",
+      "path": "crates/alpha",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 2,
+      "capability": "mm:Alpha",
+      "tbox_functions": []
+    },
+    {
+      "name": "beta",
+      "uri": "https://metamind.dev/code/module/crates/beta",
+      "path": "crates/beta",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 2,
+      "capability": "mm:Beta",
+      "tbox_functions": []
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+# Code-graph SHACL shapes (Phase 2).
+#
+# These are the constraints `mm-cli graph validate --graph code` enforces over the
+# `/code` named graph: every module, source file, symbol, and capability the
+# scanner emits must be structurally complete, or the gate fails.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:severity`. The vendored validator is deliberately strict: `sh:name`,
+# `sh:description`, and every other annotation are a *hard error*, so this file
+# carries no prose. Documentation of a constraint belongs in a comment here, not
+# in a property that could be silently ignored.
+#
+# `sh:targetClass` matches the exact `rdf:type` and does no subclass inference, so
+# these shapes target the base classes only. The scanner emits the concrete class
+# *and* the base class (`a mmc:Module, mmc:RustCrate`; `a mmc:Symbol,
+# mmc:Interface`), which keeps one shape covering every concrete kind while the
+# concrete class stays queryable.
+#
+# Four rules in the Phase 2 plan are NOT expressible here and are enforced by
+# `mm-cli codex verify` instead:
+#   * acyclicity of `mmc:dependsOn` (SHACL cannot express a graph-wide cycle rule);
+#   * "every capability has at least one test" — requiring `sh:minCount 1` on
+#     `mmc:hasTest` would fail the gate on the real tree, where vendored crates
+#     (e.g. `math-types`, `rdf-shacl`) legitimately ship no tests;
+#   * route resolution: every `mmc:dependsOn` target must resolve to a known module;
+#   * `mmc:copiedFrom` present iff the path is under `vendor/**` or the manifest
+#     origin is not `metamind` (an "iff" needs both directions).
+# The gate requires this shape set to be clean on the real tree, so the semantic
+# rules live in the verifier, where each has its own named `VerifyFailure` and its
+# own negative fixture.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mmc:  <https://metamind.dev/code#> .
+
+# A module is identified once by path, URI, and version, is owned by exactly one
+# phase, and implements at least one capability. `mmc:path`/`mmc:uri`/`mmc:version`
+# are strings, not IRIs, because the module IRI is derived from the path and the
+# URI is recorded verbatim so a relocated module is visible as a diff.
+mmc:ModuleShape a sh:NodeShape ;
+    sh:targetClass mmc:Module ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:path ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:uri ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:version ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:ownedByPhase ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:implementsCapability ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A source file belongs to exactly one module and is content-addressed: its
+# `mmc:contentHash` is what makes the file IRI checkable rather than asserted.
+mmc:FileShape a sh:NodeShape ;
+    sh:targetClass mmc:SourceFile ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:path ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:inModule ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:contentHash ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A symbol carries exactly one SCIP-style descriptor and is defined in exactly one
+# file. `mmc:kind` is optional so a partially classified symbol is still valid.
+mmc:SymbolShape a sh:NodeShape ;
+    sh:targetClass mmc:Symbol ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:descriptor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:definedIn ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A capability has exactly one name. Tests are optional here (see the header): the
+# verifier owns "a capability without tests is a failure", and `mmc:testCovers`
+# may only point at a symbol when it is present.
+mmc:CapabilityShape a sh:NodeShape ;
+    sh:targetClass mmc:Capability ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:hasTest ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:testCovers ;
+        sh:class mmc:Symbol ;
+        sh:severity sh:Violation ;
+    ] .

@@ -1,0 +1,10 @@
+[package]
+name = "alpha"
+version.workspace = true
+edition.workspace = true
+
+# This crate claims a capability, but nothing in it is a test, so
+# `capability_without_test` fires.
+[package.metadata.metamind]
+owned_by_phase = 2
+capability = "mm:Untested"

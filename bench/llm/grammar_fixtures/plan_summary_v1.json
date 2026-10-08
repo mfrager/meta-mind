@@ -1,0 +1,19 @@
+{
+  "name": "plan_summary_v1",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["summary", "steps"],
+    "properties": {
+      "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "steps": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1,
+        "maxItems": 8
+      }
+    }
+  },
+  "valid": { "summary": "s", "steps": ["a"] },
+  "mutated": { "summary": "s", "steps": [] }
+}

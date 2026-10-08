@@ -1,0 +1,33 @@
+{
+  "extract.v1": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "score"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "score": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  },
+  "plan_summary.v1": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["summary", "steps"],
+    "properties": {
+      "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "steps": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1,
+        "maxItems": 8
+      }
+    }
+  },
+  "rating.v1": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["label"],
+    "properties": {
+      "label": { "type": "string", "enum": ["low", "medium", "high"] }
+    }
+  }
+}

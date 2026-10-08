@@ -1,0 +1,20 @@
+# Planted defect: this `uri` is also declared by `modules/beta/plugin.toml`.
+# A module's URI is a stable identity, so two modules sharing one is the
+# `duplicate_uri` finding.
+
+[plugin]
+name = "alpha"
+uri = "https://metamind.dev/code/module/duplicated"
+version = "0.1.0"
+description = "First module claiming the duplicated URI."
+
+[metadata]
+category = "system"
+owned_by_phase = 2
+capability = "mm:Alpha"
+
+[tbox.functions]
+"system.alpha" = { source = "handlers::alpha" }
+
+[build]
+rust_edition = "2021"

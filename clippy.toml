@@ -1,0 +1,4 @@
+# Metamind clippy policy. The gate runs `cargo clippy --workspace --all-targets -- -D warnings`.
+avoid-breaking-exported-api = false
+too-many-arguments-threshold = 8
+type-complexity-threshold = 350

@@ -1,0 +1,242 @@
+# Metamind code/metadata vocabulary — the `mmc:` T-Box for the `/code` graph.
+#
+# Phase 2 replaces the Phase 1 stub. Node names follow Kythe (a file node, a
+# definition node, a reference node -> `SourceFile`, `Symbol`, `Reference`) and
+# the symbol model follows SCIP: a symbol is named by a stable, scope-derived
+# descriptor, so its identity survives reformatting and line moves.
+#
+# This is plain Turtle. It is parsed by the vendored `rdf-codec` reader when the
+# kernel loads its ontology, so it carries no SHACL constructs and no OWL class
+# expressions. Constraints live in `ontology/shapes/mmc-shapes.ttl`.
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mmc:  <https://metamind.dev/code#> .
+
+mmc: a owl:Ontology ;
+    rdfs:label "Metamind code namespace" ;
+    rdfs:comment "Vocabulary for the /code graph: modules, files, symbols, references, capabilities, and provenance." ;
+    owl:versionInfo "0.2.0" .
+
+# --- nodes -------------------------------------------------------------------
+
+mmc:Module a owl:Class ;
+    rdfs:label "Module" ;
+    rdfs:comment "A unit of code the system can create, version, test, and promote." .
+
+mmc:RustCrate a owl:Class ;
+    rdfs:label "Rust crate" ;
+    rdfs:comment "A workspace crate that is a module." ;
+    rdfs:subClassOf mmc:Module .
+
+mmc:NexusPlugin a owl:Class ;
+    rdfs:label "Nexus plugin" ;
+    rdfs:comment "A module carrying a plugin.toml manifest and T-Box functions." ;
+    rdfs:subClassOf mmc:Module .
+
+mmc:SourceFile a owl:Class ;
+    rdfs:label "Source file" ;
+    rdfs:comment "One source file, belonging to exactly one module." .
+
+mmc:Symbol a owl:Class ;
+    rdfs:label "Symbol" ;
+    rdfs:comment "A definition, named by a stable SCIP-style descriptor." .
+
+mmc:Reference a owl:Class ;
+    rdfs:label "Reference" ;
+    rdfs:comment "One use of a symbol, at a byte range in a file." .
+
+mmc:Interface a owl:Class ;
+    rdfs:label "Interface" ;
+    rdfs:comment "A symbol a module exposes: a T-Box function, a trait, or an exported item." ;
+    rdfs:subClassOf mmc:Symbol .
+
+mmc:TestSet a owl:Class ;
+    rdfs:label "Test set" ;
+    rdfs:comment "The tests that cover a capability." .
+
+mmc:Capability a owl:Class ;
+    rdfs:label "Capability" ;
+    rdfs:comment "What a module provides, named stably and linked to the tests that cover it." .
+
+mmc:ModuleVersion a owl:Class ;
+    rdfs:label "Module version" ;
+    rdfs:comment "One released version of a module; immutable once recorded." .
+
+mmc:ChangeSet a owl:Class ;
+    rdfs:label "Change set" ;
+    rdfs:comment "A proposed modification to code, used from Phase 11." .
+
+mmc:PiSession a owl:Class ;
+    rdfs:label "Pi session" ;
+    rdfs:comment "A recorded Pi authoring session, used from Phase 11." .
+
+mmc:Edit a owl:Class ;
+    rdfs:label "Edit" ;
+    rdfs:comment "One edit inside a change set, used from Phase 11." .
+
+mmc:ToolCall a owl:Class ;
+    rdfs:label "Tool call" ;
+    rdfs:comment "A recorded tool invocation inside a Pi session, used from Phase 11." .
+
+# --- edges (IRI-valued) ------------------------------------------------------
+
+mmc:dependsOn a owl:ObjectProperty ;
+    rdfs:label "depends on" ;
+    rdfs:comment "A module depends on another module." ;
+    rdfs:domain mmc:Module ;
+    rdfs:range mmc:Module .
+
+mmc:defines a owl:ObjectProperty ;
+    rdfs:label "defines" ;
+    rdfs:comment "A file or module defines a symbol." ;
+    rdfs:range mmc:Symbol .
+
+mmc:references a owl:ObjectProperty ;
+    rdfs:label "references" ;
+    rdfs:comment "A symbol references another symbol." ;
+    rdfs:range mmc:Symbol .
+
+mmc:childOf a owl:ObjectProperty ;
+    rdfs:label "child of" ;
+    rdfs:comment "The parent symbol of a nested item." ;
+    rdfs:range mmc:Symbol .
+
+mmc:inModule a owl:ObjectProperty ;
+    rdfs:label "in module" ;
+    rdfs:comment "The single module a file belongs to." ;
+    rdfs:domain mmc:SourceFile ;
+    rdfs:range mmc:Module .
+
+mmc:definedIn a owl:ObjectProperty ;
+    rdfs:label "defined in" ;
+    rdfs:comment "The file a symbol is defined in." ;
+    rdfs:domain mmc:Symbol ;
+    rdfs:range mmc:SourceFile .
+
+mmc:sourceFile a owl:ObjectProperty ;
+    rdfs:label "source file" ;
+    rdfs:comment "A file belonging to a module." ;
+    rdfs:domain mmc:Module ;
+    rdfs:range mmc:SourceFile .
+
+mmc:ownedByPhase a owl:ObjectProperty ;
+    rdfs:label "owned by phase" ;
+    rdfs:comment "The phase that owns this entity." .
+
+mmc:implementsCapability a owl:ObjectProperty ;
+    rdfs:label "implements capability" ;
+    rdfs:comment "A capability a module provides." ;
+    rdfs:domain mmc:Module ;
+    rdfs:range mmc:Capability .
+
+mmc:hasTest a owl:ObjectProperty ;
+    rdfs:label "has test" ;
+    rdfs:comment "A test symbol that covers a capability." ;
+    rdfs:domain mmc:Capability ;
+    rdfs:range mmc:Symbol .
+
+mmc:testCovers a owl:ObjectProperty ;
+    rdfs:label "test covers" ;
+    rdfs:comment "The symbol a test symbol exercises." ;
+    rdfs:domain mmc:Symbol ;
+    rdfs:range mmc:Symbol .
+
+mmc:coveredBy a owl:ObjectProperty ;
+    rdfs:label "covered by" ;
+    rdfs:comment "The test symbols that cover a symbol." ;
+    rdfs:range mmc:Symbol .
+
+mmc:exports a owl:ObjectProperty ;
+    rdfs:label "exports" ;
+    rdfs:comment "An interface a module exports." ;
+    rdfs:range mmc:Symbol .
+
+mmc:requires a owl:ObjectProperty ;
+    rdfs:label "requires" ;
+    rdfs:comment "An interface a module requires from another module." ;
+    rdfs:range mmc:Symbol .
+
+mmc:promotedFrom a owl:ObjectProperty ;
+    rdfs:label "promoted from" ;
+    rdfs:comment "The change set a module version was promoted from." .
+
+mmc:moduleVersion a owl:ObjectProperty ;
+    rdfs:label "module version" ;
+    rdfs:comment "A released version of a module." ;
+    rdfs:domain mmc:Module ;
+    rdfs:range mmc:ModuleVersion .
+
+# --- fields (literal-valued) -------------------------------------------------
+
+mmc:path a owl:DatatypeProperty ;
+    rdfs:label "path" ;
+    rdfs:comment "Repository-relative path, always spelled with forward slashes." .
+
+mmc:uri a owl:DatatypeProperty ;
+    rdfs:label "uri" ;
+    rdfs:comment "The entity's own stable IRI as a string, so it survives serialization and comparison." .
+
+mmc:version a owl:DatatypeProperty ;
+    rdfs:label "version" ;
+    rdfs:comment "Semantic version of a module." .
+
+mmc:contentHash a owl:DatatypeProperty ;
+    rdfs:label "content hash" ;
+    rdfs:comment "Lowercase hex sha256 of the file or module contents." .
+
+mmc:swhid a owl:DatatypeProperty ;
+    rdfs:label "SWHID" ;
+    rdfs:comment "Optional Software Heritage identifier, e.g. swh:1:cnt:abc." .
+
+mmc:swhidKind a owl:DatatypeProperty ;
+    rdfs:label "SWHID kind" ;
+    rdfs:comment "The SWHID object kind: cnt for a file, dir for a directory." .
+
+mmc:kind a owl:DatatypeProperty ;
+    rdfs:label "kind" ;
+    rdfs:comment "Symbol kind or dependency kind: interface, trait, fn, type, const, module; crate, module, reference." .
+
+mmc:language a owl:DatatypeProperty ;
+    rdfs:label "language" ;
+    rdfs:comment "Source language of a file, e.g. rust." .
+
+mmc:byteStart a owl:DatatypeProperty ;
+    rdfs:label "byte start" ;
+    rdfs:comment "Inclusive byte offset of a symbol, for navigation only." ;
+    rdfs:range xsd:integer .
+
+mmc:byteEnd a owl:DatatypeProperty ;
+    rdfs:label "byte end" ;
+    rdfs:comment "Exclusive byte offset of a symbol, for navigation only." ;
+    rdfs:range xsd:integer .
+
+mmc:descriptor a owl:DatatypeProperty ;
+    rdfs:label "descriptor" ;
+    rdfs:comment "SCIP-style scope-derived symbol descriptor; the stable half of a symbol IRI." .
+
+mmc:copiedFrom a owl:DatatypeProperty ;
+    rdfs:label "copied from" ;
+    rdfs:comment "Origin of copied-in external code, e.g. https://github.com/owner/repo@revision." .
+
+mmc:copiedRevision a owl:DatatypeProperty ;
+    rdfs:label "copied revision" ;
+    rdfs:comment "The revision that was copied in, when known." .
+
+mmc:copiedLicense a owl:DatatypeProperty ;
+    rdfs:label "copied license" ;
+    rdfs:comment "License of copied-in code, or unspecified when the origin carries none." .
+
+mmc:generatedFrom a owl:DatatypeProperty ;
+    rdfs:label "generated from" ;
+    rdfs:comment "How a record was produced, e.g. manifest for vendor trees that are not fully analysed." .
+
+mmc:name a owl:DatatypeProperty ;
+    rdfs:label "name" ;
+    rdfs:comment "Human-readable name of a capability." .
+
+mmc:registryIndex a owl:DatatypeProperty ;
+    rdfs:label "registry index" ;
+    rdfs:comment "Position of a module in the generated registry.json." ;
+    rdfs:range xsd:integer .

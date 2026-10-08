@@ -1,0 +1,13 @@
+{
+  "name": "rating_enum_mismatch",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["label"],
+    "properties": {
+      "label": { "type": "string", "enum": ["low", "medium", "high"] }
+    }
+  },
+  "payload": "{\"label\":\"enormous\"}",
+  "expect": "enum_mismatch"
+}

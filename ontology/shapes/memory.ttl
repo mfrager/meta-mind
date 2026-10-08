@@ -1,0 +1,177 @@
+# Memory SHACL shapes (Phase 5).
+#
+# `mm-cli graph validate --graph memory` must find zero violations on a clean graph
+# and at least one on a broken one.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard
+# error, so documentation lives in these comments rather than inside a shape.
+#
+# Four rules from the plan cannot be stated in this fragment and are enforced
+# elsewhere on purpose, which is stated here rather than silently dropped:
+#
+#   * "a source **or** an explicit unknown source" needs `sh:or`. The mirror
+#     realizes the disjunction positively instead — every memory emits exactly one
+#     `mm:source`, pointing at its real source or at `mm:unknownSource` — so the
+#     shape's `sh:minCount 1` / `sh:maxCount 1` is a *stronger* constraint.
+#   * `mm:confidence`/`mm:importance` in `[0,1]` needs `sh:minInclusive` /
+#     `sh:maxInclusive`. Enforced by the `memories` CHECK constraints and by
+#     `Memory::validate`.
+#   * `mm:DevelopmentalMemory` requiring `mm:protected true` needs `sh:hasValue`.
+#     This shape requires the predicate to be present and typed; the *value* is
+#     enforced by `Memory::validate`, by `memory verify`, and by a test.
+#   * "`mm:consolidatedFrom` that **resolves**" needs a cross-graph reachability
+#     check. Enforced by `memory verify` (`dangling_provenance`) and by the
+#     provenance-closure test in `mm-memory`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# Every memory says what it is, where it lives, what it contains, how much it is
+# trusted, and when it was recorded — exactly once each. A memory missing any of
+# these is a trace nobody can reason about later.
+mm:MemoryShape a sh:NodeShape ;
+    sh:targetClass mm:Memory ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:memoryKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:tier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:content ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:confidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:importance ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:recordedAt ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:protected ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:severity sh:Violation ;
+    ] ;
+    # Exactly one source. No memory enters `/memory` without one.
+    sh:property [
+        sh:path mm:source ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A consolidation always names what it folded together, so the lineage of a memory
+# that replaced others is never a dead end.
+mm:ConsolidationShape a sh:NodeShape ;
+    sh:targetClass mm:Consolidation ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:consolidatedFrom ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:consolidatedInto ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A summary node covers something. A node that summarizes nothing is a node that
+# exists only to make a tree look balanced.
+mm:SummaryNodeShape a sh:NodeShape ;
+    sh:targetClass mm:SummaryNode ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:summarizes ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:treeLevel ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .
+
+# The immutable ledger carries its do-not-forget mark. The value must be `true`
+# (enforced by `Memory::validate` and by `memory verify`); this shape makes the
+# mark's *presence* a graph-level requirement.
+mm:DevelopmentalMemoryShape a sh:NodeShape ;
+    sh:targetClass mm:DevelopmentalMemory ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:protected ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A mistake names its failure mode and how likely it is to recur, so a later phase
+# can compile it into a regression test rather than re-reading prose.
+mm:FailureRecordShape a sh:NodeShape ;
+    sh:targetClass mm:FailureRecord ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:failureMode ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:recurrenceRisk ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A corrective rule resolves to the record that generated it.
+mm:CorrectiveRuleShape a sh:NodeShape ;
+    sh:targetClass mm:CorrectiveRule ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:correctiveRule ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .

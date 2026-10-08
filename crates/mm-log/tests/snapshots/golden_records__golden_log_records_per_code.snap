@@ -1,0 +1,760 @@
+---
+source: crates/mm-log/tests/golden_records.rs
+expression: golden
+---
+{
+  "audit.sequence.check": {
+    "at": "2023-11-14T22:13:36.000000000Z",
+    "audit": false,
+    "event_code": "audit.sequence.check",
+    "fields": {
+      "code_index": 16
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.affect.impulse": {
+    "at": "2023-11-14T22:14:09.000000000Z",
+    "audit": false,
+    "event_code": "being.affect.impulse",
+    "fields": {
+      "code_index": 49
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.belief.promotion.denied": {
+    "at": "2023-11-14T22:14:11.000000000Z",
+    "audit": false,
+    "event_code": "being.belief.promotion.denied",
+    "fields": {
+      "code_index": 51
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.belief.update": {
+    "at": "2023-11-14T22:14:10.000000000Z",
+    "audit": false,
+    "event_code": "being.belief.update",
+    "fields": {
+      "code_index": 50
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.block.set": {
+    "at": "2023-11-14T22:14:07.000000000Z",
+    "audit": false,
+    "event_code": "being.block.set",
+    "fields": {
+      "code_index": 47
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.budget.debit": {
+    "at": "2023-11-14T22:14:15.000000000Z",
+    "audit": false,
+    "event_code": "being.budget.debit",
+    "fields": {
+      "code_index": 55
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.budget.exceeded": {
+    "at": "2023-11-14T22:14:16.000000000Z",
+    "audit": false,
+    "event_code": "being.budget.exceeded",
+    "fields": {
+      "code_index": 56
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.commitment.transition": {
+    "at": "2023-11-14T22:14:14.000000000Z",
+    "audit": false,
+    "event_code": "being.commitment.transition",
+    "fields": {
+      "code_index": 54
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.goal.transition": {
+    "at": "2023-11-14T22:14:13.000000000Z",
+    "audit": false,
+    "event_code": "being.goal.transition",
+    "fields": {
+      "code_index": 53
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.identity.init": {
+    "at": "2023-11-14T22:14:04.000000000Z",
+    "audit": false,
+    "event_code": "being.identity.init",
+    "fields": {
+      "code_index": 44
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.invariant.check": {
+    "at": "2023-11-14T22:14:05.000000000Z",
+    "audit": false,
+    "event_code": "being.invariant.check",
+    "fields": {
+      "code_index": 45
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.invariant.violation": {
+    "at": "2023-11-14T22:14:06.000000000Z",
+    "audit": false,
+    "event_code": "being.invariant.violation",
+    "fields": {
+      "code_index": 46
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.personality.update": {
+    "at": "2023-11-14T22:14:08.000000000Z",
+    "audit": false,
+    "event_code": "being.personality.update",
+    "fields": {
+      "code_index": 48
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.rdf.mirror": {
+    "at": "2023-11-14T22:14:17.000000000Z",
+    "audit": false,
+    "event_code": "being.rdf.mirror",
+    "fields": {
+      "code_index": 57
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "being.relationship.update": {
+    "at": "2023-11-14T22:14:12.000000000Z",
+    "audit": false,
+    "event_code": "being.relationship.update",
+    "fields": {
+      "code_index": 52
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.capability.registered": {
+    "at": "2023-11-14T22:13:43.000000000Z",
+    "audit": false,
+    "event_code": "codex.capability.registered",
+    "fields": {
+      "code_index": 23
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.copied_from.record": {
+    "at": "2023-11-14T22:13:44.000000000Z",
+    "audit": false,
+    "event_code": "codex.copied_from.record",
+    "fields": {
+      "code_index": 24
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.copying.reference": {
+    "at": "2023-11-14T22:13:38.000000000Z",
+    "audit": false,
+    "event_code": "codex.copying.reference",
+    "fields": {
+      "code_index": 18
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.dependency.edge": {
+    "at": "2023-11-14T22:13:42.000000000Z",
+    "audit": false,
+    "event_code": "codex.dependency.edge",
+    "fields": {
+      "code_index": 22
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.drift.detected": {
+    "at": "2023-11-14T22:13:46.000000000Z",
+    "audit": false,
+    "event_code": "codex.drift.detected",
+    "fields": {
+      "code_index": 26
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.file.discovered": {
+    "at": "2023-11-14T22:13:40.000000000Z",
+    "audit": false,
+    "event_code": "codex.file.discovered",
+    "fields": {
+      "code_index": 20
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.graph.emit": {
+    "at": "2023-11-14T22:13:50.000000000Z",
+    "audit": false,
+    "event_code": "codex.graph.emit",
+    "fields": {
+      "code_index": 30
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.lock.diff": {
+    "at": "2023-11-14T22:13:49.000000000Z",
+    "audit": false,
+    "event_code": "codex.lock.diff",
+    "fields": {
+      "code_index": 29
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.lock.write": {
+    "at": "2023-11-14T22:13:48.000000000Z",
+    "audit": false,
+    "event_code": "codex.lock.write",
+    "fields": {
+      "code_index": 28
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.module.discovered": {
+    "at": "2023-11-14T22:13:39.000000000Z",
+    "audit": false,
+    "event_code": "codex.module.discovered",
+    "fields": {
+      "code_index": 19
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.registry.write": {
+    "at": "2023-11-14T22:13:47.000000000Z",
+    "audit": false,
+    "event_code": "codex.registry.write",
+    "fields": {
+      "code_index": 27
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.scan.end": {
+    "at": "2023-11-14T22:13:51.000000000Z",
+    "audit": false,
+    "event_code": "codex.scan.end",
+    "fields": {
+      "code_index": 31
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.scan.start": {
+    "at": "2023-11-14T22:13:37.000000000Z",
+    "audit": false,
+    "event_code": "codex.scan.start",
+    "fields": {
+      "code_index": 17
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.symbol.extracted": {
+    "at": "2023-11-14T22:13:41.000000000Z",
+    "audit": false,
+    "event_code": "codex.symbol.extracted",
+    "fields": {
+      "code_index": 21
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "codex.verify.fail": {
+    "at": "2023-11-14T22:13:45.000000000Z",
+    "audit": false,
+    "event_code": "codex.verify.fail",
+    "fields": {
+      "code_index": 25
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.abort": {
+    "at": "2023-11-14T22:13:31.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.abort",
+    "fields": {
+      "code_index": 11
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.append": {
+    "at": "2023-11-14T22:13:28.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.append",
+    "fields": {
+      "code_index": 8
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.apply": {
+    "at": "2023-11-14T22:13:29.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.apply",
+    "fields": {
+      "code_index": 9
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.commit": {
+    "at": "2023-11-14T22:13:30.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.commit",
+    "fields": {
+      "code_index": 10
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.replay.end": {
+    "at": "2023-11-14T22:13:33.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.replay.end",
+    "fields": {
+      "code_index": 13
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "eventlog.replay.start": {
+    "at": "2023-11-14T22:13:32.000000000Z",
+    "audit": false,
+    "event_code": "eventlog.replay.start",
+    "fields": {
+      "code_index": 12
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.accounting.commit": {
+    "at": "2023-11-14T22:14:02.000000000Z",
+    "audit": false,
+    "event_code": "llm.accounting.commit",
+    "fields": {
+      "code_index": 42
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.cache.hit": {
+    "at": "2023-11-14T22:13:54.000000000Z",
+    "audit": false,
+    "event_code": "llm.cache.hit",
+    "fields": {
+      "code_index": 34
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.cache.miss": {
+    "at": "2023-11-14T22:13:55.000000000Z",
+    "audit": false,
+    "event_code": "llm.cache.miss",
+    "fields": {
+      "code_index": 35
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.error": {
+    "at": "2023-11-14T22:14:03.000000000Z",
+    "audit": false,
+    "event_code": "llm.error",
+    "fields": {
+      "code_index": 43
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.grammar.compile": {
+    "at": "2023-11-14T22:13:56.000000000Z",
+    "audit": false,
+    "event_code": "llm.grammar.compile",
+    "fields": {
+      "code_index": 36
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.repair.attempt": {
+    "at": "2023-11-14T22:13:59.000000000Z",
+    "audit": false,
+    "event_code": "llm.repair.attempt",
+    "fields": {
+      "code_index": 39
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.replay.end": {
+    "at": "2023-11-14T22:14:01.000000000Z",
+    "audit": false,
+    "event_code": "llm.replay.end",
+    "fields": {
+      "code_index": 41
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.replay.start": {
+    "at": "2023-11-14T22:14:00.000000000Z",
+    "audit": false,
+    "event_code": "llm.replay.start",
+    "fields": {
+      "code_index": 40
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.request": {
+    "at": "2023-11-14T22:13:52.000000000Z",
+    "audit": false,
+    "event_code": "llm.request",
+    "fields": {
+      "code_index": 32
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.response": {
+    "at": "2023-11-14T22:13:57.000000000Z",
+    "audit": false,
+    "event_code": "llm.response",
+    "fields": {
+      "code_index": 37
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.route.select": {
+    "at": "2023-11-14T22:13:53.000000000Z",
+    "audit": false,
+    "event_code": "llm.route.select",
+    "fields": {
+      "code_index": 33
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "llm.schema.reject": {
+    "at": "2023-11-14T22:13:58.000000000Z",
+    "audit": false,
+    "event_code": "llm.schema.reject",
+    "fields": {
+      "code_index": 38
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "log.init": {
+    "at": "2023-11-14T22:13:20.000000000Z",
+    "audit": false,
+    "event_code": "log.init",
+    "fields": {
+      "code_index": 0
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "log.redact": {
+    "at": "2023-11-14T22:13:21.000000000Z",
+    "audit": false,
+    "event_code": "log.redact",
+    "fields": {
+      "code_index": 1
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "log.sink.error": {
+    "at": "2023-11-14T22:13:22.000000000Z",
+    "audit": false,
+    "event_code": "log.sink.error",
+    "fields": {
+      "code_index": 2
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "ontology.load": {
+    "at": "2023-11-14T22:13:34.000000000Z",
+    "audit": false,
+    "event_code": "ontology.load",
+    "fields": {
+      "code_index": 14
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "shacl.validate": {
+    "at": "2023-11-14T22:13:35.000000000Z",
+    "audit": false,
+    "event_code": "shacl.validate",
+    "fields": {
+      "code_index": 15
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "store.graph.open": {
+    "at": "2023-11-14T22:13:25.000000000Z",
+    "audit": false,
+    "event_code": "store.graph.open",
+    "fields": {
+      "code_index": 5
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "store.graph.sparql": {
+    "at": "2023-11-14T22:13:27.000000000Z",
+    "audit": false,
+    "event_code": "store.graph.sparql",
+    "fields": {
+      "code_index": 7
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "store.graph.tx": {
+    "at": "2023-11-14T22:13:26.000000000Z",
+    "audit": false,
+    "event_code": "store.graph.tx",
+    "fields": {
+      "code_index": 6
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "store.sql.migrate": {
+    "at": "2023-11-14T22:13:24.000000000Z",
+    "audit": false,
+    "event_code": "store.sql.migrate",
+    "fields": {
+      "code_index": 4
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "store.sql.open": {
+    "at": "2023-11-14T22:13:23.000000000Z",
+    "audit": false,
+    "event_code": "store.sql.open",
+    "fields": {
+      "code_index": 3
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  }
+}

@@ -1,0 +1,16 @@
+# Budget fixtures (plan §7, §8).
+#
+# Each line funds an account to `balance`, then asks `ResourceState::debit` for
+# `amount` under a policy. `expect` is `allowed` or `refused`. A hard policy
+# refuses to go below zero; a soft one refuses to go below `-limit`. The test also
+# requires the ledger to reconcile with the account after every line, so a refused
+# debit must leave the balance exactly where it was.
+
+{"name":"hard_spend_within_allowance","kind":"actions","balance":10.0,"amount":4.0,"period":"session","limit":10.0,"hard":true,"expect":"allowed"}
+{"name":"hard_spend_exactly_empties_the_allowance","kind":"actions","balance":10.0,"amount":10.0,"period":"session","limit":10.0,"hard":true,"expect":"allowed"}
+{"name":"hard_spend_one_over_the_allowance","kind":"actions","balance":10.0,"amount":10.5,"period":"session","limit":10.0,"hard":true,"expect":"refused"}
+{"name":"hard_spend_down_to_zero","kind":"tokens","balance":0.0,"amount":0.5,"period":"session","limit":0.0,"hard":true,"expect":"refused"}
+{"name":"soft_spend_inside_the_overdraft","kind":"time","balance":10.0,"amount":13.0,"period":"day","limit":5.0,"hard":false,"expect":"allowed"}
+{"name":"soft_spend_one_past_the_overdraft","kind":"time","balance":10.0,"amount":15.5,"period":"day","limit":5.0,"hard":false,"expect":"refused"}
+{"name":"soft_spend_exactly_at_the_overdraft_floor","kind":"time","balance":10.0,"amount":15.0,"period":"day","limit":5.0,"hard":false,"expect":"allowed"}
+{"name":"default_policy_refuses_any_overdraft","kind":"money","balance":5.0,"amount":5.5,"period":"open","limit":0.0,"hard":true,"expect":"refused"}

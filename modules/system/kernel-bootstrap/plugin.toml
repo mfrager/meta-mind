@@ -1,0 +1,25 @@
+# Metamind module manifest.
+#
+# The `uri` is stable and path-derived: it is derived from this module's position
+# in the repository, so moving the directory is the only thing that changes it and
+# no other module may reuse the value.
+
+[plugin]
+name = "kernel-bootstrap"
+uri = "https://metamind.dev/code/module/system/kernel-bootstrap"
+version = "0.1.0"
+
+[metadata]
+category = "system"
+owned_by_phase = 1
+capability = "mm:KernelBootstrap"
+
+[tbox.functions]
+"system.boot_plan" = { source = "handlers::boot_plan" }
+
+[monad.operations]
+name = "system"
+arity = 0
+
+[build]
+rust_edition = "2021"

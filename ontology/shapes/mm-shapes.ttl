@@ -1,0 +1,48 @@
+# Kernel SHACL shapes (Phase 1).
+#
+# These are the constraints the gate enforces: `mm-cli graph validate --graph
+# being` must find zero violations on a clean graph and at least one on a broken
+# one.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`,
+# `sh:path`, `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`,
+# `sh:nodeKind`, `sh:severity`. The vendored validator is deliberately strict:
+# `sh:name`, `sh:description`, and every other annotation are a *hard error*, so
+# this file carries no prose. Documentation of a constraint belongs in a comment
+# here, not in a property that could be silently ignored.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# An Identity has exactly one stable IRI (an IRI, not a literal) and exactly one
+# creation instant. Both are written once, at creation, and never change.
+mm:IdentityShape a sh:NodeShape ;
+    sh:targetClass mm:Identity ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:iri ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:created ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A Being has exactly one Identity. Nothing in Phase 1 may create a second one.
+mm:BeingShape a sh:NodeShape ;
+    sh:targetClass mm:Being ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:hasIdentity ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class mm:Identity ;
+        sh:severity sh:Violation ;
+    ] .
