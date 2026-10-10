@@ -1,0 +1,14 @@
+# A clause set with no refutation, and the point of this fixture is that it does NOT
+# come back `proven`.
+#
+#     mm-cli verify run symbolic --subject bench/tools/no_refutation.logic
+#
+# `check_symbolic` refutes by unit resolution, which is sound and incomplete: it can
+# say "these two literals contradict each other", and it cannot say "this set is
+# satisfiable" for anything past the unit-clause case. The verdict here is
+# `inconclusive`, and the CLI exits 3 for it rather than 0 — exiting 0 would let a
+# caller read "no refutation found" as "verified", which is the one dishonesty the
+# module's own documentation refuses.
+
+p(a)
+q(b)

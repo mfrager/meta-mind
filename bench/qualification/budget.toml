@@ -1,0 +1,20 @@
+# The budget envelope the qualification run is given.
+#
+# The envelope is a *hard cap*, not a target and not a report: a stage that would cross
+# its bucket is denied whole, with the denial recorded, rather than truncated to fit.
+# The rule is the phase's invariant I4 — "budgets are hard" — and it is the reason the
+# four buckets are separate numbers rather than one total: a run that spends its whole
+# allowance on meta-analysis is a different failure from one that spends it on code, and
+# only separate buckets tell the two apart.
+#
+# The numbers are the Phase 11 `budgets` rows' limits for period `cycle-1`, so a loop run
+# and the promotion it ends in are measured against the same ceilings. `wall_ms` is the
+# wall-clock ceiling for the whole run; it is checked before each stage rather than
+# enforced by a timer, so a stage that is already running is allowed to finish — a
+# half-written stage is worse than a late one.
+
+meta_analysis = 200.0
+improvement = 50.0
+evolution = 20.0
+metacognitive = 500.0
+wall_ms = 600000

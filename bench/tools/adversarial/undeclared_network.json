@@ -1,0 +1,12 @@
+{
+  "id": "undeclared_network",
+  "description": "http.fetch declares net:connect:api.metamind.dev, which the caller holds, and asks for example.com, which nothing allows. The host allowlist the tool's own declaration implies is what refuses it, before any socket is opened. The URL is http, not https: this build refuses https for having no TLS stack before it reads a host, so an https fixture would be refused for the wrong reason.",
+  "principal": "system",
+  "tool": "http.fetch",
+  "args": { "url": "http://example.com/" },
+  "expect": {
+    "status": "denied",
+    "code": "sandbox.host_denied",
+    "records": ["permission.check", "sandbox.deny", "invoke.end"]
+  }
+}

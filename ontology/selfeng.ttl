@@ -1,0 +1,298 @@
+# Self-engineering vocabulary (Phase 11).
+#
+# The T-Box for `/selfeng`, the named graph `mm-metaanalysis` and `mm-selfeng` write.
+# It shares the `mm:` namespace with `mm.ttl` and only *adds* classes and properties,
+# which is what `Config::ontology_selfeng_file` relies on: loading it cannot change the
+# meaning of a graph that was already validated.
+#
+# What lives here: the calibrated prediction and its one resolution
+# (`mm:CalibratedPrediction`, `mm:PredictionOutcome`), the scoring pass
+# (`mm:CalibrationRun`), the diagnosis and the lesson it produced (`mm:MetaAnalysis`,
+# `mm:Lesson`), the typed proposal and its fate (`mm:ChangeSet`, `mm:EvolutionEvent`).
+#
+# Why `/selfeng` and not `/provenance`: the phase plan's §4 names `/provenance` for
+# these records, and `/provenance` is the *epistemic mirror's* scratch graph — Phase 6
+# clears and rewrites it from its snapshot on every claim mutation. A lineage written
+# there would lose the entry that justified a promotion. The same reasoning is recorded
+# in `mm-core::iri` for `/tools`, and the graph was added by migration
+# `0011_self_engineering.sql`.
+#
+# Why `mm:CalibratedPrediction` and not `mm:Prediction`: `mm:Prediction` is already the
+# RDF class of every epistemic claim of kind `Prediction` (declared in `mm.ttl` and
+# written into `/epistemic` by Phase 6), so a shape requiring `mm:probability` on every
+# `mm:Prediction` would fire on Phase 6's claims. It is the same collision
+# `ontology/shapes/decision.ttl` records for `mm:Decision` and `ontology/tools.ttl`
+# records for `mm:Observation`, handled the same way: a distinct class, and the reason
+# written down.
+#
+# What does *not* live here, and why: the budgets are not mirrored into RDF. A budget is
+# a `(kind, period)` row with a `CHECK` constraint and an arithmetic invariant that the
+# graph cannot state, and the audit record of a debit is an event-log record, which is
+# the thing an operator replays. Mirroring the numbers here would put the same fact in
+# two stores with two lifetimes, and the graph would be the copy nobody reconciles.
+#
+# Namespaces: `mm:` is `https://metamind.dev/ontology#`, `prov:` is the PROV-O
+# namespace. Every predicate below is emitted by `mm-metaanalysis::rdf` or
+# `mm-selfeng::journal`.
+
+@prefix mm:    <https://metamind.dev/ontology#> .
+@prefix prov:  <http://www.w3.org/ns/prov#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+
+# ------------------------------------------------------------------ classes --
+
+mm:CalibratedPrediction a owl:Class ;
+    rdfs:label "Calibrated prediction" ;
+    rdfs:comment """A consequential prediction staked *before* its outcome and scored
+after it, in the append-only ledger `prediction_ledger`. Its probability is the claim;
+its class is the calibration subject the score is computed for. The SQL triggers refuse
+UPDATE and DELETE, so "what did it predict, and when" is not a question the record can
+be edited out of.""" .
+
+mm:PredictionOutcome a owl:Class ;
+    rdfs:label "Prediction outcome" ;
+    rdfs:comment """The one resolution of a prediction, with the evidence it stands on.
+Keyed by the prediction in `prediction_outcomes`, so a second resolution is impossible
+rather than merely discouraged.""" .
+
+mm:CalibrationRun a owl:Class ;
+    rdfs:label "Calibration run" ;
+    rdfs:comment """One scoring pass over a labeled set: the Brier score, the log loss,
+the expected calibration error, the coverage and selective risk of a threshold, and the
+baseline Brier it is compared against.""" .
+
+mm:MetaAnalysis a owl:Class ;
+    rdfs:label "Meta-analysis" ;
+    rdfs:comment """One event-triggered diagnosis: which of the eight triggers fired, the
+episode it fired on, the written diagnosis, the error classes it classified, and the
+recurrence and impact the priority was computed from.""" .
+
+mm:Lesson a owl:Class ;
+    rdfs:label "Lesson" ;
+    rdfs:comment """An extracted, reusable statement with its confidence, the number of
+evidence items behind it, the domains it applies to, and whether it changed a policy.
+A lesson is a cognitive-library entry, so it is validated by that library's gate before
+it is this node.""" .
+
+mm:ChangeSet a owl:Class ;
+    rdfs:label "Change set" ;
+    rdfs:comment """A typed, falsifiable proposal: the reason and hypothesis it came
+from, its code/schema/data/memory/policy/prompt deltas, the tests and benchmarks it must
+be judged by, and the rollback plan that makes it reversible. `payload_json` holds the
+typed body; `rollback_json` is required, because a change with no way back is not a
+candidate.""" .
+
+mm:EvolutionEvent a owl:Class ;
+    rdfs:label "Evolution event" ;
+    rdfs:comment """One entry of the append-only evolution journal: the date, the reason,
+the hypothesis, the change set it judged, the outcome, the decision and the self version
+the system became. The journal is the lineage of the self, and later phases read it to
+answer "which version was I, and why".""" .
+
+# ------------------------------------------------------------- properties --
+#
+# One property per field the two writers emit, so an operator can query the records
+# rather than parse JSON. Names that already exist in `mm.ttl` are reused rather than
+# re-declared where the meaning is the same.
+
+mm:predictionClass a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibratedPrediction ;
+    rdfs:range xsd:string ;
+    rdfs:label "prediction class" ;
+    rdfs:comment "The calibration subject a prediction belongs to; the grouping every score and threshold is computed for." .
+
+mm:probability a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibratedPrediction ;
+    rdfs:range xsd:double ;
+    rdfs:label "probability" ;
+    rdfs:comment "The staked probability, in [0,1]. The range is enforced by the ledger's CHECK constraint and by the Rust type; the shape below pins that there is exactly one." .
+
+mm:horizonSeconds a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibratedPrediction ;
+    rdfs:range xsd:integer ;
+    rdfs:label "horizon seconds" ;
+    rdfs:comment "How far ahead the prediction reaches. A prediction with no horizon cannot come due, so it is required." .
+
+mm:predictionCondition a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibratedPrediction ;
+    rdfs:range xsd:string ;
+    rdfs:label "prediction condition" ;
+    rdfs:comment "One condition under which the prediction was made. Zero or more." .
+
+mm:observedOutcome a owl:DatatypeProperty ;
+    rdfs:domain mm:PredictionOutcome ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "observed outcome" ;
+    rdfs:comment "Whether the proposition came true." .
+
+mm:resolvedAt a owl:DatatypeProperty ;
+    rdfs:domain mm:PredictionOutcome ;
+    rdfs:range xsd:string ;
+    rdfs:label "resolved at" ;
+    rdfs:comment "The instant the outcome was observed, RFC3339." .
+
+mm:calibrationSubject a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:string ;
+    rdfs:label "calibration subject" ;
+    rdfs:comment "The class that was scored." .
+
+mm:brierScore a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "Brier score" ;
+    rdfs:comment "Mean squared error of the probabilities against their labels. Lower is better; 0 is perfect." .
+
+mm:logLoss a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "log loss" ;
+    rdfs:comment "The negative log likelihood, poles clamped. Lower is better." .
+
+mm:eceScore a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "expected calibration error" ;
+    rdfs:comment "The count-weighted mean gap between confidence and observed frequency over the reliability bins." .
+
+mm:coverage a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "coverage" ;
+    rdfs:comment "The fraction of the labeled set a threshold answers on. Reported with selective risk, because either alone can be gamed." .
+
+mm:selectiveRisk a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "selective risk" ;
+    rdfs:comment "The error rate on the covered part of the set." .
+
+mm:baselineBrier a owl:DatatypeProperty ;
+    rdfs:domain mm:CalibrationRun ;
+    rdfs:range xsd:double ;
+    rdfs:label "baseline Brier" ;
+    rdfs:comment "The recorded baseline the run is compared against. A calibration that does not improve on it is not an improvement." .
+
+mm:triggerKind a owl:DatatypeProperty ;
+    rdfs:domain mm:MetaAnalysis ;
+    rdfs:range xsd:string ;
+    rdfs:label "trigger kind" ;
+    rdfs:comment "Which of the eight triggers fired: prediction_error, user_correction, repeated_failure, contradiction, unexpected_outcome, goal_failure, near_miss or novel_success." .
+
+mm:diagnosis a owl:DatatypeProperty ;
+    rdfs:domain mm:MetaAnalysis ;
+    rdfs:range xsd:string ;
+    rdfs:label "diagnosis" ;
+    rdfs:comment "The written explanation. Required: a diagnosis with no text is not a diagnosis." .
+
+mm:errorClass a owl:DatatypeProperty ;
+    rdfs:domain mm:MetaAnalysis ;
+    rdfs:range xsd:string ;
+    rdfs:label "error class" ;
+    rdfs:comment "One classified error class. At least one, because an analysis that classifies nothing cannot be acted on." .
+
+mm:recurrence a owl:DatatypeProperty ;
+    rdfs:domain mm:MetaAnalysis ;
+    rdfs:range xsd:double ;
+    rdfs:label "recurrence" ;
+    rdfs:comment "How often this failure has recurred, in [0,1]. Part of the priority." .
+
+mm:impact a owl:DatatypeProperty ;
+    rdfs:domain mm:MetaAnalysis ;
+    rdfs:range xsd:double ;
+    rdfs:label "impact" ;
+    rdfs:comment "How much the failure cost, in [0,1]. Part of the priority." .
+
+mm:lessonText a owl:DatatypeProperty ;
+    rdfs:domain mm:Lesson ;
+    rdfs:range xsd:string ;
+    rdfs:label "lesson text" ;
+    rdfs:comment "The lesson itself, as a statement a later episode can retrieve and apply." .
+
+mm:lessonConfidence a owl:DatatypeProperty ;
+    rdfs:domain mm:Lesson ;
+    rdfs:range xsd:double ;
+    rdfs:label "lesson confidence" ;
+    rdfs:comment "How sure the extraction is, in [0,1]. Confidence carries no authority: it is what a later promotion weighs, not what it obeys." .
+
+mm:evidenceCount a owl:DatatypeProperty ;
+    rdfs:domain mm:Lesson ;
+    rdfs:range xsd:integer ;
+    rdfs:label "evidence count" ;
+    rdfs:comment "How many records the lesson was drawn from. One occurrence is an anecdote." .
+
+mm:lessonDomain a owl:DatatypeProperty ;
+    rdfs:domain mm:Lesson ;
+    rdfs:range xsd:string ;
+    rdfs:label "lesson domain" ;
+    rdfs:comment "One domain the lesson applies to. Zero or more." .
+
+mm:policyEffect a owl:DatatypeProperty ;
+    rdfs:domain mm:Lesson ;
+    rdfs:range xsd:string ;
+    rdfs:label "policy effect" ;
+    rdfs:comment "What the lesson changes, if anything: a policy, a prompt, a technique or nothing." .
+
+mm:changesetReason a owl:DatatypeProperty ;
+    rdfs:domain mm:ChangeSet ;
+    rdfs:range xsd:string ;
+    rdfs:label "change-set reason" ;
+    rdfs:comment "Why the change exists. Required: a change with no reason is a change nobody can review." .
+
+mm:hypothesis a owl:DatatypeProperty ;
+    rdfs:domain mm:ChangeSet ;
+    rdfs:range xsd:string ;
+    rdfs:label "hypothesis" ;
+    rdfs:comment "The falsifiable statement the change is testing. Required: the gate judges evidence for a hypothesis, so there must be one." .
+
+mm:rollbackPlan a owl:DatatypeProperty ;
+    rdfs:domain mm:ChangeSet ;
+    rdfs:range xsd:string ;
+    rdfs:label "rollback plan" ;
+    rdfs:comment "How to undo the change. Required: a candidate with no way back is not a candidate." .
+
+mm:changesetStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:ChangeSet ;
+    rdfs:range xsd:string ;
+    rdfs:label "change-set status" ;
+    rdfs:comment "draft, sandboxed, built, tested, benchmarked, shadowed, promoted or rejected." .
+
+mm:promotionDecision a owl:DatatypeProperty ;
+    rdfs:domain mm:EvolutionEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "promotion decision" ;
+    rdfs:comment "promote or reject." .
+
+mm:promotionReason a owl:DatatypeProperty ;
+    rdfs:domain mm:EvolutionEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "promotion reason" ;
+    rdfs:comment "The written reason for the decision. Required on both sides: a rejection without one is not a decision." .
+
+mm:selfVersion a owl:DatatypeProperty ;
+    rdfs:domain mm:EvolutionEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "self version" ;
+    rdfs:comment "The version of the system the decision produced." .
+
+mm:journalDate a owl:DatatypeProperty ;
+    rdfs:domain mm:EvolutionEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "journal date" ;
+    rdfs:comment "The day the entry was written, so the lineage can be read as a history rather than as a hash order." .
+
+mm:journalOutcome a owl:DatatypeProperty ;
+    rdfs:domain mm:EvolutionEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "journal outcome" ;
+    rdfs:comment "What actually happened: what the benchmark measured, or why the change was rejected." .
+
+mm:regressionTestPath a owl:DatatypeProperty ;
+    rdfs:domain mm:ChangeSet ;
+    rdfs:range xsd:string ;
+    rdfs:label "regression test path" ;
+    rdfs:comment "The bench/regression case a mistake was compiled into, when the change set came from a mistake." .

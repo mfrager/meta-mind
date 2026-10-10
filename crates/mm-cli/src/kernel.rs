@@ -21,7 +21,11 @@ pub struct Kernel {
     /// The tabular store.
     pub sqlite: SqliteStore,
     /// The RDF store, when the command needs it.
-    pub graph: Option<GraphStore>,
+    ///
+    /// Held behind an `Arc` because Phase 12's loop hands the *same* store to the writers
+    /// it builds (debt, GC, design, module load, self-model); the owner stays the kernel,
+    /// and its `Drop` is still what stops the graph writer thread.
+    pub graph: Option<Arc<GraphStore>>,
     /// The logger, wired to the audit chain.
     pub logger: Arc<Logger>,
     /// The event log.
@@ -72,7 +76,9 @@ impl Kernel {
             .await?;
 
         let graph = if with_graph {
-            Some(GraphStore::open(&cfg.store.graph_dir, &cfg.shapes_file()).await?)
+            Some(Arc::new(
+                GraphStore::open(&cfg.store.graph_dir, &cfg.shapes_file()).await?,
+            ))
         } else {
             None
         };
@@ -90,7 +96,7 @@ impl Kernel {
     /// The graph store, or an error explaining that this command needs it.
     pub fn graph(&self) -> Result<&GraphStore, MmError> {
         self.graph
-            .as_ref()
+            .as_deref()
             .ok_or_else(|| MmError::Graph("this kernel was opened without the RDF store".into()))
     }
 

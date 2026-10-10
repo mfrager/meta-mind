@@ -1,0 +1,210 @@
+# Tool execution SHACL shapes (Phase 10).
+#
+# `mm-cli graph validate --graph tools` validates `/tools` against this file. The
+# graph is written only by `mm-tools::rdf`: a tool's contract when it is registered,
+# an action's record when one is decided, and an observation when one is produced.
+#
+# Why a set of its own rather than an addition to `mm-shapes.ttl`: `mm:Observation` is
+# already the RDF class of every epistemic claim of kind `Observation`, and Phase 6's
+# mirror types a claim node by its `ClaimKind`. A shape requiring `mm:producedEvidence`
+# on every `mm:Observation` would fire on Phase 6's own `/epistemic` and `/world`
+# content. The observation class here is therefore `mm:ActionObservation`, a distinct
+# class, and `mm-core`'s `Config::shapes_file_for` is where that decision is recorded.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`, `sh:node`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard error,
+# so documentation lives in these comments rather than inside a shape.
+#
+# Three rules the phase plan (§4.4) asks for cannot be stated in this fragment, and
+# they are named here rather than silently dropped:
+#
+#   * "every `mm:Observation` has exactly one `mm:producedEvidence` and one
+#     `mm:observedIn`" — stated below, on `mm:ActionObservation`. The plan's class name
+#     would have fired on Phase 6's claims, which is why the class is distinct; the
+#     constraint itself is exactly the one the plan asks for.
+#   * "`mm:Observation` nodes are forbidden outside `/world`" — a shape cannot assert
+#     *absence* from a graph in this fragment (it would need `sh:not` on a graph-scoped
+#     pattern). Enforced instead by construction and asserted by tests: `/tools`
+#     writes `mm:ActionObservation` and never `mm:Observation`
+#     (`mm-tools::rdf::observation_quads` is the only writer), and the claim the
+#     observation produces reaches `/world` only through
+#     `mm_epistemic::ValidationBarrier`, which Phase 6's own
+#     `tests/world_separation.rs` pins.
+#   * "every `mm:Action` with `mm:reversibility \"irreversible\"` must carry
+#     `mm:authorizedBy` an escalated permission" is a conditional: a shape here cannot
+#     say "only when the reversibility is irreversible". Requiring `mm:authorizedBy` on
+#     every action would mark every allowed action a violation. Enforced where the
+#     decision is made: `mm_tools::executor::Executor::decide` escalates every
+#     `Reversibility::Irreversible` tool after its capabilities are covered, so an
+#     irreversible action has no path to `Decision::Allow`. The property is emitted by
+#     `mm-tools::rdf` whenever a decision is recorded.
+#
+# The vocabulary used below is declared in `ontology/tools.ttl`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# A registered tool has to say what it is called, which version is installed, how hard
+# it is to undo, how far its effect reaches, which tier it runs in, where its code is,
+# and at least one capability. All but the last are exactly one value: a tool with two
+# names is two tools, and the registry keys on the name.
+mm:ToolShape a sh:NodeShape ;
+    sh:targetClass mm:Tool ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:toolName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:version ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:reversibility ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:sideEffectClass ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:sandboxTier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:moduleUri ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hasCapability ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An action record names the tool, the principal, the argument hash, the decision, the
+# tier and the status, and carries a result hash. Every one is required: an action whose
+# principal is unknown is an action nobody can be held to, and an action with no decision
+# is one that was never authorized.
+mm:ActionShape a sh:NodeShape ;
+    sh:targetClass mm:Action ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:toolName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:performedBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:argsHash ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:permissionDecision ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:sandboxTier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:status ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:resultHash ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An action observation has exactly one evidence id, exactly one graph, exactly one
+# action it came from, one source and one payload hash. The evidence is the point of the
+# shape: `ValidationBarrier::admit` refuses a claim with no evidence, so an observation
+# without one is a record that could never become a fact about the world.
+mm:ActionObservationShape a sh:NodeShape ;
+    sh:targetClass mm:ActionObservation ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:producedEvidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:observedIn ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:resultedIn ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:source ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:payloadHash ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:observedAt ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

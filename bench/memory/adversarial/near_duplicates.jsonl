@@ -1,0 +1,13 @@
+# Near-duplicate writes (plan §7): close enough to link, distinct enough to keep.
+#
+# Each pair differs by a word or two, so the content hashes differ and the hashed
+# bag-of-tokens embedding cosine stays at or above `near_duplicate_cosine`
+# (0.92). A near-duplicate is *stored and flagged* — `expect_flag` is
+# `near_duplicate` — because discarding a real episode would be worse than
+# keeping a redundant one. The pair is linked with `mm:similarTo`, so the
+# redundancy is visible instead of implicit.
+
+{"case":"policy_pinned_exactly","expect_flag":"near_duplicate","kind":"semantic","content":"the toolchain policy now pins rust to exactly 1.96.1 for reproducibility","confidence":0.9,"importance":0.8,"entities":["rust","toolchain-policy"],"provenance":"new","valid_from":"2026-10-05T00:00:00Z"}
+{"case":"policy_pinned_exactly_with_extra_word","expect_flag":"near_duplicate","kind":"semantic","content":"the toolchain policy now pins rust to exactly 1.96.1 for full reproducibility","confidence":0.9,"importance":0.8,"entities":["rust","toolchain-policy"],"provenance":"new","valid_from":"2026-10-05T00:00:00Z"}
+{"case":"retry_budget_unstated","expect_flag":"near_duplicate","kind":"semantic","content":"the fetch retry budget cannot be stated without network metrics","confidence":0.85,"importance":0.6,"entities":["fetch-retry","network-metrics"],"provenance":"new","valid_from":"2026-10-07T00:00:00Z"}
+{"case":"retry_budget_unstated_with_definite_article","expect_flag":"near_duplicate","kind":"semantic","content":"the fetch retry budget cannot be stated without the network metrics","confidence":0.85,"importance":0.6,"entities":["fetch-retry","network-metrics"],"provenance":"new","valid_from":"2026-10-07T00:00:00Z"}

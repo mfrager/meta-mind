@@ -190,7 +190,11 @@ mod tests {
         for _ in 0..3 {
             procedure.record_success();
         }
-        assert!(!procedure.is_habit(), "proficiency {0}", procedure.proficiency);
+        assert!(
+            !procedure.is_habit(),
+            "proficiency {0}",
+            procedure.proficiency
+        );
         for _ in 0..3 {
             procedure.record_success();
         }

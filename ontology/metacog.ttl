@@ -1,0 +1,160 @@
+# The metacognitive controller's T-Box (Phase 8).
+#
+# It shares the `mm:` namespace with `mm.ttl` and only *adds* classes and
+# properties, so loading it cannot change the meaning of anything already
+# asserted. A cognitive episode is a bounded deliberation; the program compiled
+# from it is a typed graph of operations; each operation carries the value it was
+# ranked by.
+#
+# The classes are emitted into `https://metamind.dev/graph/epistemic` and linked to
+# `/provenance` with `mm:derivedFrom`, because a deliberation is a claim about how
+# the being reached a decision and inherits the epistemic discipline of one.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# ------------------------------------------------------------------- classes ----
+
+mm:CognitiveEpisode a owl:Class ;
+    rdfs:label "Cognitive episode" ;
+    rdfs:comment "One bounded deliberation: a goal, a provisional model, a tier, a budget, and the trace of what was spent." ;
+    rdfs:subClassOf mm:Episode .
+
+mm:CognitiveProgram a owl:Class ;
+    rdfs:label "Cognitive program" ;
+    rdfs:comment "The typed graph of cognitive operations compiled for one episode." .
+
+mm:CognitiveOp a owl:Class ;
+    rdfs:label "Cognitive operation" ;
+    rdfs:comment "One node of a cognitive program: an operation, its class, its order and its dependencies." .
+
+mm:OperationValue a owl:Class ;
+    rdfs:label "Operation value" ;
+    rdfs:comment "The four components an operation is scored by, and the score itself." .
+
+mm:StoppingCondition a owl:Class ;
+    rdfs:label "Stopping condition" ;
+    rdfs:comment "A condition under which the metacognitive loop stops before spending the whole budget." .
+
+mm:ComputePolicy a owl:Class ;
+    rdfs:label "Compute policy" ;
+    rdfs:comment "The tier's policy: which operation classes are allowed and how much budget they may use." .
+
+# --------------------------------------------------------------- properties ----
+
+mm:compiledProgram a owl:ObjectProperty ;
+    rdfs:label "compiled program" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range mm:CognitiveProgram .
+
+mm:hasOperation a owl:ObjectProperty ;
+    rdfs:label "has operation" ;
+    rdfs:domain mm:CognitiveProgram ;
+    rdfs:range mm:CognitiveOp .
+
+mm:opClass a owl:DatatypeProperty ;
+    rdfs:label "operation class" ;
+    rdfs:domain mm:CognitiveOp ;
+    rdfs:range xsd:string .
+
+mm:opOrder a owl:DatatypeProperty ;
+    rdfs:label "operation order" ;
+    rdfs:domain mm:CognitiveOp ;
+    rdfs:range xsd:integer .
+
+mm:opDependsOn a owl:ObjectProperty ;
+    rdfs:label "operation depends on" ;
+    rdfs:domain mm:CognitiveOp ;
+    rdfs:range mm:CognitiveOp .
+
+mm:targets a owl:ObjectProperty ;
+    rdfs:label "targets" ;
+    rdfs:comment "The record an operation is about: a claim, a candidate, a case, a goal." ;
+    rdfs:domain mm:CognitiveOp .
+
+mm:stoppingCondition a owl:DatatypeProperty ;
+    rdfs:label "stopping condition" ;
+    rdfs:domain mm:CognitiveProgram ;
+    rdfs:range xsd:string .
+
+mm:budget a owl:DatatypeProperty ;
+    rdfs:label "budget" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:string .
+
+mm:budgetSpent a owl:DatatypeProperty ;
+    rdfs:label "budget spent" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:string .
+
+mm:tier a owl:DatatypeProperty ;
+    rdfs:label "tier" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:integer .
+
+mm:stakes a owl:DatatypeProperty ;
+    rdfs:label "stakes" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:double .
+
+mm:uncertainty a owl:DatatypeProperty ;
+    rdfs:label "uncertainty" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:double .
+
+mm:reversibility a owl:DatatypeProperty ;
+    rdfs:label "reversibility" ;
+    rdfs:domain mm:CognitiveEpisode ;
+    rdfs:range xsd:double .
+
+mm:valueEer a owl:DatatypeProperty ;
+    rdfs:label "expected error reduction" ;
+    rdfs:domain mm:OperationValue ;
+    rdfs:range xsd:double .
+
+mm:valueImportance a owl:DatatypeProperty ;
+    rdfs:label "decision importance" ;
+    rdfs:domain mm:OperationValue ;
+    rdfs:range xsd:double .
+
+mm:valueChangeProbability a owl:DatatypeProperty ;
+    rdfs:label "probability the decision changes" ;
+    rdfs:domain mm:OperationValue ;
+    rdfs:range xsd:double .
+
+mm:valueCost a owl:DatatypeProperty ;
+    rdfs:label "operation cost" ;
+    rdfs:domain mm:OperationValue ;
+    rdfs:range xsd:double .
+
+mm:score a owl:DatatypeProperty ;
+    rdfs:label "score" ;
+    rdfs:comment "eer * importance * p_change / max(cost, EPS) — the value per unit of cost." ;
+    rdfs:range xsd:double .
+
+mm:activatedFrame a owl:ObjectProperty ;
+    rdfs:label "activated frame" ;
+    rdfs:domain mm:CognitiveProgram .
+
+mm:activatedDoctrine a owl:ObjectProperty ;
+    rdfs:label "activated doctrine" ;
+    rdfs:domain mm:CognitiveProgram .
+
+mm:activatedTechnique a owl:ObjectProperty ;
+    rdfs:label "activated technique" ;
+    rdfs:domain mm:CognitiveProgram .
+
+mm:referenceClass a owl:ObjectProperty ;
+    rdfs:label "reference class" ;
+    rdfs:domain mm:CognitiveProgram .
+
+mm:requiredTool a owl:ObjectProperty ;
+    rdfs:label "required tool" ;
+    rdfs:domain mm:CognitiveProgram .
+
+mm:evaluationCriterion a owl:ObjectProperty ;
+    rdfs:label "evaluation criterion" ;
+    rdfs:domain mm:CognitiveProgram .

@@ -250,7 +250,10 @@ leaves the ledger unchanged.
 
 1. **Ledger + calibration.** `ledger` (append-only) and `Calibrator` (Brier, log-loss, ECE, reliability,
    coverage/selective risk, `threshold_for`). Require consequential predictions to write a row.
-   *Check:* golden vectors vs `bench/calibration/labeled.jsonl`.
+   *Check:* golden vectors vs `bench/calibration/predictions.jsonl`, the labeled set
+   `bench/calibration/compute_reference.py` builds and `reference.json` grades. (Phase 9's
+   `bench/calibration/labeled.jsonl` is a different corpus — the decision engine's — and it
+   is graded by Phase 9's own gate.)
 2. **Event-triggered meta-analysis.** `triggers` watches the event log for the eight triggers and computes
    `MetaAnalysisPriority = Novelty + Failure + Impact + Recurrence + Uncertainty`. `diagnosis` runs one
    bounded LLM pass over the episode context and classifies `ErrorClass`. *Check:* a seeded failure yields
@@ -315,7 +318,8 @@ audit completeness, gapless sequence, ULID correlation, redaction, replay equiva
 | Budgets | proptest | sum of debits never exceeds `limit_amount`; denial leaves ledger unchanged |
 | Determinism | full cycle replay | sandbox→bench→gate replays identically from `(code, event log, config)` with zero provider calls |
 
-Fixtures: `bench/calibration/labeled.jsonl`, `bench/episodes/seeded_failure_01.json`,
+Fixtures: `bench/calibration/predictions.jsonl` and its `reference.json`,
+`bench/episodes/seeded_failure_01.json`,
 `bench/gaps/gap_01.json`, `bench/pi/module_scaffold_01.json`, `bench/regression/seeded_bug_01`,
 `crates/mm-pi/fixtures/recorded_session_*.jsonl`.
 
@@ -328,13 +332,22 @@ Run as plain commands; every command must exit 0 (an earlier gate failing is a P
 ```bash
 cargo build --workspace && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 
-mm-cli calibrate --bench bench/calibration/labeled.jsonl \
+# `predictions.jsonl` is this phase's labeled set, built by `bench/calibration/compute_reference.py`
+# to be overconfident before calibration and comfortably under the thresholds after it, and
+# graded against `reference.json`. It is not `labeled.jsonl`: that is Phase 9's decision
+# corpus, whose calibrated Brier floor is ~0.212 under any temperature, so 0.20 is not a
+# threshold any implementation could meet on it.
+mm-cli calibrate --bench bench/calibration/predictions.jsonl \
   --assert-brier-le 0.20 --assert-ece-le 0.10 --assert-improves-baseline
 mm-cli meta analyze --episode bench/episodes/seeded_failure_01.json --assert-lessons-ge 1
 mm-cli regression run --suite bench/regression --assert-fail-before-pass-after seeded_bug_01
 
 mm-cli changeset new --from-gap bench/gaps/gap_01.json          # sets $CHANGESET
-mm-cli pi run --task bench/pi/module_scaffold_01.json --assert-session-ingested
+# `--offline` replays the task's recorded session, which is what makes this line
+# deterministic: a live run needs a provider, a model and a network, and the phase's own
+# configuration names none. Without `--offline` the same contract goes to a live session
+# (`--provider`, `--model`).
+mm-cli pi run --task bench/pi/module_scaffold_01.json --offline --assert-session-ingested
 mm-cli sandbox run "$CHANGESET" --assert-isolated
 mm-cli promote "$CHANGESET" --assert-reason-present
 mm-cli codex verify

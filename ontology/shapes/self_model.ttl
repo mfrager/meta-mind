@@ -1,0 +1,203 @@
+# Self-model SHACL shapes (Phase 12).
+#
+# `mm-cli graph validate --graph self` validates `/self` against this file. The graph is
+# written only by `mm-runtime::rdf`, which mirrors the rows `mm-runtime` records.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`, `sh:severity`.
+# The vendored validator treats every other predicate as a hard error, so documentation
+# lives in these comments rather than inside a shape.
+#
+# Two rules of the phase plan (§4.3) cannot be stated in this fragment, and they are named
+# here rather than silently dropped:
+#
+#   * "a `mm:GcAction` asserts `mm:protectsLedger true` whenever its subject is a
+#     protected ledger resource" — that is a conditional, and the fragment has no
+#     `sh:if`/`sh:sparql`. The guard is enforced twice instead: `LadderCollector` computes
+#     `protects_ledger` before it proposes an action and refuses the action when the flag
+#     is set, and `0012_loop.sql` makes a row that carries the flag append-only, so the
+#     refusal cannot be erased after the fact. What this file pins is that the flag is
+#     present and boolean on every action.
+#   * "the divergence is a number, not a narrative" — the fragment can require a
+#     `xsd:double`, which is the checkable half; the bound in `[0,1]` is enforced by the
+#     `CHECK` constraints on `self_model_reports` and `divergence_metrics`.
+#
+# The vocabulary used below is declared in `ontology/self_model.ttl`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# A report names its run and carries exactly three divergences: the three comparisons of
+# Actual, Model and Ideal. `minCount`/`maxCount` 3 is the graph half of "the self-model is
+# a vector, not a number".
+mm:SelfModelReportShape a sh:NodeShape ;
+    sh:targetClass mm:SelfModelReport ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:inRun ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hasDivergence ;
+        sh:minCount 3 ;
+        sh:maxCount 3 ;
+        sh:class mm:Divergence ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A divergence is one named scalar. Both halves are required: a value with no dimension
+# cannot be interpreted, and a dimension with no value is a promise.
+mm:DivergenceShape a sh:NodeShape ;
+    sh:targetClass mm:Divergence ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:divergenceDimension ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:divergenceValue ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A finding names its subject, its kind, its severity and at least one piece of evidence.
+# The evidence count is the load-bearing one: `<sh:minCount 1>` turns "a finding with no
+# evidence is an opinion" into a violation rather than a convention.
+mm:DebtFindingShape a sh:NodeShape ;
+    sh:targetClass mm:DebtFinding ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:subjectOf ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:debtKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:severity ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:debtEvidence ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A GC action names its subject, its rung, and both flags. `reversible` and
+# `protectsLedger` are required on every action, including the refusals, because an action
+# whose safety a reader has to infer is one they cannot audit.
+mm:GcActionShape a sh:NodeShape ;
+    sh:targetClass mm:GcAction ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:subjectOf ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:gcKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:reversible ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:protectsLedger ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:ledgerImpact ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A load records the module, its version and its status. All three: a load with no version
+# is a load nobody can roll back to, and a status that is absent cannot be read as
+# "kept serving".
+mm:ModuleLoadShape a sh:NodeShape ;
+    sh:targetClass mm:ModuleLoad ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:loadedModule ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:moduleVersion ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:loadStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A design revision links exactly one change set and carries its revision number. The
+# change set is a `sh:class` reference, so the promoted proposal has to be a node in the
+# same graph — which is the phase's "design revisions flow through the same pipeline as
+# code" made checkable: a revision whose change set is not in the graph is a violation.
+mm:DesignRevisionShape a sh:NodeShape ;
+    sh:targetClass mm:DesignRevision ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:generatedRevision ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hasChangeSet ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class mm:ChangeSet ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:designDoc ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .

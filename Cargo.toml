@@ -10,11 +10,32 @@ members = [
     "crates/mm-llm",
     "crates/mm-being",
     "crates/mm-memory",
+    "crates/mm-epistemic",
+    "crates/mm-library",
+    "crates/mm-metacog",
+    "crates/mm-decision",
+    "crates/mm-firewall",
+    "crates/mm-tools",
+    "crates/mm-metaanalysis",
+    "crates/mm-mistakes",
+    "crates/mm-selfeng",
+    "crates/mm-pi",
+    "crates/mm-runtime",
     "crates/mm-cli",
     "modules/system/kernel-bootstrap",
     "modules/cognition/being",
     "modules/cognition/memory-recall",
+    "modules/cognition/library-query",
+    "modules/cognition/frame-activate",
+    "modules/cognition/metacog",
+    "modules/cognition/comparison-integrity",
+    "modules/cognition/calibration",
+    "modules/cognition/closed-loop",
+    "modules/epistemic/epistemic-ops",
     "tests/e2e",
+    "vendor/rust_symbolic/decision-ir",
+    "vendor/rust_symbolic/logic-ir",
+    "vendor/rust_symbolic/logic-types",
     "vendor/rust_symbolic/math-types",
     "vendor/rust_symbolic/math-core",
     "vendor/rust_symbolic/rdf-codec",
@@ -30,12 +51,19 @@ publish = false
 
 [workspace.dependencies]
 # --- shared async/runtime ---
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "net", "io-util", "io-std"] }
 futures = "0.3"
 
 # --- serialization / errors ---
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip` is load-bearing, not a nicety. serde_json's default float
+# parser is fast but not correctly rounded, so a value written by the exact
+# shortest-round-trip formatter can read back one unit in the last place off.
+# Every JSON artifact in the kernel is written and re-read — episode fixtures,
+# episode artifacts, gold tables — and Phase 8's replay gate is "byte-identical",
+# which a one-ULP round-trip loss makes impossible in principle rather than by
+# accident. With the feature on, `from_str(to_string(v)) == v` for every `f64`.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 async-trait = "0.1"
 
@@ -71,10 +99,22 @@ mm-codex = { path = "crates/mm-codex" }
 mm-llm = { path = "crates/mm-llm" }
 mm-being = { path = "crates/mm-being" }
 mm-memory = { path = "crates/mm-memory" }
+mm-epistemic = { path = "crates/mm-epistemic" }
+mm-library = { path = "crates/mm-library" }
+mm-metacog = { path = "crates/mm-metacog" }
+mm-decision = { path = "crates/mm-decision" }
+mm-firewall = { path = "crates/mm-firewall" }
+mm-tools = { path = "crates/mm-tools" }
+mm-metaanalysis = { path = "crates/mm-metaanalysis" }
+mm-mistakes = { path = "crates/mm-mistakes" }
+mm-selfeng = { path = "crates/mm-selfeng" }
+mm-pi = { path = "crates/mm-pi" }
+mm-runtime = { path = "crates/mm-runtime" }
 
 # --- vendored reference code ---
 rdf-codec = { path = "vendor/rust_symbolic/rdf-codec" }
 rdf-shacl = { path = "vendor/rust_symbolic/rdf-shacl" }
+decision-ir = { path = "vendor/rust_symbolic/decision-ir" }
 
 # --- dev ---
 proptest = "1"

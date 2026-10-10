@@ -1,0 +1,15 @@
+# Missing-provenance writes (plan §9): the mitigation for retrieval poisoning.
+#
+# `provenance` is `nil`, which `Memory::validate` refuses outright — these
+# memories are never stored, and `expect_flag` is `missing_provenance`. The rule
+# the plan states is "no memory enters `/memory` without a source", and the
+# enforcement point is the validator that runs before the first INSERT, not the
+# SHACL shape that runs afterwards.
+#
+# The refusal must be a *typed* error (`MemoryError::Validation { field:
+# "provenance" }`), not a silent skip: a caller that swallowed it would believe a
+# memory was remembered when it was not.
+
+{"case":"content_with_no_provenance_node","expect_flag":"missing_provenance","kind":"semantic","content":"an unsourced assertion that names nothing it came from","confidence":0.9,"importance":0.8,"entities":[],"provenance":"nil","valid_from":"2026-10-08T00:00:00Z"}
+{"case":"plausible_sounding_unsourced_claim","expect_flag":"missing_provenance","kind":"semantic","content":"the deployment succeeded and the metrics look healthy","confidence":0.95,"importance":0.9,"entities":["deploy-window"],"provenance":"nil","valid_from":"2026-10-08T00:00:00Z"}
+{"case":"episodic_with_no_provenance_node","expect_flag":"missing_provenance","kind":"episodic","content":"the user asked for a change and it was applied","confidence":0.9,"importance":0.7,"entities":[],"provenance":"nil","valid_from":"2026-10-08T00:00:00Z"}

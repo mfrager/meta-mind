@@ -1,0 +1,5 @@
+{"iri": "https://metamind.dev/library/technique/decompose-and-conquer@1", "title": "Decompose and conquer", "total": 0.358, "activation": 0.416, "fitness": 0.7, "contraindication_penalty": 0.2}
+{"iri": "https://metamind.dev/library/technique/verify-before-use@1", "title": "Verify before use", "total": 0.324, "activation": 0.398, "fitness": 0.65, "contraindication_penalty": 0.2}
+{"iri": "https://metamind.dev/library/heuristic/simplest-explanation@1", "title": "Simplest explanation", "total": 0.295, "activation": 0.44, "fitness": 0.55, "contraindication_penalty": 0.2}
+{"iri": "https://metamind.dev/library/technique/seek-disconfirming-evidence@1", "title": "Seek disconfirming evidence", "total": 0.246, "activation": 0.392, "fitness": 0.5, "contraindication_penalty": 0.2}
+{"iri": "https://metamind.dev/library/technique/cheapest-experiment-first@1", "title": "Cheapest experiment first", "total": 0.237, "activation": 0.374, "fitness": 0.5, "contraindication_penalty": 0.2}

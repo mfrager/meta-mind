@@ -22,6 +22,9 @@ pointing outside this repository.
 | `rdf-shacl` | `crates/rdf-shacl` | Native SHACL validator (`validate::validate_turtle`, `ShaclReport`) and the OWL→SHACL generator/ontology checker |
 | `math-core` | `crates/math-core` | Transitive dependency of `rdf-codec`/`rdf-shacl` (re-exports `oxigraph`) |
 | `math-types` | `crates/math-types` | Transitive dependency of `math-core` |
+| `decision-ir` | `crates/decision-ir` | Risk measures behind `mm-decision::risk`: `decision_ir::Outcome`/`Action` are mapped into `RiskProfile`, and `DecisionEngine::risk` supplies the variance, VaR and CVaR a profile reports (Phase 9) |
+| `logic-ir` | `crates/logic-ir` | Transitive dependency of `decision-ir` |
+| `logic-types` | `crates/logic-types` | Transitive dependency of `decision-ir` |
 
 ## Modifications made to the copied source
 
@@ -41,6 +44,16 @@ Documented so the copy is auditable against the origin revision.
    subtree.
 5. **No source logic was modified.** Only imports-free test/bin entry points were dropped; every remaining
    `src` file is byte-identical to the origin revision.
+6. **`decision-ir`, `logic-ir` and `logic-types` copied in Phase 9**, by the same rules: `src/` and the
+   manifest only, no `tests/`, and the `[dev-dependencies]` sections removed from the manifests because
+   their dev-dependency closure (`logic-fragment`, `logic-semantics`, `logic-parser`) is outside the
+   integrated subset. Their two path dependencies inside the subset (`rdf-codec`, `math-types`) resolve to
+   the copies already present. The origin revision is the one recorded above, so the copied crates and the
+   already-vendored ones are the same revision.
+7. **The wider solver set was not copied.** The plan's §4.12 also lists `solver-ir`, `backend-registry`,
+   `logic-planner`, `ensemble-ir` and `causal-ir`; those have a 28-crate path-dependency closure and
+   `backend-smt-z3` links Z3, so the SAT/SMT half is a separate vendoring job. `mm-decision::risk` therefore
+   exposes `decision-ir` only, which is the crate this phase's gate needs.
 
 ## How Metamind verifies it
 

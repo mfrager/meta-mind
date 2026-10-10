@@ -1,0 +1,53 @@
+{
+  "difficulty": "trivial",
+  "episode": {
+    "id": "01h00000000000000000000029",
+    "goal": "01h00000000000000000000030",
+    "context": {
+      "summary": "recall the retention window for the request log",
+      "novelty": 0.05,
+      "time_pressure": 0.0
+    },
+    "claims": [
+      "01h00000000000000000000031"
+    ],
+    "assumptions": [],
+    "uncertainties": [],
+    "constraints": [],
+    "active_frames": [],
+    "active_doctrines": [],
+    "active_techniques": [],
+    "candidates": [],
+    "evidence": [],
+    "risks": [],
+    "decision": null,
+    "budget": {
+      "max_ops": 4,
+      "max_llm_calls": 2,
+      "max_cost": 0.05,
+      "max_wall_ms": 60000,
+      "spent_ops": 0,
+      "spent_llm_calls": 0,
+      "spent_cost": 0.0,
+      "spent_wall_ms": 0
+    },
+    "tier": "T0",
+    "timescale": "minutes"
+  },
+  "scan": {
+    "issues": [],
+    "uncertainties": [
+      {
+        "id": "u1",
+        "description": "which retention policy applies",
+        "magnitude": 0.2
+      }
+    ],
+    "comparison_requirements": [],
+    "failure_modes": [],
+    "simpler_alternatives": [],
+    "stakes": 0.1,
+    "irreversibility": 0.0,
+    "verification_value": 0.15
+  }
+}

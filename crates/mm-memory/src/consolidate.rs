@@ -177,8 +177,15 @@ pub fn read_episodes(path: &Path) -> Result<Vec<Episode>> {
 }
 
 /// The deterministic ULID a name maps to as an entity.
-fn entity_ulid(name: &str) -> Ulid {
-    ref_ulid(&format!("entity:{}", name.trim().to_lowercase()), Timestamp::EPOCH)
+///
+/// Public because an entity's identity is shared: the corpus, the graph channel,
+/// and any later phase that names the same thing must agree on which node it is,
+/// and "the same name all lowercase" is the whole of the agreement.
+pub fn entity_ulid(name: &str) -> Ulid {
+    ref_ulid(
+        &format!("entity:{}", name.trim().to_lowercase()),
+        Timestamp::EPOCH,
+    )
 }
 
 /// Ingest one episode, keyed on its stable reference so a rerun adds nothing.
@@ -193,8 +200,18 @@ pub async fn ingest_episode(
             .map_err(|e| MemoryError::Config(format!("invalid valid_from {text:?}: {e}")))?,
         None => Timestamp::now(),
     };
+    // The id is a pure function of the episode's stable `ref` *and its declared
+    // instant*, falling back to the epoch rather than to "now" when the episode
+    // has none. Using the clock here would make ingesting the same file twice a
+    // different act each time, and the plan needs ingestion to be idempotent so
+    // the gate can be rerun.
+    let id_at = if episode.valid_from.is_some() {
+        at
+    } else {
+        Timestamp::EPOCH
+    };
     let id = match &episode.reference {
-        Some(reference) => ref_ulid(reference, at),
+        Some(reference) => ref_ulid(reference, id_at),
         None => ids.next(),
     };
     if store.fetch(&id).await?.is_some() {
@@ -225,7 +242,10 @@ pub async fn ingest_episode(
     for entity in &episode.entities {
         memory.cues.push(RetrievalCue::entity(entity.clone()));
     }
-    for token in crate::store::tokenize(&episode.content).into_iter().take(12) {
+    for token in crate::store::tokenize(&episode.content)
+        .into_iter()
+        .take(12)
+    {
         memory.cues.push(RetrievalCue::keyword(token));
     }
     store.insert(&memory).await?;
@@ -288,10 +308,20 @@ pub async fn consolidate(
         // 2. Record the lineage on both sides: a link, and a consolidation step.
         for member in members {
             store
-                .insert_link(target.id, member.id, crate::model::LinkKind::ConsolidatedFrom, 1.0)
+                .insert_link(
+                    target.id,
+                    member.id,
+                    crate::model::LinkKind::ConsolidatedFrom,
+                    1.0,
+                )
                 .await?;
             store
-                .insert_link(member.id, target.id, crate::model::LinkKind::DerivedFrom, 1.0)
+                .insert_link(
+                    member.id,
+                    target.id,
+                    crate::model::LinkKind::DerivedFrom,
+                    1.0,
+                )
                 .await?;
         }
         store
@@ -311,11 +341,23 @@ pub async fn consolidate(
         logger
             .emit(
                 LogRecord::new(Level::Info, codes::MEMORY_CONSOLIDATE, crate::TARGET)
-                    .with_field("source_ids", json!(members.iter().map(|m| mm_core::ulid_string(&m.id)).collect::<Vec<_>>()))
+                    .with_field(
+                        "source_ids",
+                        json!(members
+                            .iter()
+                            .map(|m| mm_core::ulid_string(&m.id))
+                            .collect::<Vec<_>>()),
+                    )
                     .with_field("target_id", mm_core::ulid_string(&target.id))
                     .with_field("method", ConsolidationMethod::Generalize.as_str())
                     .with_field("provenance_closure_ok", true)
-                    .with_field("archived_ids", json!(members.iter().map(|m| mm_core::ulid_string(&m.id)).collect::<Vec<_>>())),
+                    .with_field(
+                        "archived_ids",
+                        json!(members
+                            .iter()
+                            .map(|m| mm_core::ulid_string(&m.id))
+                            .collect::<Vec<_>>()),
+                    ),
             )
             .await?;
         generalized += 1;
@@ -346,7 +388,12 @@ pub async fn consolidate(
                 (targets[j].1.id, targets[i].1.id)
             };
             store
-                .insert_link(keep, drop, crate::model::LinkKind::DerivedFrom, similarity as f32)
+                .insert_link(
+                    keep,
+                    drop,
+                    crate::model::LinkKind::DerivedFrom,
+                    similarity as f32,
+                )
                 .await?;
             store
                 .insert_consolidation(&Consolidation {
@@ -451,16 +498,10 @@ fn build_generalization(ids: &UlidFactory, topic: &str, members: &[Memory]) -> R
         .map(|m| m.content.trim())
         .collect::<Vec<_>>()
         .join(" | ");
-    let content = format!(
-        "{topic} recurs across {} episodes: {joined}",
-        members.len()
-    );
+    let content = format!("{topic} recurs across {} episodes: {joined}", members.len());
     let confidence = (members.iter().map(|m| f64::from(m.confidence)).sum::<f64>()
         / members.len() as f64) as f32;
-    let importance = members
-        .iter()
-        .map(|m| m.importance)
-        .fold(0.0f32, f32::max);
+    let importance = members.iter().map(|m| m.importance).fold(0.0f32, f32::max);
     let mut entities: Vec<Ulid> = members.iter().flat_map(|m| m.entities.clone()).collect();
     entities.sort();
     entities.dedup();
@@ -551,7 +592,11 @@ async fn build_summary_tree(
                     )
                     .with_field(
                         "member_ids",
-                        json!(node.member_ids.iter().map(mm_core::ulid_string).collect::<Vec<_>>()),
+                        json!(node
+                            .member_ids
+                            .iter()
+                            .map(mm_core::ulid_string)
+                            .collect::<Vec<_>>()),
                     )
                     .with_field("tree_depth", node.level),
             )
@@ -590,7 +635,10 @@ async fn build_summary_tree(
                         .with_field("parent_id", "-")
                         .with_field(
                             "member_ids",
-                            json!(members.iter().map(|m| mm_core::ulid_string(&m.id)).collect::<Vec<_>>()),
+                            json!(members
+                                .iter()
+                                .map(|m| mm_core::ulid_string(&m.id))
+                                .collect::<Vec<_>>()),
                         )
                         .with_field("tree_depth", 2),
                 )
@@ -644,10 +692,7 @@ fn build_summary_refs(
     );
     let confidence = (members.iter().map(|m| f64::from(m.confidence)).sum::<f64>()
         / members.len() as f64) as f32;
-    let importance = members
-        .iter()
-        .map(|m| m.importance)
-        .fold(0.0f32, f32::max);
+    let importance = members.iter().map(|m| m.importance).fold(0.0f32, f32::max);
     let memory = Memory::new(
         ids.next(),
         MemoryKind::Semantic,
@@ -690,7 +735,9 @@ pub fn near_miss_memory(ids: &UlidFactory, near: &NearMiss, at: Timestamp) -> Re
         ids.next(),
         at,
     )?;
-    memory.cues.push(RetrievalCue::keyword(near.failure_mode.clone()));
+    memory
+        .cues
+        .push(RetrievalCue::keyword(near.failure_mode.clone()));
     Ok(memory)
 }
 

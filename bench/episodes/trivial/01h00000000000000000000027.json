@@ -1,0 +1,45 @@
+{
+  "difficulty": "trivial",
+  "episode": {
+    "id": "01h00000000000000000000027",
+    "goal": "01h00000000000000000000028",
+    "context": {
+      "summary": "answer whether the build artefact is already current",
+      "novelty": 0.0,
+      "time_pressure": 0.0
+    },
+    "claims": [],
+    "assumptions": [],
+    "uncertainties": [],
+    "constraints": [],
+    "active_frames": [],
+    "active_doctrines": [],
+    "active_techniques": [],
+    "candidates": [],
+    "evidence": [],
+    "risks": [],
+    "decision": null,
+    "budget": {
+      "max_ops": 4,
+      "max_llm_calls": 2,
+      "max_cost": 0.05,
+      "max_wall_ms": 60000,
+      "spent_ops": 0,
+      "spent_llm_calls": 0,
+      "spent_cost": 0.0,
+      "spent_wall_ms": 0
+    },
+    "tier": "T0",
+    "timescale": "minutes"
+  },
+  "scan": {
+    "issues": [],
+    "uncertainties": [],
+    "comparison_requirements": [],
+    "failure_modes": [],
+    "simpler_alternatives": [],
+    "stakes": 0.1,
+    "irreversibility": 0.0,
+    "verification_value": 0.1
+  }
+}

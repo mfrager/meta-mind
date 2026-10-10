@@ -1,0 +1,2 @@
+{"kind":"observation","subject":"https://metamind.dev/data/world-1","predicate":"https://metamind.dev/ontology#observedValue","object":"alpha","status":"OBSERVED","confidence":0.99,"evidence":["observation"]}
+{"kind":"observation","subject":"https://metamind.dev/data/world-2","predicate":"https://metamind.dev/ontology#observedValue","object":"beta","status":"OBSERVED","confidence":0.99,"evidence":["observation"]}

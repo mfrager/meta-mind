@@ -1,0 +1,12 @@
+# Orphan-entity writes (plan §7): a memory that mentions an entity nothing else
+# in the corpus references.
+#
+# `expect_flag` is `orphan_entity`. An orphan is admitted — it is a real trace,
+# and refusing it would lose information — but it must be *flagged*, because an
+# entity with no edges contributes nothing to the graph channel and a corpus full
+# of them is a corpus where the PPR expansion has quietly stopped working. The
+# entity names below appear in no other fixture, so the condition is exact rather
+# than a judgement call.
+
+{"case":"entity_nothing_else_mentions","expect_flag":"orphan_entity","kind":"semantic","content":"the quantum tessellator calibration depends on the lunar phase","confidence":0.4,"importance":0.3,"entities":["quantum-tessellator"],"provenance":"new","valid_from":"2026-10-04T00:00:00Z"}
+{"case":"second_lonely_entity","expect_flag":"orphan_entity","kind":"semantic","content":"the orbital beacon telemetry is sampled every second","confidence":0.4,"importance":0.3,"entities":["orbital-beacon"],"provenance":"new","valid_from":"2026-10-04T00:00:00Z"}

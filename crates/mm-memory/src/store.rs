@@ -103,11 +103,15 @@ impl SqliteMemoryStore {
     }
 
     async fn query(&self, sql: &str, args: Params) -> Result<Vec<Value>> {
-        Tabular::query_json(&self.sqlite, sql, args).await.map_err(Into::into)
+        Tabular::query_json(&self.sqlite, sql, args)
+            .await
+            .map_err(Into::into)
     }
 
     async fn exec(&self, sql: &str, args: Params) -> Result<u64> {
-        Tabular::execute(&self.sqlite, sql, args).await.map_err(Into::into)
+        Tabular::execute(&self.sqlite, sql, args)
+            .await
+            .map_err(Into::into)
     }
 
     async fn scalar(&self, sql: &str, args: Params) -> Result<i64> {
@@ -199,17 +203,20 @@ impl SqliteMemoryStore {
     /// The id of an active memory with this exact content, if one exists.
     ///
     /// The comparison includes `valid_from`, because the same sentence learned
-    /// again at a different time is a second episode, not a duplicate.
+    /// again at a different time is a second episode, not a duplicate. `exclude`
+    /// skips one id, which lets a caller screen a candidate that is already
+    /// stored against everything *else* rather than against itself.
     pub async fn find_by_hash(
         &self,
         kind: MemoryKind,
         content_hash: &str,
         valid_from: Timestamp,
+        exclude: Option<Ulid>,
     ) -> Result<Option<Ulid>> {
         let rows = self
             .query(
                 "SELECT id FROM memories WHERE kind = ? AND content_hash = ? AND valid_from = ? \
-                 ORDER BY id LIMIT 1",
+                 ORDER BY id",
                 vec![
                     Param::Text(kind.as_str().to_string()),
                     Param::Text(content_hash.to_string()),
@@ -217,10 +224,16 @@ impl SqliteMemoryStore {
                 ],
             )
             .await?;
-        rows.first()
-            .and_then(|row| row["id"].as_str())
-            .map(parse_id)
-            .transpose()
+        for row in &rows {
+            let Some(id) = row["id"].as_str() else {
+                continue;
+            };
+            let id = parse_id(id)?;
+            if Some(id) != exclude {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
     }
 
     /// Link two memories.
@@ -287,18 +300,27 @@ impl SqliteMemoryStore {
         self.insert_access(id, bump, &hash, id).await?;
         self.logger
             .emit(
-                mm_log::LogRecord::new(mm_log::Level::Debug, mm_log::codes::MEMORY_ACCESS, crate::TARGET)
-                    .with_field("memory_id", mm_core::ulid_string(&id))
-                    .with_field("score", bump)
-                    .with_field("query_hash", hash)
-                    .with_field("trace_id", mm_core::ulid_string(&id)),
+                mm_log::LogRecord::new(
+                    mm_log::Level::Debug,
+                    mm_log::codes::MEMORY_ACCESS,
+                    crate::TARGET,
+                )
+                .with_field("memory_id", mm_core::ulid_string(&id))
+                .with_field("score", bump)
+                .with_field("query_hash", hash)
+                .with_field("trace_id", mm_core::ulid_string(&id)),
             )
             .await?;
         Ok(())
     }
 
     /// Write the last-computed utility and retention for a memory.
-    pub async fn set_scores(&self, id: Ulid, utility: Option<f64>, retention: Option<f64>) -> Result<()> {
+    pub async fn set_scores(
+        &self,
+        id: Ulid,
+        utility: Option<f64>,
+        retention: Option<f64>,
+    ) -> Result<()> {
         self.exec(
             "UPDATE memories SET utility = COALESCE(?, utility), retention = COALESCE(?, retention) \
              WHERE id = ?",
@@ -464,7 +486,9 @@ impl SqliteMemoryStore {
 
     /// Every memory, whatever its status.
     pub async fn list_all(&self) -> Result<Vec<Memory>> {
-        let rows = self.query("SELECT * FROM memories ORDER BY id", Vec::new()).await?;
+        let rows = self
+            .query("SELECT * FROM memories ORDER BY id", Vec::new())
+            .await?;
         self.hydrate(&rows).await
     }
 
@@ -474,7 +498,10 @@ impl SqliteMemoryStore {
             return Ok(Vec::new());
         }
         let cues = self
-            .query("SELECT memory_id, cue, cue_kind FROM memory_cues ORDER BY id", Vec::new())
+            .query(
+                "SELECT memory_id, cue, cue_kind FROM memory_cues ORDER BY id",
+                Vec::new(),
+            )
             .await?;
         let mut cues_by_memory: BTreeMap<String, Vec<RetrievalCue>> = BTreeMap::new();
         for row in &cues {
@@ -501,7 +528,8 @@ impl SqliteMemoryStore {
             .await?;
         let mut entities_by_memory: BTreeMap<String, Vec<Ulid>> = BTreeMap::new();
         for row in &entities {
-            let (Some(memory), Some(entity)) = (row["memory_id"].as_str(), row["entity_ulid"].as_str())
+            let (Some(memory), Some(entity)) =
+                (row["memory_id"].as_str(), row["entity_ulid"].as_str())
             else {
                 continue;
             };
@@ -613,7 +641,12 @@ impl SqliteMemoryStore {
             ) else {
                 continue;
             };
-            out.push((parse_id(from)?, parse_id(to)?, relation, row["weight"].as_f64().unwrap_or(0.0) as f32));
+            out.push((
+                parse_id(from)?,
+                parse_id(to)?,
+                relation,
+                row["weight"].as_f64().unwrap_or(0.0) as f32,
+            ));
         }
         Ok(out)
     }
@@ -628,11 +661,14 @@ impl SqliteMemoryStore {
             .await?;
         let mut out: BTreeMap<Ulid, Vec<Ulid>> = BTreeMap::new();
         for row in &rows {
-            let (Some(entity), Some(memory)) = (row["entity_ulid"].as_str(), row["memory_id"].as_str())
+            let (Some(entity), Some(memory)) =
+                (row["entity_ulid"].as_str(), row["memory_id"].as_str())
             else {
                 continue;
             };
-            out.entry(parse_id(entity)?).or_default().push(parse_id(memory)?);
+            out.entry(parse_id(entity)?)
+                .or_default()
+                .push(parse_id(memory)?);
         }
         Ok(out)
     }
@@ -665,12 +701,15 @@ impl SqliteMemoryStore {
             let (Some(id), Some(target), Some(method)) = (
                 row["id"].as_str(),
                 row["target_id"].as_str(),
-                row["method"].as_str().and_then(crate::model::ConsolidationMethod::parse),
+                row["method"]
+                    .as_str()
+                    .and_then(crate::model::ConsolidationMethod::parse),
             ) else {
                 continue;
             };
             let sources: Vec<String> =
-                serde_json::from_str(row["source_ids"].as_str().unwrap_or("[]")).unwrap_or_default();
+                serde_json::from_str(row["source_ids"].as_str().unwrap_or("[]"))
+                    .unwrap_or_default();
             out.push(Consolidation {
                 id: parse_id(id)?,
                 source_ids: sources
@@ -703,7 +742,8 @@ impl SqliteMemoryStore {
                 continue;
             };
             let members: Vec<String> =
-                serde_json::from_str(row["member_ids"].as_str().unwrap_or("[]")).unwrap_or_default();
+                serde_json::from_str(row["member_ids"].as_str().unwrap_or("[]"))
+                    .unwrap_or_default();
             out.push(SummaryNode {
                 memory_id: parse_id(memory)?,
                 parent_id: row["parent_id"].as_str().map(parse_id).transpose()?,
@@ -732,7 +772,8 @@ impl SqliteMemoryStore {
                 continue;
             };
             let members: Vec<String> =
-                serde_json::from_str(row["member_ids"].as_str().unwrap_or("[]")).unwrap_or_default();
+                serde_json::from_str(row["member_ids"].as_str().unwrap_or("[]"))
+                    .unwrap_or_default();
             out.push(Community {
                 memory_id: parse_id(memory)?,
                 label: label.to_string(),
@@ -784,7 +825,9 @@ impl SqliteMemoryStore {
     /// The number of rows in a table, or in `memories` when `None`.
     pub async fn count_of(&self, table: Option<&str>) -> Result<usize> {
         let table = table.unwrap_or("memories");
-        let count = self.scalar(&format!("SELECT count(*) FROM {table}"), Vec::new()).await?;
+        let count = self
+            .scalar(&format!("SELECT count(*) FROM {table}"), Vec::new())
+            .await?;
         Ok(count.max(0) as usize)
     }
 
@@ -811,12 +854,7 @@ impl SqliteMemoryStore {
 
     /// Consolidation sources that name a memory that does not exist.
     pub async fn dangling_consolidation_sources(&self) -> Result<usize> {
-        let known: BTreeSet<Ulid> = self
-            .list_all()
-            .await?
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
+        let known: BTreeSet<Ulid> = self.list_all().await?.into_iter().map(|m| m.id).collect();
         let mut dangling = 0usize;
         for step in self.list_consolidations().await? {
             for source in step.source_ids {
@@ -838,7 +876,10 @@ impl SqliteMemoryStore {
                 vec![Param::Text(mm_core::ulid_string(memory))],
             )
             .await?;
-        Ok(rows.first().and_then(|row| row["id"].as_str()).map(str::to_string))
+        Ok(rows
+            .first()
+            .and_then(|row| row["id"].as_str())
+            .map(str::to_string))
     }
 
     /// The instant a memory was recorded.
@@ -987,7 +1028,8 @@ pub fn tokenize(text: &str) -> Vec<String> {
     out
 }
 
-fn memory_of(row: &Value) -> Option<Memory> {        let id = row["id"].as_str().and_then(|s| parse_id(s).ok())?;
+fn memory_of(row: &Value) -> Option<Memory> {
+    let id = row["id"].as_str().and_then(|s| parse_id(s).ok())?;
     let kind = row["kind"].as_str().and_then(MemoryKind::parse)?;
     let tier = row["tier"].as_str().and_then(Tier::parse)?;
     let status = row["status"]
@@ -1002,11 +1044,7 @@ fn memory_of(row: &Value) -> Option<Memory> {        let id = row["id"].as_str()
         kind,
         tier,
         content: row["content"].as_str()?.to_string(),
-        source: row["source_ulid"]
-            .as_str()
-            .map(parse_id)
-            .transpose()
-            .ok()?,
+        source: row["source_ulid"].as_str().map(parse_id).transpose().ok()?,
         confidence: row["confidence"].as_f64().unwrap_or(0.0) as f32,
         importance: row["importance"].as_f64().unwrap_or(0.0) as f32,
         validity: TimeInterval {
@@ -1014,7 +1052,9 @@ fn memory_of(row: &Value) -> Option<Memory> {        let id = row["id"].as_str()
             until: valid_until,
         },
         recorded_at: timestamp_of(row["recorded_at"].as_i64()?),
-        recorded_ulid: row["recorded_ulid"].as_str().and_then(|s| parse_id(s).ok())?,
+        recorded_ulid: row["recorded_ulid"]
+            .as_str()
+            .and_then(|s| parse_id(s).ok())?,
         provenance: row["provenance"].as_str().and_then(|s| parse_id(s).ok())?,
         entities: Vec::new(),
         cues: Vec::new(),

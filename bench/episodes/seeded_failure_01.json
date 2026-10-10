@@ -1,0 +1,27 @@
+{
+  "_comment": "The seeded failure Phase 11's `mm-cli meta analyze` diagnoses. Read by `mm-metaanalysis::triggers` (which supplies the trigger) and by the heuristic diagnoser's test: the failure text below contains the cue words the cue table maps to error classes, so the offline diagnosis is reproducible rather than provider-dependent.",
+  "episode_id": "01h0000000000000000000e110",
+  "trigger": "repeated_failure",
+  "goal": "answer the operator's question about the shape of the tool registry",
+  "failure": "the answer cited a column that no longer exists, because the retrieval step did not re-read the schema after the migration",
+  "attempts": 3,
+  "evidence": [
+    "01h0000000000000000000e111",
+    "01h0000000000000000000e112"
+  ],
+  "conditions": [
+    "the question names a table",
+    "the store was migrated in this cycle"
+  ],
+  "priority": {
+    "novelty": 0.2,
+    "failure": 0.7,
+    "impact": 0.6,
+    "recurrence": 0.8,
+    "uncertainty": 0.4
+  },
+  "expected": {
+    "error_classes_must_include": "retrieval",
+    "lessons_min": 1
+  }
+}

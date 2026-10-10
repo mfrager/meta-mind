@@ -1,0 +1,7 @@
+p_false,risk,verification_cost,decision_dependence,priority
+0.5,medium,1.0,0.5,0.1875
+1.0,catastrophic,0.0,1.0,2.0
+0.25,low,3.0,0.0,0.015625
+0.75,high,0.5,0.5,0.5625
+0.0,negligible,2.0,1.0,0.0
+0.5,catastrophic,4.0,0.0,0.1

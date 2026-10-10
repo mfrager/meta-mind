@@ -1,0 +1,8 @@
+{
+  "frames": ["problem_solving", "software", "debugging", "high_stakes"],
+  "goal": "decide how to fix an intermittent failing build under uncertainty",
+  "domain": ["software", "debugging"],
+  "uncertainty": 0.7,
+  "stakes": 0.8,
+  "history": ["https://metamind.dev/library/technique/decompose-problem@1"]
+}

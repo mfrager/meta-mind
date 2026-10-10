@@ -1,0 +1,15 @@
+# Duplicate writes (plan §7): a memory that already exists is flagged, never
+# silently accepted a second time.
+#
+# `expect_flag` is what `MemoryEngine::remember` must report. A `duplicate` is
+# refused: the same content, learned true at the same `valid_from`, is the same
+# fact, and storing it twice would double its weight in every ranking.
+#
+# `valid_from` is optional in these fixtures; when present it pins the world time
+# and therefore the identity comparison. The third case repeats `ep-001`'s
+# content word for word *and* its instant, so it is a duplicate of an episode
+# that already exists rather than of a case in this file.
+
+{"case":"identical_content_written_twice","expect_flag":"duplicate","kind":"semantic","content":"the deploy window is tuesday morning","confidence":0.8,"importance":0.5,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-10-01T00:00:00Z"}
+{"case":"the_same_sentence_again","expect_flag":"duplicate","kind":"semantic","content":"the deploy window is tuesday morning","confidence":0.8,"importance":0.5,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-10-01T00:00:00Z"}
+{"case":"ep_001_replayed_verbatim","expect_flag":"duplicate","kind":"episodic","content":"pinning the toolchain to 1.96.1 fixed the workspace build","confidence":0.9,"importance":0.7,"entities":["rust","workspace-build"],"provenance":"new","valid_from":"2026-09-28T09:00:00Z"}

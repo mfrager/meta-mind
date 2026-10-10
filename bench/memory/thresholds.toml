@@ -1,0 +1,34 @@
+# Phase 5 retrieval, retention, and consolidation thresholds.
+#
+# `mm-cli memory eval --thresholds bench/memory/thresholds.toml` fails the run
+# when precision@k or recall@k falls below these floors (plan §7, §8).
+#
+# The retrieval weights are the plan's pinned hybrid weights. They live here so a
+# tuning experiment is a diff rather than an edit to the scorer, and so the
+# retrieval snapshot can pin the exact numbers a run used.
+#
+# `half_life_ns` is 7 days, and `min_retention` is the floor a forget cycle
+# compares against. The floor is low on purpose: a freshly recorded memory must
+# not be a candidate for archival on the day it is written, or `memory forget
+# --dry-run` would report the corpus as garbage the moment it was built.
+
+[retrieval]
+precision_at_k = 0.80
+recall_at_k = 0.80
+k = 5
+
+[weights]
+lexical = 0.35
+vector = 0.30
+graph = 0.20
+recency = 0.10
+importance = 0.05
+
+[retention]
+min_retention = 0.05
+half_life_ns = 604800000000000
+
+[consolidation]
+near_duplicate_cosine = 0.92
+min_cluster = 2
+summary_fanout = 5

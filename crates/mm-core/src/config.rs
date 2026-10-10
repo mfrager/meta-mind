@@ -176,17 +176,104 @@ impl Config {
         self.ontology_dir().join("shapes").join("memory.ttl")
     }
 
+    /// `ontology/shapes/epistemic_shapes.ttl` — the `/epistemic` graph's shape set.
+    ///
+    /// `/world` is governed by the same shapes: it holds a subset of the same
+    /// records (only `OBSERVED`/`VERIFIED` claims), so a second shape set would be
+    /// the same constraints kept in two places.
+    pub fn epistemic_shapes_file(&self) -> PathBuf {
+        self.ontology_dir()
+            .join("shapes")
+            .join("epistemic_shapes.ttl")
+    }
+
+    /// `ontology/shapes/library.shacl.ttl` — the `/library` graph's shape set.
+    ///
+    /// This is the one shape set the phase-7 plan names with a `.shacl.ttl`
+    /// suffix, and it is kept: the gate's `graph validate --graph library` reads
+    /// the file the plan says it reads.
+    pub fn library_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("library.shacl.ttl")
+    }
+
+    /// `ontology/shapes/decision.ttl` — the `/decision` graph's shape set.
+    ///
+    /// Phase 9's graph holds decisions, comparisons, risk profiles, uncertainty
+    /// measurements and firewall runs. It gets its own set rather than sharing
+    /// `mm.ttl`'s because `mm:Decision` is also an epistemic class: a shape that
+    /// required `mm:questionKind` on every `mm:Decision` would fire on the
+    /// claim-level decisions Phase 6 writes into `/epistemic`.
+    pub fn decision_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("decision.ttl")
+    }
+
+    /// `ontology/shapes/self_model.ttl` — the `/self` graph's shape set.
+    ///
+    /// Phase 12's graph holds the numeric self-model reports and their divergence
+    /// dimensions, the debt findings, the GC actions, the hot-loaded module versions
+    /// and the design revisions. It gets its own set for the same reason `/decision`,
+    /// `/tools` and `/selfeng` do: `mm:Divergence` and `mm:GcAction` are Phase 12's own
+    /// classes, and the plan's §4.3 places their shapes in this file.
+    pub fn self_model_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("self_model.ttl")
+    }
+
+    /// `ontology/self_model.ttl` — the autonomy/self-model T-Box.
+    ///
+    /// It shares the `mm:` namespace with `mm.ttl` and only adds classes and properties
+    /// (`mm:SelfModel`, `mm:SelfModelReport`, `mm:Divergence`, `mm:DebtFinding`,
+    /// `mm:GcAction`, `mm:ModuleLoad`, `mm:DesignRevision` and their predicates), so
+    /// loading it cannot change the meaning of a graph that was already validated.
+    ///
+    /// The phase plan's §3 writes these classes into `mm.ttl` and only names
+    /// `shapes/self_model.ttl`; since Phase 7 this repository has kept one ontology file
+    /// *per phase graph* (`selfeng.ttl`, `tools.ttl`), and `Config::ontology_files`
+    /// lists them explicitly. The vocabulary therefore lives in its own file and the
+    /// deviation is recorded here rather than taken silently.
+    pub fn ontology_self_model_file(&self) -> PathBuf {
+        self.ontology_dir().join("self_model.ttl")
+    }
+
+    /// `ontology/shapes/tools.ttl` — the `/tools` graph's shape set.
+    ///
+    /// Phase 10's graph holds tool contracts, action records and action observations.
+    /// It gets its own set for the same reason `/decision` does: `mm:Observation` is
+    /// already an epistemic claim class, so the observation class there is
+    /// `mm:ActionObservation` and its shapes are not the kernel ones.
+    pub fn tools_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("tools.ttl")
+    }
+
+    /// `ontology/shapes/selfeng.ttl` — the `/selfeng` graph's shape set.
+    ///
+    /// Phase 11's graph holds the calibrated predictions, the calibration runs, the
+    /// meta-analyses and lessons, the change sets, the promotion decisions and the
+    /// evolution lineage. It gets its own set for the same reason `/decision` and
+    /// `/tools` do: `mm:Prediction` is already the epistemic claim class of a Phase 6
+    /// prediction, so the ledger's class here is `mm:CalibratedPrediction` and its
+    /// constraints are not the kernel ones.
+    pub fn selfeng_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("selfeng.ttl")
+    }
+
     /// The shapes file that governs a named graph.
     ///
-    /// The `code` graph is described by `mmc:`, `being` by its own set, and every
-    /// other graph by the kernel `mm:` shapes; validating one graph against
-    /// another's shapes would report nonsense.
+    /// The `code` graph is described by `mmc:`, `being`, `memory`, `epistemic`,
+    /// `library`, `decision` and `tools` by their own sets, and every other graph by the
+    /// kernel `mm:` shapes; validating one graph against another's shapes would
+    /// report nonsense.
     pub fn shapes_file_for(&self, graph: &str) -> PathBuf {
         let bare = graph.strip_prefix(crate::iri::GRAPH).unwrap_or(graph);
         match bare {
             "code" => self.mmc_shapes_file(),
             "being" => self.being_shapes_file(),
             "memory" => self.memory_shapes_file(),
+            "epistemic" | "world" => self.epistemic_shapes_file(),
+            "library" => self.library_shapes_file(),
+            "decision" => self.decision_shapes_file(),
+            "tools" => self.tools_shapes_file(),
+            "selfeng" => self.selfeng_shapes_file(),
+            "self" => self.self_model_shapes_file(),
             _ => self.shapes_file(),
         }
     }
@@ -199,12 +286,77 @@ impl Config {
         self.ontology_dir().join("llm.ttl")
     }
 
+    /// `ontology/library.ttl` — the cognitive library's T-Box.
+    ///
+    /// It shares the `mm:` namespace with `mm.ttl` and only adds classes and
+    /// properties, so loading it cannot change an existing graph's meaning.
+    pub fn ontology_library_file(&self) -> PathBuf {
+        self.ontology_dir().join("library.ttl")
+    }
+
+    /// `ontology/metacog.ttl` — the metacognitive controller's T-Box.
+    ///
+    /// It shares the `mm:` namespace with `mm.ttl` and only adds classes and
+    /// properties, so loading it cannot change an existing graph's meaning.
+    pub fn ontology_metacog_file(&self) -> PathBuf {
+        self.ontology_dir().join("metacog.ttl")
+    }
+
+    /// `ontology/selfeng.ttl` — the self-engineering T-Box.
+    ///
+    /// It shares the `mm:` namespace with `mm.ttl` and only adds classes and
+    /// properties (`mm:CalibratedPrediction`, `mm:PredictionOutcome`,
+    /// `mm:CalibrationRun`, `mm:MetaAnalysis`, `mm:Lesson`, `mm:ChangeSet`,
+    /// `mm:EvolutionEvent` and their predicates), so loading it cannot change the
+    /// meaning of a graph that was already validated.
+    pub fn ontology_selfeng_file(&self) -> PathBuf {
+        self.ontology_dir().join("selfeng.ttl")
+    }
+
+    /// `ontology/tools.ttl` — the tool execution T-Box.
+    ///
+    /// It shares the `mm:` namespace with `mm.ttl` and only adds classes and
+    /// properties (`mm:Tool`, `mm:Action`, `mm:ActionObservation` and the predicates
+    /// `mm-tools::rdf` emits), so loading it cannot change the meaning of a graph that
+    /// was already validated against the kernel shapes.
+    pub fn ontology_tools_file(&self) -> PathBuf {
+        self.ontology_dir().join("tools.ttl")
+    }
+
+    /// `ontology/shapes/episode.ttl` — the shapes for cognitive episodes and the
+    /// programs compiled from them.
+    ///
+    /// Episodes are emitted into `/epistemic`, so these shapes are validated
+    /// alongside that graph's own set rather than replacing it; see
+    /// [`Config::extra_shapes_files_for`].
+    pub fn episode_shapes_file(&self) -> PathBuf {
+        self.ontology_dir().join("shapes").join("episode.ttl")
+    }
+
+    /// The additional shapes that also govern a named graph.
+    ///
+    /// `/epistemic` holds the metacognitive controller's episodes as well as the
+    /// claims, and the two sets were written separately. Validating the graph
+    /// against only one of them would silently skip half of it, so both are read.
+    pub fn extra_shapes_files_for(&self, graph: &str) -> Vec<PathBuf> {
+        let bare = graph.strip_prefix(crate::iri::GRAPH).unwrap_or(graph);
+        match bare {
+            "epistemic" | "world" => vec![self.episode_shapes_file()],
+            _ => Vec::new(),
+        }
+    }
+
     /// Every ontology file the kernel loads, in a deterministic order.
     pub fn ontology_files(&self) -> Vec<PathBuf> {
         vec![
             self.ontology_file(),
             self.ontology_code_file(),
             self.ontology_llm_file(),
+            self.ontology_library_file(),
+            self.ontology_metacog_file(),
+            self.ontology_tools_file(),
+            self.ontology_selfeng_file(),
+            self.ontology_self_model_file(),
         ]
     }
 
@@ -342,7 +494,49 @@ mod tests {
         assert!(cfg
             .being_shapes_file()
             .ends_with("ontology/shapes/being.shacl.ttl"));
-        assert!(cfg.memory_shapes_file().ends_with("ontology/shapes/memory.ttl"));
+        assert!(cfg
+            .memory_shapes_file()
+            .ends_with("ontology/shapes/memory.ttl"));
+        assert!(cfg
+            .epistemic_shapes_file()
+            .ends_with("ontology/shapes/epistemic_shapes.ttl"));
+        assert!(cfg
+            .library_shapes_file()
+            .ends_with("ontology/shapes/library.shacl.ttl"));
+        assert!(cfg
+            .ontology_library_file()
+            .ends_with("ontology/library.ttl"));
+        assert!(cfg
+            .ontology_metacog_file()
+            .ends_with("ontology/metacog.ttl"));
+        assert!(cfg
+            .episode_shapes_file()
+            .ends_with("ontology/shapes/episode.ttl"));
+        assert!(cfg
+            .decision_shapes_file()
+            .ends_with("ontology/shapes/decision.ttl"));
+        assert!(cfg
+            .tools_shapes_file()
+            .ends_with("ontology/shapes/tools.ttl"));
+        assert!(cfg.ontology_tools_file().ends_with("ontology/tools.ttl"));
+        assert!(cfg
+            .selfeng_shapes_file()
+            .ends_with("ontology/shapes/selfeng.ttl"));
+        assert!(cfg
+            .ontology_selfeng_file()
+            .ends_with("ontology/selfeng.ttl"));
+    }
+
+    #[test]
+    fn the_epistemic_graph_is_governed_by_two_shape_sets() {
+        let cfg = Config::for_data_dir("/tmp/mm-test");
+        let extra = cfg.extra_shapes_files_for("epistemic");
+        assert_eq!(extra.len(), 1);
+        assert!(extra[0].ends_with("ontology/shapes/episode.ttl"));
+        // `/world` holds the same records, and every other graph has one set.
+        assert_eq!(cfg.extra_shapes_files_for("world").len(), 1);
+        assert!(cfg.extra_shapes_files_for("library").is_empty());
+        assert!(cfg.extra_shapes_files_for("being").is_empty());
     }
 
     #[test]
@@ -351,9 +545,39 @@ mod tests {
         assert!(cfg.shapes_file_for("code").ends_with("mmc-shapes.ttl"));
         assert!(cfg.shapes_file_for("being").ends_with("being.shacl.ttl"));
         assert!(cfg.shapes_file_for("memory").ends_with("memory.ttl"));
+        assert!(cfg
+            .shapes_file_for("epistemic")
+            .ends_with("epistemic_shapes.ttl"));
+        // `/world` holds a subset of the same records, so it shares the shapes.
+        assert!(cfg
+            .shapes_file_for("world")
+            .ends_with("epistemic_shapes.ttl"));
         // A full graph IRI is accepted as well as a bare name.
         assert!(cfg
             .shapes_file_for("https://metamind.dev/graph/being")
             .ends_with("being.shacl.ttl"));
+        assert!(cfg
+            .shapes_file_for("https://metamind.dev/graph/world")
+            .ends_with("epistemic_shapes.ttl"));
+        assert!(cfg
+            .shapes_file_for("library")
+            .ends_with("library.shacl.ttl"));
+        // Phase 9's graph has its own set, in both spellings.
+        assert!(cfg.shapes_file_for("decision").ends_with("decision.ttl"));
+        assert!(cfg
+            .shapes_file_for("https://metamind.dev/graph/decision")
+            .ends_with("decision.ttl"));
+        // Phase 10's graph, in both spellings.
+        assert!(cfg.shapes_file_for("tools").ends_with("tools.ttl"));
+        assert!(cfg
+            .shapes_file_for("https://metamind.dev/graph/tools")
+            .ends_with("tools.ttl"));
+        // Phase 11's graph, in both spellings. `/provenance` keeps the kernel shapes,
+        // because Phase 11 does not write there.
+        assert!(cfg.shapes_file_for("selfeng").ends_with("selfeng.ttl"));
+        assert!(cfg
+            .shapes_file_for("https://metamind.dev/graph/selfeng")
+            .ends_with("selfeng.ttl"));
+        assert!(cfg.shapes_file_for("provenance").ends_with("mm-shapes.ttl"));
     }
 }

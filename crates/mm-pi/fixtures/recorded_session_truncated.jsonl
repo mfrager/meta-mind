@@ -1,0 +1,3 @@
+{"version":3,"sessionId":"01h0000000000000000000f300","model":"pi-test","cwd":"data/sandbox/01h0000000000000000000f300","startedAt":"2026-10-08T02:00:00.000000000Z"}
+{"id":"01h0000000000000000000f301","parentId":null,"at":"2026-10-08T02:00:01.000000000Z","kind":"message","text":"Start the change set for the calibration module."}
+{"id":"01h0000000000000000000f302","parentId":"01h0000000000000000000f301","at":"2026-10-08T02:00:02.000000000Z","kind":"edit","path":"modules/cognition/calibration/plugin.toml","text":"wrote the manifest and then the process was killed mid-record: the rest of this line never arrived

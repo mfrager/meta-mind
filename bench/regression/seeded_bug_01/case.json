@@ -1,0 +1,9 @@
+{
+  "name": "seeded_bug_01",
+  "mistake_ulid": null,
+  "description": "the record counter reported an empty success on a stream it could not read, so a broken pipeline looked healthy",
+  "fail_before": "check.sh",
+  "fix": "fix.sh",
+  "reset": "reset.sh",
+  "expected": { "fails_before": true, "passes_after": true }
+}

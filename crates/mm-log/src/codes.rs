@@ -157,8 +157,273 @@ pub const MEMORY_INDEX_REBUILD: &str = "memory.index.rebuild";
 /// The memory store and its `/memory` mirror were reconciled.
 pub const MEMORY_VERIFY: &str = "memory.verify";
 
+/// A candidate claim was ingested (audit).
+pub const EPISTEMIC_CLAIM_INGEST: &str = "epistemic.claim.ingest";
+/// Evidence was attached to a claim (audit).
+pub const EPISTEMIC_EVIDENCE_ATTACH: &str = "epistemic.evidence.attach";
+/// A promotion was refused by the deterministic guard.
+pub const EPISTEMIC_PROMOTION_REJECT: &str = "epistemic.promotion.reject";
+/// A claim's status changed (audit).
+pub const EPISTEMIC_STATUS_TRANSITION: &str = "epistemic.status.transition";
+/// An assumption was created (audit).
+pub const EPISTEMIC_ASSUMPTION_CREATE: &str = "epistemic.assumption.create";
+/// An assumption's verification priority was computed.
+pub const EPISTEMIC_ASSUMPTION_PRIORITY: &str = "epistemic.assumption.priority";
+/// A contradiction was detected between two claims (audit).
+pub const EPISTEMIC_CONTRADICTION_DETECT: &str = "epistemic.contradiction.detect";
+/// A justification edge was recorded.
+pub const EPISTEMIC_JUSTIFICATION_EDGE: &str = "epistemic.justification.edge";
+/// A dependency-directed retraction cascaded (audit).
+pub const EPISTEMIC_CASCADE: &str = "epistemic.cascade";
+/// An RDFUnit-style data-quality test failed.
+pub const EPISTEMIC_DATA_TESTS_FAIL: &str = "epistemic.data_tests.fail";
+/// A claim was written to `/world` by the validation barrier (audit).
+pub const EPISTEMIC_WORLD_WRITE: &str = "epistemic.world.write";
+
+/// An entry was written to `/library` (audit).
+pub const LIBRARY_ENTRY_UPSERT: &str = "library.entry.upsert";
+/// An entry passed its shapes.
+pub const LIBRARY_ENTRY_VALIDATED: &str = "library.entry.validated";
+/// An entry was refused by the gate, with the shape it violated.
+pub const LIBRARY_ENTRY_REJECTED: &str = "library.entry.rejected";
+/// A duplicate body was detected by content hash.
+pub const LIBRARY_DUP_DETECTED: &str = "library.dup.detected";
+/// A dangling reference was found by the orphan check.
+pub const LIBRARY_ORPHAN_DETECTED: &str = "library.orphan.detected";
+/// A skill was registered, as a draft.
+pub const SKILL_REGISTER: &str = "skill.register";
+/// A skill's verification was decided (audit).
+pub const SKILL_VERIFY: &str = "skill.verify";
+/// A skill was retrieved.
+pub const SKILL_RETRIEVE: &str = "skill.retrieve";
+/// An extraction job started.
+pub const LIBRARY_EXTRACT_JOB_START: &str = "library.extract.job.start";
+/// An extraction job finished.
+pub const LIBRARY_EXTRACT_JOB_END: &str = "library.extract.job.end";
+/// Techniques were ranked for a state.
+pub const LIBRARY_APPLICABLE_RANK: &str = "library.applicable.rank";
+/// Cases were retrieved for a problem.
+pub const LIBRARY_CASE_RETRIEVE: &str = "library.case.retrieve";
+/// The experience compiler ran.
+pub const EXPERIENCE_COMPILE: &str = "experience.compile";
+/// Frames were composed into an instance.
+pub const LIBRARY_FRAME_COMPOSE: &str = "library.frame.compose";
+/// A frame activation changed.
+pub const LIBRARY_FRAME_SWITCH: &str = "library.frame.switch";
+/// A new immutable policy version was created (audit).
+pub const POLICY_VERSION_CREATE: &str = "policy.version.create";
+/// A policy's fitness was updated (audit).
+pub const POLICY_FITNESS_UPDATE: &str = "policy.fitness.update";
+/// An evolution run started.
+pub const GENOME_EVOLVE_START: &str = "genome.evolve.start";
+/// One evolution generation finished.
+pub const GENOME_EVOLVE_GENERATION: &str = "genome.evolve.generation";
+/// An evolution run finished (audit).
+pub const GENOME_EVOLVE_END: &str = "genome.evolve.end";
+
+/// A cognitive episode was opened.
+pub const METACOG_EPISODE_OPEN: &str = "metacog.episode.open";
+/// The metacognitive scan started.
+pub const METACOG_SCAN_BEGIN: &str = "metacog.scan.begin";
+/// The scan named one issue.
+pub const METACOG_SCAN_ISSUE: &str = "metacog.scan.issue";
+/// The scan finished.
+pub const METACOG_SCAN_END: &str = "metacog.scan.end";
+/// A compute policy was selected for the episode.
+pub const METACOG_TIER_SELECT: &str = "metacog.tier.select";
+/// A cognitive program was compiled.
+pub const METACOG_PROGRAM_COMPILE: &str = "metacog.program.compile";
+/// One candidate operation was scored.
+pub const METACOG_OP_CONSIDER: &str = "metacog.op.consider";
+/// One operation was selected by the greedy rule.
+pub const METACOG_OP_SELECT: &str = "metacog.op.select";
+/// One operation was executed (audit).
+pub const METACOG_OP_EXECUTE: &str = "metacog.op.execute";
+/// One operation's outcome was recorded.
+pub const METACOG_OP_OUTCOME: &str = "metacog.op.outcome";
+/// A budget dimension was debited.
+pub const METACOG_BUDGET_DEBIT: &str = "metacog.budget.debit";
+/// A budget dimension ran out.
+pub const METACOG_BUDGET_EXHAUSTED: &str = "metacog.budget.exhausted";
+/// The budget forcer permitted, added or reserved compute.
+pub const METACOG_FORCE_DECIDE: &str = "metacog.force.decide";
+/// The metacognitive loop stopped, with its reason.
+pub const METACOG_STOP: &str = "metacog.stop";
+/// A program trace was persisted (audit).
+pub const METACOG_TRACE_PERSIST: &str = "metacog.trace.persist";
+/// A program was lowered to an execution document.
+pub const METACOG_PROGRAM_LOWER: &str = "metacog.program.lower";
+/// An episode was replayed and compared.
+pub const METACOG_REPLAY: &str = "metacog.replay";
+
+// -------------------------------------------------------------------- Phase 9 --
+
+/// A decision core answered a bounded question.
+pub const DECISION_CORE_ANSWER: &str = "decision.core.answer";
+/// A decision core could not answer, and said so rather than guessing.
+pub const DECISION_CORE_UNAVAILABLE: &str = "decision.core.unavailable";
+/// The rules core matched (or failed to match) a question.
+pub const DECISION_RULES_MATCH: &str = "decision.rules.match";
+/// The hosted core spent a call on a bounded question.
+pub const DECISION_HOSTED_CALL: &str = "decision.hosted.call";
+/// A calibrated answer was refused by its conformal threshold.
+pub const DECISION_ABSTAIN: &str = "decision.abstain";
+/// A decision was recorded (audit).
+pub const DECISION_LOG_WRITE: &str = "decision.log.write";
+/// A risk profile was computed.
+pub const RISK_ANALYZE: &str = "risk.analyze";
+/// A comparison contract was read.
+pub const COMPARE_CONTRACT_START: &str = "compare.contract";
+/// A comparison check concluded a verdict.
+pub const COMPARE_CHECK: &str = "compare.check";
+/// A comparable pair was normalized into one set of units.
+pub const COMPARE_NORMALIZE: &str = "compare.normalize";
+/// An uncertainty scorer produced a value.
+pub const UNCERTAINTY_SCORE: &str = "uncertainty.score";
+/// A factuality check produced a support score.
+pub const FACTUALITY_CHECK: &str = "factuality.check";
+/// A calibrator was fitted for one decision class.
+pub const CALIBRATION_FIT: &str = "calibration.fit";
+/// A conformal threshold was fitted for one decision class.
+pub const CONFORMAL_ADJUST: &str = "conformal.adjust";
+/// A firewall evaluation started.
+pub const FIREWALL_SCAN_START: &str = "firewall.scan.start";
+/// A hard prohibition short-circuited an evaluation to `REJECT`.
+pub const FIREWALL_PROHIBITION_SHORTCIRCUIT: &str = "firewall.prohibition.shortcircuit";
+/// The signals were aggregated into one outcome.
+pub const FIREWALL_AGGREGATE: &str = "firewall.aggregate";
+/// A firewall run was recorded (audit).
+pub const FIREWALL_REPORT: &str = "firewall.report";
+
+// ------------------------------------------------------------------- Phase 10 --
+
+/// A tool's spec was written to `tool_registry` (audit).
+pub const TOOL_REGISTRY_REGISTER: &str = "tool.registry.register";
+/// An action started, before authorization (audit).
+pub const TOOL_INVOKE_START: &str = "tool.invoke.start";
+/// The permission engine returned a decision (audit).
+pub const TOOL_PERMISSION_CHECK: &str = "tool.permission.check";
+/// A policy rule forbade an action (audit).
+pub const TOOL_POLICY_FORBID: &str = "tool.policy.forbid";
+/// A sandbox was entered for an action (audit).
+pub const TOOL_SANDBOX_START: &str = "tool.sandbox.start";
+/// The capability guard refused before any work started (audit).
+pub const TOOL_SANDBOX_DENY: &str = "tool.sandbox.deny";
+/// A repeat with an idempotency key returned a recorded outcome.
+pub const TOOL_IDEMPOTENCY_HIT: &str = "tool.idempotency.hit";
+/// An action ended, successfully or not (audit).
+pub const TOOL_INVOKE_END: &str = "tool.invoke.end";
+/// An entry was appended to the action ledger.
+pub const ACTION_LEDGER_APPEND: &str = "action.ledger.append";
+/// A rollback started (audit).
+pub const ACTION_ROLLBACK_START: &str = "action.rollback.start";
+/// A rollback finished, with the hash it restored (audit).
+pub const ACTION_ROLLBACK_END: &str = "action.rollback.end";
+/// An execution-sourced observation was admitted to `/world` (audit).
+pub const OBSERVATION_RECORD: &str = "observation.record";
+/// A verification obligation started (audit).
+pub const VERIFY_RUN_START: &str = "verify.run.start";
+/// A verification obligation concluded, with its proof (audit).
+pub const VERIFY_RUN_END: &str = "verify.run.end";
+/// A verification obligation failed, with a counterexample (audit).
+pub const VERIFY_OBLIGATION_FAILURE: &str = "verify.obligation.failure";
+/// An MCP client asked for the tool list.
+pub const MCP_TOOLS_LIST: &str = "mcp.tools.list";
+/// An MCP client called a tool.
+pub const MCP_TOOLS_CALL: &str = "mcp.tools.call";
+
+// ------------------------------------------------------------------- Phase 11 --
+
+/// A self-improvement trigger fired.
+pub const META_TRIGGER: &str = "meta.trigger";
+/// A bounded diagnosis pass classified an episode's errors.
+pub const META_DIAGNOSE: &str = "meta.diagnose";
+/// A lesson was extracted into the cognitive library.
+pub const META_LESSON: &str = "meta.lesson";
+/// A calibration pass was scored.
+pub const CALIB_REPORT: &str = "calib.report";
+/// A mistake was compiled into a regression test.
+pub const MISTAKE_REGRESS: &str = "mistake.regress";
+/// A typed change set was assembled.
+pub const CHANGESET_CREATE: &str = "changeset.create";
+/// A change set moved through the sandbox pipeline.
+pub const CHANGESET_STAGE: &str = "changeset.stage";
+/// A sandbox was prepared for a change set.
+pub const SANDBOX_PREPARE: &str = "sandbox.prepare";
+/// A sandbox build finished.
+pub const SANDBOX_BUILD: &str = "sandbox.build";
+/// A sandbox test finished.
+pub const SANDBOX_TEST: &str = "sandbox.test";
+/// A benchmark compared a candidate against the frozen baseline.
+pub const BENCH_RUN: &str = "bench.run";
+/// A shadow run compared an unregistered candidate with production behaviour.
+pub const SHADOW_START: &str = "shadow.start";
+/// The promotion gate decided a change set (audit).
+pub const GATE_DECIDE: &str = "gate.decide";
+/// A change set was promoted (audit).
+pub const PROMOTE_COMMIT: &str = "promote.commit";
+/// A change set was rejected, with its written reason (audit).
+pub const PROMOTE_REJECT: &str = "promote.reject";
+/// A rollback restored a change set's recorded state (audit).
+pub const ROLLBACK_APPLY: &str = "rollback.apply";
+/// A budget dimension was debited (audit).
+pub const BUDGET_DEBIT: &str = "budget.debit";
+/// A debit was refused because it would cross a limit.
+pub const BUDGET_DENY: &str = "budget.deny";
+/// A Pi session process was spawned.
+pub const PI_SPAWN: &str = "pi.spawn";
+/// A command was sent to a Pi session.
+pub const PI_COMMAND: &str = "pi.command";
+/// One record arrived from a Pi session.
+pub const PI_EVENT: &str = "pi.event";
+/// A recorded Pi session was ingested into the event log and `/code` (audit).
+pub const PI_SESSION_INGEST: &str = "pi.session.ingest";
+/// Pi edited a file inside the sandbox (audit).
+pub const PI_EDIT: &str = "pi.edit";
+/// External reference code was integrated behind an `mm-*` trait.
+pub const COPY_INTEGRATE: &str = "copy.integrate";
+
+// ------------------------------------------------------------------- Phase 12 --
+
+/// A closed-loop run started.
+pub const LOOP_RUN_START: &str = "loop.run.start";
+/// A closed-loop run reached a terminal status.
+pub const LOOP_RUN_END: &str = "loop.run.end";
+/// A loop stage started.
+pub const LOOP_ITERATION_START: &str = "loop.iteration.start";
+/// A loop stage finished, with its outcome and latency.
+pub const LOOP_ITERATION_END: &str = "loop.iteration.end";
+/// A budget envelope was debited (audit).
+pub const LOOP_BUDGET_DEBIT: &str = "loop.budget.debit";
+/// A stage's debit was refused because it would cross the envelope's cap.
+pub const LOOP_BUDGET_DENY: &str = "loop.budget.deny";
+/// A crashed loop resumed at its last committed stage.
+pub const LOOP_STAGE_RESUME: &str = "loop.stage.resume";
+/// A scheduler clock fired.
+pub const TIMESCALE_TICK: &str = "timescale.tick";
+/// One numeric self-model report was written (audit).
+pub const SELF_MODEL_REPORT: &str = "self_model.report";
+/// One divergence dimension of a report.
+pub const SELF_MODEL_DIVERGENCE: &str = "self_model.divergence";
+/// An architectural-debt scan ran.
+pub const DEBT_SCAN: &str = "debt.scan";
+/// One debt finding was recorded.
+pub const DEBT_FINDING: &str = "debt.finding";
+/// One GC action was proposed or applied (audit).
+pub const GC_ACTION: &str = "gc.action";
+/// A GC action was refused: a protected ledger subject, or a non-reversible action.
+pub const GC_REFUSE: &str = "gc.refuse";
+/// A design document revision was registered (audit).
+pub const DESIGN_REVISION: &str = "design.revision";
+/// A module version was hot-loaded (audit).
+pub const MODULE_LOAD: &str = "module.load";
+/// A module version was rolled back to the one before it (audit).
+pub const MODULE_ROLLBACK: &str = "module.rollback";
+/// One identity invariant was checked during a run.
+pub const INVARIANT_CHECK: &str = "invariant.check";
+
 /// Every code defined by the kernel, so `logs verify` can reject unknown codes.
-pub const KERNEL_CODES: [&str; 70] = [
+pub const KERNEL_CODES: [&str; 195] = [
     LOG_INIT,
     LOG_REDACT,
     LOG_SINK_ERROR,
@@ -229,6 +494,131 @@ pub const KERNEL_CODES: [&str; 70] = [
     MEMORY_NEAR_MISS_CREATE,
     MEMORY_INDEX_REBUILD,
     MEMORY_VERIFY,
+    EPISTEMIC_CLAIM_INGEST,
+    EPISTEMIC_EVIDENCE_ATTACH,
+    EPISTEMIC_PROMOTION_REJECT,
+    EPISTEMIC_STATUS_TRANSITION,
+    EPISTEMIC_ASSUMPTION_CREATE,
+    EPISTEMIC_ASSUMPTION_PRIORITY,
+    EPISTEMIC_CONTRADICTION_DETECT,
+    EPISTEMIC_JUSTIFICATION_EDGE,
+    EPISTEMIC_CASCADE,
+    EPISTEMIC_DATA_TESTS_FAIL,
+    EPISTEMIC_WORLD_WRITE,
+    LIBRARY_ENTRY_UPSERT,
+    LIBRARY_ENTRY_VALIDATED,
+    LIBRARY_ENTRY_REJECTED,
+    LIBRARY_DUP_DETECTED,
+    LIBRARY_ORPHAN_DETECTED,
+    SKILL_REGISTER,
+    SKILL_VERIFY,
+    SKILL_RETRIEVE,
+    LIBRARY_EXTRACT_JOB_START,
+    LIBRARY_EXTRACT_JOB_END,
+    LIBRARY_APPLICABLE_RANK,
+    LIBRARY_CASE_RETRIEVE,
+    EXPERIENCE_COMPILE,
+    LIBRARY_FRAME_COMPOSE,
+    LIBRARY_FRAME_SWITCH,
+    POLICY_VERSION_CREATE,
+    POLICY_FITNESS_UPDATE,
+    GENOME_EVOLVE_START,
+    GENOME_EVOLVE_GENERATION,
+    GENOME_EVOLVE_END,
+    METACOG_EPISODE_OPEN,
+    METACOG_SCAN_BEGIN,
+    METACOG_SCAN_ISSUE,
+    METACOG_SCAN_END,
+    METACOG_TIER_SELECT,
+    METACOG_PROGRAM_COMPILE,
+    METACOG_OP_CONSIDER,
+    METACOG_OP_SELECT,
+    METACOG_OP_EXECUTE,
+    METACOG_OP_OUTCOME,
+    METACOG_BUDGET_DEBIT,
+    METACOG_BUDGET_EXHAUSTED,
+    METACOG_FORCE_DECIDE,
+    METACOG_STOP,
+    METACOG_TRACE_PERSIST,
+    METACOG_PROGRAM_LOWER,
+    METACOG_REPLAY,
+    DECISION_CORE_ANSWER,
+    DECISION_CORE_UNAVAILABLE,
+    DECISION_RULES_MATCH,
+    DECISION_HOSTED_CALL,
+    DECISION_ABSTAIN,
+    DECISION_LOG_WRITE,
+    RISK_ANALYZE,
+    COMPARE_CONTRACT_START,
+    COMPARE_CHECK,
+    COMPARE_NORMALIZE,
+    UNCERTAINTY_SCORE,
+    FACTUALITY_CHECK,
+    CALIBRATION_FIT,
+    CONFORMAL_ADJUST,
+    FIREWALL_SCAN_START,
+    FIREWALL_PROHIBITION_SHORTCIRCUIT,
+    FIREWALL_AGGREGATE,
+    FIREWALL_REPORT,
+    TOOL_REGISTRY_REGISTER,
+    TOOL_INVOKE_START,
+    TOOL_PERMISSION_CHECK,
+    TOOL_POLICY_FORBID,
+    TOOL_SANDBOX_START,
+    TOOL_SANDBOX_DENY,
+    TOOL_IDEMPOTENCY_HIT,
+    TOOL_INVOKE_END,
+    ACTION_LEDGER_APPEND,
+    ACTION_ROLLBACK_START,
+    ACTION_ROLLBACK_END,
+    OBSERVATION_RECORD,
+    VERIFY_RUN_START,
+    VERIFY_RUN_END,
+    VERIFY_OBLIGATION_FAILURE,
+    MCP_TOOLS_LIST,
+    MCP_TOOLS_CALL,
+    META_TRIGGER,
+    META_DIAGNOSE,
+    META_LESSON,
+    CALIB_REPORT,
+    MISTAKE_REGRESS,
+    CHANGESET_CREATE,
+    CHANGESET_STAGE,
+    SANDBOX_PREPARE,
+    SANDBOX_BUILD,
+    SANDBOX_TEST,
+    BENCH_RUN,
+    SHADOW_START,
+    GATE_DECIDE,
+    PROMOTE_COMMIT,
+    PROMOTE_REJECT,
+    ROLLBACK_APPLY,
+    BUDGET_DEBIT,
+    BUDGET_DENY,
+    PI_SPAWN,
+    PI_COMMAND,
+    PI_EVENT,
+    PI_SESSION_INGEST,
+    PI_EDIT,
+    COPY_INTEGRATE,
+    LOOP_RUN_START,
+    LOOP_RUN_END,
+    LOOP_ITERATION_START,
+    LOOP_ITERATION_END,
+    LOOP_BUDGET_DEBIT,
+    LOOP_BUDGET_DENY,
+    LOOP_STAGE_RESUME,
+    TIMESCALE_TICK,
+    SELF_MODEL_REPORT,
+    SELF_MODEL_DIVERGENCE,
+    DEBT_SCAN,
+    DEBT_FINDING,
+    GC_ACTION,
+    GC_REFUSE,
+    DESIGN_REVISION,
+    MODULE_LOAD,
+    MODULE_ROLLBACK,
+    INVARIANT_CHECK,
 ];
 
 /// True when `code` is a Phase 1 kernel code.

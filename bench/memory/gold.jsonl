@@ -1,0 +1,43 @@
+# Gold set for `mm-cli memory eval --gold bench/memory/gold.jsonl --k 5` (plan §7).
+#
+# One query per line. `relevant` lists the `ref` values from `episodes.jsonl`
+# whose memories should be retrieved; the eval maps a `ref` back to its memory
+# ULID with `mm_memory::model::ref_ulid`, so the file stays valid without a
+# lookup table.
+#
+# SIZING AND THE METRIC. Every `relevant` list here holds 2 or 3 refs, which is
+# deliberate: recall@5 is then achievable (all relevant items fit inside the top
+# five, and the retention/lexical channels keep unrelated topics out of the
+# result). The eval must therefore score
+#
+#   precision@k = |top_k ∩ relevant| / min(k, |relevant|)
+#   recall@k    = |top_k ∩ relevant| / |relevant|
+#
+# — precision *over the retrieved relevant pool*. Under the bare `|top_k ∩
+# relevant| / k` reading, a query with three relevant episodes could never exceed
+# 0.60, so no gold set with small relevant sets could clear the plan's 0.80 floor.
+# A query whose `relevant` is empty (the abstention line) contributes to neither
+# metric; it asserts that the corpus contains no answer at all, and the eval must
+# skip it rather than divide by zero.
+#
+# `category` follows LongMemEval/LoCoMo so a regression can be attributed to a
+# task type rather than to "retrieval got worse".
+
+# --- one query per topic, relevant = that topic's three refs
+
+{"query":"what fixed the workspace build","category":"multi_session","relevant":["ep-001","ep-002","ep-003"]}
+{"query":"when is the deploy window","category":"temporal","relevant":["ep-004","ep-005","ep-006"]}
+{"query":"what does the toolchain policy say about rust","category":"knowledge_update","relevant":["ep-007","ep-008","ep-009"]}
+{"query":"what is the fetch retry budget","category":"abstention","relevant":["ep-010","ep-011","ep-012"]}
+
+# --- a knowledge-update query: the two later episodes of the toolchain topic.
+# The superseded ep-007 is a legitimate near miss, which is why this query is the
+# tight one; it is measured against the two memories that describe the policy as
+# it now stands.
+
+{"query":"the toolchain policy pins rust for reproducibility and requires a recorded reason for every upgrade","category":"knowledge_update","relevant":["ep-008","ep-009"]}
+
+# --- an abstention query: nothing in the corpus answers it. An empty `relevant`
+# is the assertion, and the eval skips it for precision/recall.
+
+{"query":"jupiter probe telemetry latency nanoseconds","category":"abstention","relevant":[]}

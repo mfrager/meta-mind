@@ -1,0 +1,108 @@
+# Epistemic SHACL shapes (Phase 6).
+#
+# `mm-cli graph validate --graph epistemic` (and `--graph world`, which is
+# governed by the same shapes) must find zero violations on a clean graph and at
+# least one on a broken one.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard
+# error, so documentation lives in these comments rather than inside a shape.
+#
+# Four rules from the plan cannot be stated in this fragment and are enforced
+# elsewhere on purpose, which is stated here rather than silently dropped:
+#
+#   * "`/world` members are `OBSERVED|VERIFIED`" needs `sh:in`. Enforced by the
+#     `ValidationBarrier`, which is the only writer permitted to touch `/world`
+#     (plan §2), by `EpistemicStatus::is_world_admissible`, and by the
+#     world-separation test. The barrier never mirrors a claim into `/world`
+#     unless its status is one of those two.
+#   * "`mm:confidence` in `[0,1]`" needs `sh:minInclusive` / `sh:maxInclusive`.
+#     Enforced by the `claims` CHECK constraint (`confidence BETWEEN 0 AND 1`) and
+#     by `Claim::validate`.
+#   * "`mm:Dependency` is non-self-referential" needs a comparison between the
+#     subject and its object. Enforced by `Justification::new` and by
+#     `JustificationGraph::add`, which refuse a self-reference and a cycle; the
+#     justification test is the proof.
+#   * "a contradiction names two *different* claims" needs `sh:not` / a value
+#     comparison. The shape below requires exactly two `mm:contradicts` links;
+#     `ContradictionDetector` never emits a pair with the same claim twice.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# Every claim says what status it holds and how confident the being is — exactly
+# once each. A claim that cannot say where it stands is a claim nobody can act on.
+mm:ClaimShape a sh:NodeShape ;
+    sh:targetClass mm:Claim ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:status ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:confidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An assumption carries what it costs to be wrong: the consequence, the price of
+# checking, and how much a decision leans on it. An assumption missing any of these
+# is a risk the being cannot rank, which is the whole point of the ledger.
+mm:AssumptionShape a sh:NodeShape ;
+    sh:targetClass mm:Assumption ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:consequenceIfFalse ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:verificationCost ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:decisionDependence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A dependency is a justification edge. It always names the node it rests on, so a
+# retraction has something to follow; self-reference and cycles are refused when
+# the edge is added (`Justification::new`, `JustificationGraph::add`).
+mm:DependencyShape a sh:NodeShape ;
+    sh:targetClass mm:Dependency ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:dependsOn ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A contradiction keeps both sides: exactly two `mm:contradicts` links pointing at
+# the conflicting claims. A conflict with one side is not a record of a conflict,
+# it is an assertion.
+mm:ContradictionShape a sh:NodeShape ;
+    sh:targetClass mm:Contradiction ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:contradicts ;
+        sh:minCount 2 ;
+        sh:maxCount 2 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .

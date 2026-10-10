@@ -74,9 +74,7 @@ pub async fn forget_cycle(
         if !memory.is_active() {
             continue;
         }
-        let age = now
-            .as_nanos()
-            .saturating_sub(memory.recorded_at.as_nanos()) as u64;
+        let age = now.as_nanos().saturating_sub(memory.recorded_at.as_nanos()) as u64;
         let access_count = store.access_count(&memory.id).await?;
         let retention = retention_score(age, policy.half_life_ns, memory.importance, access_count);
         if !policy.dry_run {

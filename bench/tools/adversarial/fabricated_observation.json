@@ -1,0 +1,10 @@
+{
+  "id": "fabricated_observation",
+  "description": "An observation cannot be constructed without execution evidence, so a plan or a model has no path to a fact about the world. The refusal is at the constructor, before there is anything to admit to /world.",
+  "construct": "fabricated_observation",
+  "expect": {
+    "status": "refused",
+    "code": "observation.no_evidence",
+    "records": []
+  }
+}

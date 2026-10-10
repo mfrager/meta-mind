@@ -2,7 +2,7 @@
   "_comment": "Generated, committed. Regenerate with `mm-cli codex scan`; the file is deterministic, so an unchanged tree produces an unchanged file. Only `registry.json` and `codex.lock` are committed under `modules/`; the per-module `metadata.ttl` files are generated and git-ignored.",
   "schema": 2,
   "generated_by": "mm-cli codex scan",
-  "graph_hash": "57c7930bcbb857662b136a8c16b878e6a91e3e2ef4c5e62b75e578ec5b9d3789",
+  "graph_hash": "7646b38550a18243c8adad257fcef2ab7fc153f441162e944c7a8d5100fa7789",
   "modules": [
     {
       "name": "being",
@@ -20,6 +20,90 @@
         "being.personality",
         "being.relationships",
         "being.resources"
+      ]
+    },
+    {
+      "name": "calibration",
+      "uri": "https://metamind.dev/code/module/cognition/calibration",
+      "path": "modules/cognition/calibration",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 11,
+      "capability": "mm:CalibrationSummary",
+      "tbox_functions": [
+        "cognition.calibration_drift",
+        "cognition.calibration_summary"
+      ]
+    },
+    {
+      "name": "comparison-integrity",
+      "uri": "https://metamind.dev/code/module/cognition/comparison-integrity",
+      "path": "modules/cognition/comparison-integrity",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 9,
+      "capability": "mm:ComparisonIntegrity",
+      "tbox_functions": [
+        "cognition.compare_contract"
+      ]
+    },
+    {
+      "name": "frame-activate",
+      "uri": "https://metamind.dev/code/module/cognition/frame-activate",
+      "path": "modules/cognition/frame-activate",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 7,
+      "capability": "mm:FrameActivation",
+      "tbox_functions": [
+        "cognition.frame_compose",
+        "cognition.frame_missing",
+        "cognition.frame_switch"
+      ]
+    },
+    {
+      "name": "library-query",
+      "uri": "https://metamind.dev/code/module/cognition/library-query",
+      "path": "modules/cognition/library-query",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 7,
+      "capability": "mm:TechniqueSelection",
+      "tbox_functions": [
+        "cognition.case_retrieve",
+        "cognition.library_applicable",
+        "cognition.skill_retrieve"
+      ]
+    },
+    {
+      "name": "memory-recall",
+      "uri": "https://metamind.dev/code/module/cognition/memory-recall",
+      "path": "modules/cognition/memory-recall",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 5,
+      "capability": "mm:MemoryStore",
+      "tbox_functions": [
+        "memory.consolidate",
+        "memory.forget",
+        "memory.mistakes",
+        "memory.procedures",
+        "memory.recall",
+        "memory.remember",
+        "memory.summaries"
+      ]
+    },
+    {
+      "name": "metacog",
+      "uri": "https://metamind.dev/code/module/cognition/metacog",
+      "path": "modules/cognition/metacog",
+      "version": "0.1.0",
+      "category": "cognition",
+      "owned_by_phase": 8,
+      "capability": "mm:CognitiveControl",
+      "tbox_functions": [
+        "cognition.op_value",
+        "cognition.plan"
       ]
     },
     {
@@ -63,6 +147,26 @@
       "tbox_functions": []
     },
     {
+      "name": "mm-decision",
+      "uri": "https://metamind.dev/code/module/crates/mm-decision",
+      "path": "crates/mm-decision",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 9,
+      "capability": "mm:BoundedDecision",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-epistemic",
+      "uri": "https://metamind.dev/code/module/crates/mm-epistemic",
+      "path": "crates/mm-epistemic",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 6,
+      "capability": "mm:EpistemicStore",
+      "tbox_functions": []
+    },
+    {
       "name": "mm-eventlog",
       "uri": "https://metamind.dev/code/module/crates/mm-eventlog",
       "path": "crates/mm-eventlog",
@@ -70,6 +174,26 @@
       "category": null,
       "owned_by_phase": 1,
       "capability": "mm:MmEventlog",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-firewall",
+      "uri": "https://metamind.dev/code/module/crates/mm-firewall",
+      "path": "crates/mm-firewall",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 9,
+      "capability": "mm:SanityFirewall",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-library",
+      "uri": "https://metamind.dev/code/module/crates/mm-library",
+      "path": "crates/mm-library",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 7,
+      "capability": "mm:CognitiveLibrary",
       "tbox_functions": []
     },
     {
@@ -93,6 +217,66 @@
       "tbox_functions": []
     },
     {
+      "name": "mm-memory",
+      "uri": "https://metamind.dev/code/module/crates/mm-memory",
+      "path": "crates/mm-memory",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 5,
+      "capability": "mm:MemoryStore",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-metaanalysis",
+      "uri": "https://metamind.dev/code/module/crates/mm-metaanalysis",
+      "path": "crates/mm-metaanalysis",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 11,
+      "capability": "mm:PredictionCalibration",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-metacog",
+      "uri": "https://metamind.dev/code/module/crates/mm-metacog",
+      "path": "crates/mm-metacog",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 8,
+      "capability": "mm:CognitiveControl",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-mistakes",
+      "uri": "https://metamind.dev/code/module/crates/mm-mistakes",
+      "path": "crates/mm-mistakes",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 11,
+      "capability": "mm:MistakeRegression",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-pi",
+      "uri": "https://metamind.dev/code/module/crates/mm-pi",
+      "path": "crates/mm-pi",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 11,
+      "capability": "mm:PiCodeAgent",
+      "tbox_functions": []
+    },
+    {
+      "name": "mm-selfeng",
+      "uri": "https://metamind.dev/code/module/crates/mm-selfeng",
+      "path": "crates/mm-selfeng",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 11,
+      "capability": "mm:SelfEngineering",
+      "tbox_functions": []
+    },
+    {
       "name": "mm-store-graph",
       "uri": "https://metamind.dev/code/module/crates/mm-store-graph",
       "path": "crates/mm-store-graph",
@@ -111,6 +295,30 @@
       "owned_by_phase": 1,
       "capability": "mm:MmStoreSqlite",
       "tbox_functions": []
+    },
+    {
+      "name": "mm-tools",
+      "uri": "https://metamind.dev/code/module/crates/mm-tools",
+      "path": "crates/mm-tools",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 10,
+      "capability": "mm:ToolExecution",
+      "tbox_functions": []
+    },
+    {
+      "name": "epistemic-ops",
+      "uri": "https://metamind.dev/code/module/epistemic/epistemic-ops",
+      "path": "modules/epistemic/epistemic-ops",
+      "version": "0.1.0",
+      "category": "epistemic",
+      "owned_by_phase": 6,
+      "capability": "mm:EpistemicOps",
+      "tbox_functions": [
+        "epistemic.assume",
+        "epistemic.claim",
+        "epistemic.predict"
+      ]
     },
     {
       "name": "kernel-bootstrap",
@@ -132,6 +340,36 @@
       "category": null,
       "owned_by_phase": 1,
       "capability": "mm:MmE2e",
+      "tbox_functions": []
+    },
+    {
+      "name": "decision-ir",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/decision-ir",
+      "path": "vendor/rust_symbolic/decision-ir",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 9,
+      "capability": "mm:DecisionIr",
+      "tbox_functions": []
+    },
+    {
+      "name": "logic-ir",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/logic-ir",
+      "path": "vendor/rust_symbolic/logic-ir",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 9,
+      "capability": "mm:LogicIr",
+      "tbox_functions": []
+    },
+    {
+      "name": "logic-types",
+      "uri": "https://metamind.dev/code/module/vendor/rust_symbolic/logic-types",
+      "path": "vendor/rust_symbolic/logic-types",
+      "version": "0.1.0",
+      "category": null,
+      "owned_by_phase": 9,
+      "capability": "mm:LogicTypes",
       "tbox_functions": []
     },
     {

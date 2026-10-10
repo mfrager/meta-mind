@@ -1,0 +1,10 @@
+{
+  "trivial_max_ops": 4,
+  "hard_min_ops": 5,
+  "budget_dimensions": [
+    "ops",
+    "llm_calls",
+    "cost",
+    "wall_ms"
+  ]
+}

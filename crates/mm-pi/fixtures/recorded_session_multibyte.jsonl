@@ -1,0 +1,5 @@
+{"version":3,"sessionId":"01h0000000000000000000f200","model":"pi-test","cwd":"data/sandbox/01h0000000000000000000f200","startedAt":"2026-10-08T01:00:00.000000000Z"}
+{"id":"01h0000000000000000000f201","parentId":null,"at":"2026-10-08T01:00:01.000000000Z","kind":"message","text":"The operator pasted a report: first line\u2028line two\u2029paragraph break. Both separators are inside the string, so the decoding must turn them back into U+2028 and U+2029 rather than the framing splitting on them."}
+{"id":"01h0000000000000000000f202","parentId":"01h0000000000000000000f201","at":"2026-10-08T01:00:02.000000000Z","kind":"tool_call","tool":"read_file","path":"bench/calibration/reference.json","text":"read the reference metrics"}
+{"id":"01h0000000000000000000f203","parentId":"01h0000000000000000000f202","at":"2026-10-08T01:00:03.000000000Z","kind":"edit","path":"bench/calibration/README.md","text":"wrote a note quoting the report verbatim, separators and all: before\u2028after."}
+{"id":"01h0000000000000000000f204","parentId":"01h0000000000000000000f203","at":"2026-10-08T01:00:04.000000000Z","kind":"session_end","text":"done"}

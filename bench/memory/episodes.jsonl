@@ -1,0 +1,48 @@
+# Episode stream for `mm-cli memory consolidate --input bench/memory/episodes.jsonl`
+# and the corpus `mm-cli memory eval` ingests before grading (plan §7, §8).
+#
+# One JSON object per line; `#` lines are comments and are skipped by
+# `mm_memory::consolidate::read_episodes`.
+#
+# `ref` is the stable external reference. It is REQUIRED: the memory's ULID is
+# derived from it (`mm_memory::model::ref_ulid`), so the same file ingested twice
+# produces the same ids and the second run adds nothing. `topic` is the
+# consolidation key — episodes sharing a topic are folded into one semantic
+# memory — and `entities` are shared within a topic so the entity graph has edges
+# to walk. The `rust` entity appears in two topics on purpose: it is the bridge
+# the graph channel uses to reach a memory that shares no query words.
+#
+# Categories follow LongMemEval/LoCoMo: multi_session (recall across sessions),
+# temporal (when something held), knowledge_update (a fact that changed), and
+# abstention (what cannot be answered).
+#
+# All twelve `valid_from` instants are recent, so none of these episodes falls
+# below `thresholds.toml`'s retention floor on the day the gate runs.
+
+# --- topic rust-build / category multi_session (ep-001 .. ep-003)
+
+{"ref":"ep-001","kind":"episodic","topic":"rust-build","content":"pinning the toolchain to 1.96.1 fixed the workspace build","confidence":0.9,"importance":0.7,"entities":["rust","rust-toolchain","workspace-build"],"category":"multi_session","valid_from":"2026-09-28T09:00:00Z"}
+{"ref":"ep-002","kind":"episodic","topic":"rust-build","content":"the workspace build broke after the linker upgrade so the linker was reverted","confidence":0.85,"importance":0.65,"entities":["workspace-build","linker"],"category":"multi_session","valid_from":"2026-09-29T11:30:00Z"}
+{"ref":"ep-003","kind":"episodic","topic":"rust-build","content":"incremental compilation stopped rebuilding the workspace after the build cache was cleared","confidence":0.8,"importance":0.6,"entities":["workspace-build","build-cache"],"category":"multi_session","valid_from":"2026-09-30T14:15:00Z"}
+
+# --- topic deploy-schedule / category temporal (ep-004 .. ep-006)
+
+{"ref":"ep-004","kind":"episodic","topic":"deploy-schedule","content":"the friday deploy window moved to thursday after the outage","confidence":0.9,"importance":0.75,"entities":["deploy-window","outage"],"category":"temporal","valid_from":"2026-10-01T08:45:00Z"}
+{"ref":"ep-005","kind":"episodic","topic":"deploy-schedule","content":"the deploy window is frozen during the holiday period every december","confidence":0.85,"importance":0.6,"entities":["deploy-window","holiday-freeze"],"category":"temporal","valid_from":"2026-10-02T16:20:00Z"}
+{"ref":"ep-006","kind":"episodic","topic":"deploy-schedule","content":"the deploy window is now tuesday morning after the schedule review","confidence":0.9,"importance":0.7,"entities":["deploy-window","schedule-review"],"category":"temporal","valid_from":"2026-10-03T10:05:00Z"}
+
+# --- topic toolchain-policy / category knowledge_update (ep-007 .. ep-009)
+# ep-007 states the old policy and ep-008 replaces it. Both are real traces: the
+# consolidation keeps the lineage rather than editing the earlier one.
+
+{"ref":"ep-007","kind":"episodic","topic":"toolchain-policy","content":"the toolchain policy allows any stable rust release for the workspace","confidence":0.7,"importance":0.55,"entities":["rust","toolchain-policy"],"category":"knowledge_update","valid_from":"2026-10-03T09:00:00Z"}
+{"ref":"ep-008","kind":"episodic","topic":"toolchain-policy","content":"the toolchain policy now pins rust to exactly 1.96.1 for reproducibility","confidence":0.95,"importance":0.85,"entities":["rust","toolchain-policy"],"category":"knowledge_update","valid_from":"2026-10-05T13:40:00Z"}
+{"ref":"ep-009","kind":"episodic","topic":"toolchain-policy","content":"the toolchain policy requires a recorded reason for every rust upgrade","confidence":0.9,"importance":0.8,"entities":["rust","toolchain-policy"],"category":"knowledge_update","valid_from":"2026-10-06T15:10:00Z"}
+
+# --- topic fetch-uncertainty / category abstention (ep-010 .. ep-012)
+# The being knows that it does not know. These are the traces that make an
+# abstention answer grounded rather than a refusal.
+
+{"ref":"ep-010","kind":"episodic","topic":"fetch-uncertainty","content":"the fetch retry budget is unknown because the network metrics were never collected","confidence":0.8,"importance":0.6,"entities":["fetch-retry","network-metrics"],"category":"abstention","valid_from":"2026-10-06T17:25:00Z"}
+{"ref":"ep-011","kind":"episodic","topic":"fetch-uncertainty","content":"the fetch retry budget remains unmeasured so any number would be invented","confidence":0.8,"importance":0.6,"entities":["fetch-retry","network-metrics"],"category":"abstention","valid_from":"2026-10-07T09:35:00Z"}
+{"ref":"ep-012","kind":"episodic","topic":"fetch-uncertainty","content":"the fetch retry budget cannot be stated without network metrics","confidence":0.85,"importance":0.65,"entities":["fetch-retry","network-metrics"],"category":"abstention","valid_from":"2026-10-07T18:50:00Z"}

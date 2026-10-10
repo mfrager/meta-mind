@@ -1,0 +1,103 @@
+{
+  "difficulty": "hard",
+  "episode": {
+    "id": "01h00000000000000000000007",
+    "goal": "01h00000000000000000000008",
+    "context": {
+      "summary": "decide the rolling-upgrade order for a stateful cluster",
+      "novelty": 0.85,
+      "time_pressure": 0.1
+    },
+    "claims": [
+      "01h00000000000000000000009"
+    ],
+    "assumptions": [
+      "01h00000000000000000000010"
+    ],
+    "uncertainties": [
+      "the new version can read the old format",
+      "the rollback path works",
+      "the quorum tolerates one node down"
+    ],
+    "constraints": [
+      "no lost quorum"
+    ],
+    "active_frames": [
+      "https://metamind.dev/library/frame/systems_change"
+    ],
+    "active_doctrines": [],
+    "active_techniques": [
+      "https://metamind.dev/library/technique/sequence-irreversible-steps"
+    ],
+    "candidates": [
+      "upgrade the replicas first",
+      "upgrade the primary first"
+    ],
+    "evidence": [
+      "the compatibility matrix"
+    ],
+    "risks": [],
+    "decision": null,
+    "budget": {
+      "max_ops": 24,
+      "max_llm_calls": 12,
+      "max_cost": 8.0,
+      "max_wall_ms": 300000,
+      "spent_ops": 0,
+      "spent_llm_calls": 0,
+      "spent_cost": 0.0,
+      "spent_wall_ms": 0
+    },
+    "tier": "T0",
+    "timescale": "minutes"
+  },
+  "scan": {
+    "issues": [
+      {
+        "kind": "irreversible",
+        "materiality": 0.85,
+        "target": "upgrade the primary first"
+      },
+      {
+        "kind": "missing_evidence",
+        "materiality": 0.6,
+        "target": "upgrade the replicas first"
+      }
+    ],
+    "uncertainties": [
+      {
+        "id": "u1",
+        "description": "whether the rollback path was ever exercised",
+        "magnitude": 0.75
+      },
+      {
+        "id": "u2",
+        "description": "whether a mixed-version quorum elects",
+        "magnitude": 0.7
+      },
+      {
+        "id": "u3",
+        "description": "whether the new version writes the old format",
+        "magnitude": 0.9
+      }
+    ],
+    "comparison_requirements": [
+      {
+        "subject": "upgrade the replicas first",
+        "versus": "upgrade the primary first",
+        "criterion": "reversibility"
+      }
+    ],
+    "failure_modes": [
+      {
+        "mode": "the primary is upgraded before the format is understood",
+        "likelihood": 0.3,
+        "impact": 0.9
+      }
+    ],
+    "simpler_alternatives": [],
+    "stakes": 0.9,
+    "irreversibility": 0.5,
+    "verification_value": 0.85
+  }
+}

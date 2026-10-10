@@ -1,0 +1,144 @@
+{
+  "cases": [
+    {
+      "name": "variance_of_reference_distribution",
+      "capital": 50.0,
+      "reversibility": 0.25,
+      "optionality": 0.75,
+      "measure": {
+        "kind": "variance"
+      },
+      "outcomes": [
+        {
+          "name": "total loss",
+          "probability": 0.1,
+          "loss": 100.0
+        },
+        {
+          "name": "partial loss",
+          "probability": 0.3,
+          "loss": 20.0
+        },
+        {
+          "name": "no loss",
+          "probability": 0.6,
+          "loss": 0.0
+        }
+      ],
+      "expected": {
+        "expected_loss": 16.0,
+        "max_loss": 100.0,
+        "tail_probability": 0.1,
+        "ruin_probability": 0.1,
+        "variance": 864.0,
+        "downside_asymmetry": 14.259783290468555,
+        "reversibility": 0.25,
+        "optionality": 0.75,
+        "measure_value": 864.0
+      }
+    },
+    {
+      "name": "value_at_risk_at_80",
+      "capital": 50.0,
+      "reversibility": 0.25,
+      "optionality": 0.75,
+      "measure": {
+        "kind": "var",
+        "alpha": 0.8
+      },
+      "outcomes": [
+        {
+          "name": "total loss",
+          "probability": 0.1,
+          "loss": 100.0
+        },
+        {
+          "name": "partial loss",
+          "probability": 0.3,
+          "loss": 20.0
+        },
+        {
+          "name": "no loss",
+          "probability": 0.6,
+          "loss": 0.0
+        }
+      ],
+      "expected": {
+        "expected_loss": 16.0,
+        "max_loss": 100.0,
+        "tail_probability": 0.4,
+        "ruin_probability": 0.1,
+        "variance": 864.0,
+        "downside_asymmetry": 14.259783290468555,
+        "reversibility": 0.25,
+        "optionality": 0.75,
+        "measure_value": 20.0
+      }
+    },
+    {
+      "name": "conditional_value_at_risk_at_80",
+      "capital": 50.0,
+      "reversibility": 0.25,
+      "optionality": 0.75,
+      "measure": {
+        "kind": "cvar",
+        "alpha": 0.8
+      },
+      "outcomes": [
+        {
+          "name": "total loss",
+          "probability": 0.1,
+          "loss": 100.0
+        },
+        {
+          "name": "partial loss",
+          "probability": 0.3,
+          "loss": 20.0
+        },
+        {
+          "name": "no loss",
+          "probability": 0.6,
+          "loss": 0.0
+        }
+      ],
+      "expected": {
+        "expected_loss": 16.0,
+        "max_loss": 100.0,
+        "tail_probability": 0.4,
+        "ruin_probability": 0.1,
+        "variance": 864.0,
+        "downside_asymmetry": 14.259783290468555,
+        "reversibility": 0.25,
+        "optionality": 0.75,
+        "measure_value": 60.0
+      }
+    },
+    {
+      "name": "single_outcome_no_dispersion",
+      "capital": 1000000000.0,
+      "reversibility": 0.5,
+      "optionality": 0.5,
+      "measure": {
+        "kind": "variance"
+      },
+      "outcomes": [
+        {
+          "name": "only",
+          "probability": 1.0,
+          "loss": 1.0
+        }
+      ],
+      "expected": {
+        "expected_loss": 1.0,
+        "max_loss": 1.0,
+        "tail_probability": 1.0,
+        "ruin_probability": 0.0,
+        "variance": 0.0,
+        "downside_asymmetry": 0.0,
+        "reversibility": 0.5,
+        "optionality": 0.5,
+        "measure_value": 0.0
+      }
+    }
+  ]
+}

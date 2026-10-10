@@ -1,0 +1,40 @@
+[package]
+name = "mm-decision"
+description = "Metamind bounded decisions: typed decision questions, three interchangeable decision cores, deterministic risk measures, comparison integrity, uncertainty scoring, calibration and conformal abstention"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 9
+capability = "mm:BoundedDecision"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+# The hosted core is one strict `StructuredOut` call, so it programs against the
+# substrate rather than against a provider, exactly like the metacog scan.
+mm-llm = { workspace = true }
+# The Phase 6 outcome and claim types are the only ones in the system, so a
+# decision about an outcome carries that type rather than a parallel one.
+mm-epistemic = { workspace = true }
+# Risk measures come from the copied-in `decision-ir` engine; no `decision-ir`
+# type appears in this crate's public surface.
+decision-ir = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+toml = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+mm-store-sqlite = { workspace = true }

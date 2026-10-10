@@ -1,0 +1,178 @@
+# Phase 7 T-Box: the cognitive library.
+#
+# The whole point of this file is that a *technique* is a first-class named thing
+# with a purpose, the conditions under which it applies, and the conditions under
+# which it does not — rather than a paragraph in a prompt. Phase 7 stores these;
+# Phase 8 selects them.
+#
+# It shares the `mm:` namespace with `mm.ttl` and only adds classes and
+# properties, so loading it cannot change an existing graph's meaning. It is a
+# T-Box only: it asserts nothing about instances.
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+
+# ------------------------------------------------------------------- entries ----
+# One root class, because everything here answers the same question: "is this a
+# reusable way of thinking I can name, version, justify and select?" The kinds
+# below are the answers to "what sort of way of thinking".
+
+mm:LibraryEntry a owl:Class ;
+    rdfs:label "Library entry" ;
+    rdfs:comment "A named, versioned, reusable entry in the cognitive library." .
+
+mm:Doctrine a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Doctrine" ; rdfs:comment "A general commitment about how to think." .
+mm:Principle a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Principle" ; rdfs:comment "A rule that constrains method." .
+mm:Heuristic a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Heuristic" ; rdfs:comment "A cheap rule of thumb that usually helps." .
+mm:Technique a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Technique" ; rdfs:comment "A procedure for a kind of problem." .
+mm:Pattern a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Pattern" ; rdfs:comment "A recurring shape of solution." .
+mm:Case a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Case" ; rdfs:comment "A remembered instance: problem, solution, outcome." .
+mm:AntiPattern a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Anti-pattern" ; rdfs:comment "A recurring shape of failure, with its corrective rule." .
+mm:Skill a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Skill" ; rdfs:comment "An executable procedure, verified by a test." .
+mm:Policy a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Policy" ; rdfs:comment "A behavioural rule with a scope, activation and fitness." .
+mm:Frame a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Frame" ; rdfs:comment "A conceptual frame: roles, slots, affordances, scripts." .
+mm:FrameInstance a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Frame instance" ; rdfs:comment "A frame filled in for one episode." .
+mm:Evaluation a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Evaluation" ; rdfs:comment "A way of judging a result." .
+mm:Insight a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Insight" ; rdfs:comment "A lesson distilled from trajectories, with votes." .
+mm:Workflow a owl:Class ; rdfs:subClassOf mm:LibraryEntry ;
+    rdfs:label "Workflow" ; rdfs:comment "A procedure induced from a trajectory." .
+
+# --------------------------------------------------------------- core relations --
+# The four that make an entry *selectable* rather than merely stored. A technique
+# that cannot say when it applies, when it does not, and what backs it is not a
+# technique; it is a slogan. The shapes require each of them for the kinds that
+# need it, and nothing here defaults.
+
+mm:applicableWhen a owl:ObjectProperty ;
+    rdfs:label "applicable when" ;
+    rdfs:comment "A condition under which the entry applies." .
+mm:inapplicableWhen a owl:ObjectProperty ;
+    rdfs:label "inapplicable when" ;
+    rdfs:comment "A condition under which the entry does not apply." .
+mm:contraindication a owl:ObjectProperty ;
+    rdfs:label "contraindication" ;
+    rdfs:comment "A situation in which applying the entry would be harmful." .
+mm:evidence a owl:ObjectProperty ;
+    rdfs:label "evidence" ;
+    rdfs:comment "Something that backs the entry." .
+mm:derivedFrom a owl:ObjectProperty ;
+    rdfs:label "derived from" ;
+    rdfs:comment "The entry, case or trajectory this was distilled from." .
+mm:derivedFromTrajectory a owl:ObjectProperty ;
+    rdfs:label "derived from trajectory" .
+mm:example a owl:ObjectProperty ; rdfs:label "example" ;
+    rdfs:comment "A case that illustrates the entry." .
+mm:counterexample a owl:ObjectProperty ; rdfs:label "counterexample" .
+mm:correctiveRule a owl:ObjectProperty ;
+    rdfs:label "corrective rule" ;
+    rdfs:comment "For an anti-pattern: what to do instead." .
+mm:improves a owl:ObjectProperty ; rdfs:label "improves" .
+mm:replaces a owl:ObjectProperty ; rdfs:label "replaces" .
+mm:testedBy a owl:ObjectProperty ;
+    rdfs:label "tested by" ;
+    rdfs:comment "For a skill: the test that decides verification." .
+mm:verifies a owl:ObjectProperty ; rdfs:label "verifies" .
+mm:implements a owl:ObjectProperty ; rdfs:label "implements" .
+mm:correspondsTo a owl:ObjectProperty ;
+    rdfs:label "corresponds to" ;
+    rdfs:comment "A structure-mapped correspondence between two cases." .
+
+# ------------------------------------------------------------------ policies ----
+
+mm:activationCondition a owl:ObjectProperty ;
+    rdfs:label "activation condition" ;
+    rdfs:comment "When a policy becomes relevant." .
+mm:behavior a owl:ObjectProperty ;
+    rdfs:label "behavior" ;
+    rdfs:comment "A typed DSL fragment, not free prose." .
+mm:fitness a owl:ObjectProperty ; rdfs:label "fitness" .
+mm:parentPolicy a owl:ObjectProperty ;
+    rdfs:label "parent policy" ;
+    rdfs:comment "The version this one descends from; absent only for version 1." .
+mm:parentFrame a owl:ObjectProperty ; rdfs:label "parent frame" .
+mm:generation a owl:ObjectProperty ; rdfs:label "generation" .
+
+# -------------------------------------------------------------------- frames ----
+
+mm:frameSlot a owl:ObjectProperty ;
+    rdfs:label "frame slot" ;
+    rdfs:comment "A slot a frame expects to be filled." .
+mm:role a owl:ObjectProperty ; rdfs:label "role" ;
+    rdfs:comment "A participant a frame expects to find." .
+mm:affordance a owl:ObjectProperty ; rdfs:label "affordance" .
+mm:typicalAction a owl:ObjectProperty ; rdfs:label "typical action" .
+mm:failureMode a owl:ObjectProperty ; rdfs:label "failure mode" .
+mm:scriptStep a owl:ObjectProperty ;
+    rdfs:label "script step" ;
+    rdfs:comment "One step of a script, in order." .
+
+# --------------------------------------------------------------------- cases ----
+
+mm:problem a owl:ObjectProperty ; rdfs:label "problem" .
+mm:solution a owl:ObjectProperty ; rdfs:label "solution" .
+mm:outcome a owl:ObjectProperty ; rdfs:label "outcome" .
+mm:outcomeQuality a owl:DatatypeProperty ;
+    rdfs:label "outcome quality" ;
+    rdfs:comment "How good the outcome was, in [0,1]." .
+mm:transferability a owl:DatatypeProperty ;
+    rdfs:label "transferability" ;
+    rdfs:comment "How far the case reaches beyond itself, in [0,1]." .
+mm:evidenceQuality a owl:DatatypeProperty ;
+    rdfs:label "evidence quality" ;
+    rdfs:comment "How well evidenced the case is, in [0,1]." .
+
+# ---------------------------------------------------------------- insights ----
+
+mm:upvotes a owl:DatatypeProperty ; rdfs:label "upvotes" .
+mm:downvotes a owl:DatatypeProperty ; rdfs:label "downvotes" .
+
+# --------------------------------------------------------------- datatypes ----
+
+mm:title a owl:DatatypeProperty ; rdfs:label "title" .
+mm:purpose a owl:DatatypeProperty ; rdfs:label "purpose" .
+mm:version a owl:DatatypeProperty ; rdfs:label "version" .
+mm:scope a owl:DatatypeProperty ; rdfs:label "scope" .
+mm:strength a owl:DatatypeProperty ; rdfs:label "strength" .
+mm:domain a owl:DatatypeProperty ; rdfs:label "domain" .
+mm:domainFitness a owl:DatatypeProperty ;
+    rdfs:label "domain fitness" ;
+    rdfs:comment "Per-domain fitness, written `domain=score`; how well the entry has worked where." .
+mm:confidence a owl:DatatypeProperty ; rdfs:label "confidence" .
+mm:activationScore a owl:DatatypeProperty ;
+    rdfs:label "activation score" ;
+    rdfs:comment "ACT-R-style blend of recency, frequency and utility." .
+mm:verification a owl:DatatypeProperty ;
+    rdfs:label "verification" ;
+    rdfs:comment "One of draft, verified, failing." .
+mm:implRef a owl:DatatypeProperty ;
+    rdfs:label "implementation reference" ;
+    rdfs:comment "Content-addressed artefact under data/library/skills/." .
+mm:entrypoint a owl:DatatypeProperty ; rdfs:label "entrypoint" .
+mm:signature a owl:DatatypeProperty ; rdfs:label "signature" .
+
+# ---------------------------------------------------------------- individuals --
+
+mm:unknownSource a owl:NamedIndividual ;
+    rdfs:label "unknown source" ;
+    rdfs:comment "Where an entry points when its backing is not itself an entry." .
+mm:Open a owl:NamedIndividual ; rdfs:label "open" .
+mm:Closed a owl:NamedIndividual ; rdfs:label "closed" .
+mm:HighStakes a owl:NamedIndividual ; rdfs:label "high stakes" .
+mm:LowStakes a owl:NamedIndividual ; rdfs:label "low stakes" .

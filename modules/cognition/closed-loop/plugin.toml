@@ -1,0 +1,34 @@
+# Metamind module manifest.
+#
+# The `uri` is stable and path-derived: it follows this module's position in the
+# repository, so moving the directory is the only thing that changes it and no other
+# module may reuse the value.
+#
+# The `name` is the directory name, as it is for every other module in the tree.
+#
+# This module is Phase 12's own: the closed developmental loop, whose controller lives in
+# `mm-runtime`. It is the module the qualification run hot-loads, and the shape is
+# deliberately the one every other module has — a loop that registered itself some other
+# way would not be discoverable by `mm-cli codex scan`, and "the loop is a module like any
+# other" would be an assertion rather than a fact.
+
+[plugin]
+name = "closed-loop"
+uri = "https://metamind.dev/code/module/cognition/closed-loop"
+version = "0.1.0"
+
+[metadata]
+category = "cognition"
+owned_by_phase = 12
+capability = "mm:ClosedLoopAutonomy"
+
+[tbox.functions]
+"cognition.loop_status" = { source = "handlers::loop_status" }
+"cognition.loop_stage_order" = { source = "handlers::loop_stage_order" }
+
+[monad.operations]
+name = "cognition"
+arity = 1
+
+[build]
+rust_edition = "2021"

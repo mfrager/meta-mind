@@ -27,12 +27,37 @@ mm-store-graph = { workspace = true }
 mm-eventlog = { workspace = true }
 mm-llm = { workspace = true }
 mm-being = { workspace = true }
+mm-memory = { workspace = true }
+mm-epistemic = { workspace = true }
+mm-library = { workspace = true }
+mm-metacog = { workspace = true }
+mm-decision = { workspace = true }
+mm-firewall = { workspace = true }
+mm-tools = { workspace = true }
+# Phase 11's four organs, driven through the same entry points the loop uses: the
+# prediction ledger and calibration, the mistake compiler, the promotion pipeline, and
+# the Pi session ingester.
+mm-metaanalysis = { workspace = true }
+mm-mistakes = { workspace = true }
+mm-selfeng = { workspace = true }
+mm-pi = { workspace = true }
+# Phase 12's autonomy layer, driven through the same controller the `mm-loop` background
+# process runs: `loop`, `self-model`, `debt`, `gc`, `module` and `design` are all reads or
+# writes of the tables `0012_loop.sql` declares, and none of them re-implements a stage.
+mm-runtime = { workspace = true }
 clap = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
+# `action show` reads the `tool_calls` and `observed_payloads` projections through the
+# same pool `mm-store-sqlite` hands out, the way `mm-eventlog` and `mm-being` do.
+sqlx = { workspace = true }
+# `memory eval` grades against a throwaway store, so it needs a temporary
+# directory in normal operation, not only under test.
+tempfile = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

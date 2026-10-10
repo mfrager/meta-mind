@@ -81,6 +81,7 @@ async fn logs_verify_passes_and_reports_every_check() {
         "replay determinism",
         "llm accounting",
         "being correlation",
+        "memory correlation",
     ] {
         assert!(out.contains(check), "missing check {check:?} in:\n{out}");
     }

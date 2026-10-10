@@ -5,7 +5,7 @@
 # `codex verify`. Regenerate it with `mm-cli codex lock` after an
 # intentional change, and review the diff as part of the change.
 schema = 1
-graph_hash = "57c7930bcbb857662b136a8c16b878e6a91e3e2ef4c5e62b75e578ec5b9d3789"
+graph_hash = "b62c7441c0b64fcfd405fa5e15cafed30c451668cac21ddb115810402db60e9c"
 
 [[module]]
 uri = "https://metamind.dev/code/module/cognition/being"
@@ -15,17 +15,66 @@ content_hash = "539bd2b3637a44a10ff79c8518c93b42566fb154789d93416f2e941a761ca3da
 capabilities = ["mm:BeingState"]
 
 [[module]]
+uri = "https://metamind.dev/code/module/cognition/calibration"
+path = "modules/cognition/calibration"
+version = "0.1.0"
+content_hash = "8ce1d343b23240e86038e99cd56d887d79ec92cbefd13862988ff8cb3f6125ca"
+capabilities = ["mm:CalibrationSummary"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/closed-loop"
+path = "modules/cognition/closed-loop"
+version = "0.1.0"
+content_hash = "6dce2c8d2ed1eefb1e350cbf54f458904aa58c17c0ff97e8856ba59acf09bfb4"
+capabilities = ["mm:ClosedLoopAutonomy"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/comparison-integrity"
+path = "modules/cognition/comparison-integrity"
+version = "0.1.0"
+content_hash = "21d964268dfd9bc13a0741536821c8ad157f32560374a1e581804860ecf3f934"
+capabilities = ["mm:ComparisonIntegrity"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/frame-activate"
+path = "modules/cognition/frame-activate"
+version = "0.1.0"
+content_hash = "27e7de0153a34cdd6f063cebe2c92c15b72baffbe2bae4feef2ca5ec345c77fa"
+capabilities = ["mm:FrameActivation"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/library-query"
+path = "modules/cognition/library-query"
+version = "0.1.0"
+content_hash = "00d0bcfd3e686b0f824e790bbf532440a88e58de4109a4529623ce0075327ea9"
+capabilities = ["mm:TechniqueSelection"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/memory-recall"
+path = "modules/cognition/memory-recall"
+version = "0.1.0"
+content_hash = "faa9769430b0c455d69df31a6df7619b724f03a870224e38fba8da4a53afd727"
+capabilities = ["mm:MemoryStore"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/cognition/metacog"
+path = "modules/cognition/metacog"
+version = "0.1.0"
+content_hash = "98e24fb257f5afbe7bf8347d0ec03eba3a28a6dfbf4b63c306eb96cf2ede1ef3"
+capabilities = ["mm:CognitiveControl"]
+
+[[module]]
 uri = "https://metamind.dev/code/module/crates/mm-being"
 path = "crates/mm-being"
 version = "0.1.0"
-content_hash = "199df3ff1ca43327efae8f9f0965613a849c1722c528cf0442f3e28c62fd6966"
+content_hash = "992c378ef04de141fab5a3ef999e28973df8efc699ce8f5ab6bee77eed778d1b"
 capabilities = ["mm:BeingState"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/crates/mm-cli"
 path = "crates/mm-cli"
 version = "0.1.0"
-content_hash = "9c494efc6a61afcca7f10ccdd9c52be5b7b10c4e1f312c08a371142891d47134"
+content_hash = "e2ff6c7f81e9d48240b6ca98070364437afeb49c9430e366b333722b83a4012b"
 capabilities = ["mm:MmCli"]
 
 [[module]]
@@ -39,8 +88,22 @@ capabilities = ["mm:MmCodex"]
 uri = "https://metamind.dev/code/module/crates/mm-core"
 path = "crates/mm-core"
 version = "0.1.0"
-content_hash = "43728db71642cf4cd4fafbe9894176016c123c1e0130b6aea95ce61a650bca4a"
+content_hash = "7f2cf1df4c726017e306a3e3435986bf9142df47b4fc704cfaf9a03f4913c7af"
 capabilities = ["mm:MmCore"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-decision"
+path = "crates/mm-decision"
+version = "0.1.0"
+content_hash = "d7da0755a2e337607b6cfe20caae5933b493cb30a52a40e99637796bdab0a2fb"
+capabilities = ["mm:BoundedDecision"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-epistemic"
+path = "crates/mm-epistemic"
+version = "0.1.0"
+content_hash = "66d44549f30fd2d126501a1d757794b993b3c31fb4cbf581151bdff479cad169"
+capabilities = ["mm:EpistemicStore"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/crates/mm-eventlog"
@@ -48,6 +111,20 @@ path = "crates/mm-eventlog"
 version = "0.1.0"
 content_hash = "e8ec8e520433b8f8df4d982a326b6e274c385ceafddf798fe7549b3d1d21f33d"
 capabilities = ["mm:MmEventlog"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-firewall"
+path = "crates/mm-firewall"
+version = "0.1.0"
+content_hash = "5167ba6fd804e9cad7a373c60b103d519342abbb322679554323d63a8d31a2ed"
+capabilities = ["mm:SanityFirewall"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-library"
+path = "crates/mm-library"
+version = "0.1.0"
+content_hash = "da65abe6cf14a2ced3c6a4cebecb4a38ebe0cf1cc116bbc0480af32088785af7"
+capabilities = ["mm:CognitiveLibrary"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/crates/mm-llm"
@@ -60,22 +137,85 @@ capabilities = ["mm:MmLlm"]
 uri = "https://metamind.dev/code/module/crates/mm-log"
 path = "crates/mm-log"
 version = "0.1.0"
-content_hash = "569535ada76016e48f70cf1b5b6f726de1d8e7d03377d9d93937de60d8fd98d4"
+content_hash = "65a596c62c693385f5f5f3e0f156e4c91f96658cad21e3c5ea3db8e3af997688"
 capabilities = ["mm:MmLog"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-memory"
+path = "crates/mm-memory"
+version = "0.1.0"
+content_hash = "bb394f347da9c4421b5292cd3b48f08ab2a963f895fb43668aeb6688d7d092a4"
+capabilities = ["mm:MemoryStore"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-metaanalysis"
+path = "crates/mm-metaanalysis"
+version = "0.1.0"
+content_hash = "d31542ee674657110ae18aaa7ce48861b95cca78b81a9c1baea3369d0079021d"
+capabilities = ["mm:PredictionCalibration"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-metacog"
+path = "crates/mm-metacog"
+version = "0.1.0"
+content_hash = "8da15a9d0862c71941eedf12420f90c3f3a23bfc2a84c282a98016e57917c381"
+capabilities = ["mm:CognitiveControl"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-mistakes"
+path = "crates/mm-mistakes"
+version = "0.1.0"
+content_hash = "08e4f8fc165019067e7cd6eddc6364f4dcba6da33415d44e78cff87f599efe80"
+capabilities = ["mm:MistakeRegression"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-pi"
+path = "crates/mm-pi"
+version = "0.1.0"
+content_hash = "c86ad9eb5bc5676f2ca4da24740188c7986cd3400ed1bb012c81e83ffa26fd21"
+capabilities = ["mm:PiCodeAgent"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-runtime"
+path = "crates/mm-runtime"
+version = "0.1.0"
+content_hash = "c60e67bc5f7239389827250e4e15115842c04e6ab28f71eb42f7682e3665d193"
+capabilities = ["mm:Autonomy"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-selfeng"
+path = "crates/mm-selfeng"
+version = "0.1.0"
+content_hash = "082420fbef35722027e8cae662e6bb05b50a4a33b7e3d005b6b699b3a8bb4209"
+capabilities = ["mm:SelfEngineering"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/crates/mm-store-graph"
 path = "crates/mm-store-graph"
 version = "0.1.0"
-content_hash = "d90fcb50975a3743da0ce6e1c6adfcca185919e3ef833fff5d7d431df2666529"
+content_hash = "b9f3ecb4ed898793fa04becf1c1c25f6477aba713c87e483e8d90a2e0a92553d"
 capabilities = ["mm:MmStoreGraph"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/crates/mm-store-sqlite"
 path = "crates/mm-store-sqlite"
 version = "0.1.0"
-content_hash = "3f39541cf899832ee265d5b7f39fe5c5fb4a097db02d7e9aac29cf424e8a5b9e"
+content_hash = "6d31a7abe476758a008a65b9bfaac9825ab217956ff2e6e177f5560071ebf2ba"
 capabilities = ["mm:MmStoreSqlite"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/crates/mm-tools"
+path = "crates/mm-tools"
+version = "0.1.0"
+content_hash = "8ee86abe1dee7a9ddbed7621ff3e8326ae3989c7f5876560250349ce28ce49e8"
+capabilities = ["mm:ToolExecution"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/epistemic/epistemic-ops"
+path = "modules/epistemic/epistemic-ops"
+version = "0.1.0"
+content_hash = "610b00ed439bef4f861c0a2c555a48f36583e2a156e0e0e55077aee7d0d4bfbc"
+capabilities = ["mm:EpistemicOps"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/system/kernel-bootstrap"
@@ -88,8 +228,29 @@ capabilities = ["mm:KernelBootstrap"]
 uri = "https://metamind.dev/code/module/tests/e2e"
 path = "tests/e2e"
 version = "0.1.0"
-content_hash = "a0f47dc1c0c9dfd9b004c4be96b5f3a17b1e289ede313dddead692a2aed8112d"
+content_hash = "e4296715514f371bb386f24a60532bb5dfe190f6fa3a1cbb2a4a7369d55fc74a"
 capabilities = ["mm:MmE2e"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/vendor/rust_symbolic/decision-ir"
+path = "vendor/rust_symbolic/decision-ir"
+version = "0.1.0"
+content_hash = "e5997944d82a25919796abef997a31d0c4739c663418d93dd69208d65617e5ec"
+capabilities = ["mm:DecisionIr"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/vendor/rust_symbolic/logic-ir"
+path = "vendor/rust_symbolic/logic-ir"
+version = "0.1.0"
+content_hash = "3dc5ebf7f3ab3eae7d2d118702ebb8779f4ab4608224bbb14c6d6dbca609081a"
+capabilities = ["mm:LogicIr"]
+
+[[module]]
+uri = "https://metamind.dev/code/module/vendor/rust_symbolic/logic-types"
+path = "vendor/rust_symbolic/logic-types"
+version = "0.1.0"
+content_hash = "f34490490045a51a63fb9731f144a9183401b3bb1dbd8344c7d41420efb9cf0f"
+capabilities = ["mm:LogicTypes"]
 
 [[module]]
 uri = "https://metamind.dev/code/module/vendor/rust_symbolic/math-core"

@@ -1,0 +1,27 @@
+# Metamind module manifest.
+#
+# The `uri` is stable and path-derived: it follows this module's position in the
+# repository, so moving the directory is the only thing that changes it and no
+# other module may reuse the value.
+
+[plugin]
+name = "epistemic-ops"
+uri = "https://metamind.dev/code/module/epistemic/epistemic-ops"
+version = "0.1.0"
+
+[metadata]
+category = "epistemic"
+owned_by_phase = 6
+capability = "mm:EpistemicOps"
+
+[tbox.functions]
+"epistemic.claim" = { source = "handlers::claim" }
+"epistemic.assume" = { source = "handlers::assume" }
+"epistemic.predict" = { source = "handlers::predict" }
+
+[monad.operations]
+name = "cognition"
+arity = 0
+
+[build]
+rust_edition = "2021"

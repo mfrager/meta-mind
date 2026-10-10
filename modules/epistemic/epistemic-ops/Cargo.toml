@@ -1,0 +1,21 @@
+[package]
+name = "epistemic-ops"
+description = "Metamind nexus module: the epistemic operations exposed to the being's T-Box"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 6
+capability = "mm:EpistemicOps"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-epistemic = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

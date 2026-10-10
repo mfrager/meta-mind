@@ -1,0 +1,10 @@
+@prefix mm:  <https://metamind.dev/ontology#> .
+@prefix mmd: <https://metamind.dev/data/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# An assumption missing its required cost/risk/dependence fields: it violates
+# mm:AssumptionShape.
+mmd:assumption-broken a mm:Assumption ;
+    mm:status "ASSUMED" ;
+    mm:confidence "0.5"^^xsd:double ;
+    mm:consequenceIfFalse "high" .

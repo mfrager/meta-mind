@@ -6,8 +6,9 @@
 //! record, is the event sequence gapless, is every record schema-valid, did a
 //! secret reach a sink, does logging change what a replay produces, does every
 //! LLM ledger row have exactly one audited commit (with no replay admitting a
-//! provider call), and does every committed being operation have exactly one
-//! audit record correlated by its ULID.
+//! provider call), does every committed being operation have exactly one audit
+//! record correlated by its ULID, and does every audited memory operation name a
+//! memory row that exists.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -276,6 +277,151 @@ pub async fn verify(cfg: mm_core::Config) -> Result<ExitCode, MmError> {
         format!(
             "{correlated} being op(s), {} identity(ies)",
             identities.len()
+        ),
+    ));
+
+    // 9. Memory: every audited memory operation names a memory row that exists.
+    //    An add, an archival, a refusal, and a mistake each write a `memories` row
+    //    and an audit record carrying its ULID as the trace id, so the two are
+    //    checkable against each other without a second bookkeeping table. A memory
+    //    that was forgotten is *archived*, never deleted, so its audit record must
+    //    keep resolving — which is what makes this check able to prove the
+    //    no-deletion invariant from the log alone.
+    let mut c = Check::new("memory correlation");
+    let memory_rows = index
+        .query_json("SELECT id FROM memories", mm_core::Params::new())
+        .await?;
+    let memory_ids: std::collections::BTreeSet<&str> = memory_rows
+        .iter()
+        .filter_map(|row| row["id"].as_str())
+        .collect();
+    let mut memory_ops = 0usize;
+    for code in [
+        codes::MEMORY_ADD,
+        codes::MEMORY_FORGET,
+        codes::MEMORY_PROTECTED_REFUSAL,
+        codes::MEMORY_MISTAKE_CREATE,
+        codes::MEMORY_NEAR_MISS_CREATE,
+    ] {
+        for row in &audit_rows {
+            if row.event_code != code {
+                continue;
+            }
+            memory_ops += 1;
+            match row.trace_id.as_deref() {
+                Some(trace) if memory_ids.contains(trace) => {}
+                Some(trace) => c.fail(format!("{code} {trace} has no memories row")),
+                None => c.fail(format!("{code} audit record has no trace id")),
+            }
+        }
+    }
+    // A `memory.add` record must exist for every memory row, because a row that
+    // appeared without an audit record appeared without the log knowing.
+    let adds: std::collections::BTreeSet<&str> = audit_rows
+        .iter()
+        .filter(|row| row.event_code == codes::MEMORY_ADD)
+        .filter_map(|row| row.trace_id.as_deref())
+        .collect();
+    for id in &memory_ids {
+        if !adds.contains(id) {
+            c.fail(format!("memory {id} has no audited add record"));
+        }
+    }
+    checks.push((
+        c,
+        format!("{memory_ops} memory op(s), {} row(s)", memory_ids.len()),
+    ));
+
+    // 10. Epistemic: every audited epistemic operation names a row that exists,
+    //     and every claim was ingested under an audited record. A claim that
+    //     appeared without an `epistemic.claim.ingest` record appeared without the
+    //     log knowing, which is exactly what "no silent promotion" forbids one
+    //     layer up.
+    let mut c = Check::new("epistemic correlation");
+    let claim_ids: std::collections::BTreeSet<String> = index
+        .query_json("SELECT id FROM claims", mm_core::Params::new())
+        .await?
+        .iter()
+        .filter_map(|row| row["id"].as_str().map(str::to_string))
+        .collect();
+    let assumption_ids: std::collections::BTreeSet<String> = index
+        .query_json("SELECT id FROM assumptions", mm_core::Params::new())
+        .await?
+        .iter()
+        .filter_map(|row| row["id"].as_str().map(str::to_string))
+        .collect();
+    let contradiction_ids: std::collections::BTreeSet<String> = index
+        .query_json("SELECT id FROM contradictions", mm_core::Params::new())
+        .await?
+        .iter()
+        .filter_map(|row| row["id"].as_str().map(str::to_string))
+        .collect();
+    let transition_ids: std::collections::BTreeSet<String> = index
+        .query_json(
+            "SELECT id FROM epistemic_transitions",
+            mm_core::Params::new(),
+        )
+        .await?
+        .iter()
+        .filter_map(|row| row["id"].as_str().map(str::to_string))
+        .collect();
+    let mut epistemic_ops = 0usize;
+    let mut correlated_epistemic =
+        |code: &str, ids: &std::collections::BTreeSet<String>, table: &str, check: &mut Check| {
+            for row in &audit_rows {
+                if row.event_code != code {
+                    continue;
+                }
+                epistemic_ops += 1;
+                match row.trace_id.as_deref() {
+                    Some(trace) if ids.contains(trace) => {}
+                    Some(trace) => check.fail(format!("{code} {trace} has no {table} row")),
+                    None => check.fail(format!("{code} audit record has no trace id")),
+                }
+            }
+        };
+    correlated_epistemic(codes::EPISTEMIC_CLAIM_INGEST, &claim_ids, "claims", &mut c);
+    correlated_epistemic(
+        codes::EPISTEMIC_EVIDENCE_ATTACH,
+        &claim_ids,
+        "claims",
+        &mut c,
+    );
+    correlated_epistemic(codes::EPISTEMIC_WORLD_WRITE, &claim_ids, "claims", &mut c);
+    correlated_epistemic(codes::EPISTEMIC_CASCADE, &claim_ids, "claims", &mut c);
+    correlated_epistemic(
+        codes::EPISTEMIC_STATUS_TRANSITION,
+        &transition_ids,
+        "epistemic_transitions",
+        &mut c,
+    );
+    correlated_epistemic(
+        codes::EPISTEMIC_ASSUMPTION_CREATE,
+        &assumption_ids,
+        "assumptions",
+        &mut c,
+    );
+    correlated_epistemic(
+        codes::EPISTEMIC_CONTRADICTION_DETECT,
+        &contradiction_ids,
+        "contradictions",
+        &mut c,
+    );
+    let ingests: std::collections::BTreeSet<&str> = audit_rows
+        .iter()
+        .filter(|row| row.event_code == codes::EPISTEMIC_CLAIM_INGEST)
+        .filter_map(|row| row.trace_id.as_deref())
+        .collect();
+    for id in &claim_ids {
+        if !ingests.contains(id.as_str()) {
+            c.fail(format!("claim {id} has no audited ingest record"));
+        }
+    }
+    checks.push((
+        c,
+        format!(
+            "{epistemic_ops} epistemic op(s), {} claim(s)",
+            claim_ids.len()
         ),
     ));
 

@@ -185,6 +185,45 @@ mm:Evaluation a owl:Class .
 mm:Failure a owl:Class .
 mm:NearMiss a owl:Class .
 
+# Phase 6 (epistemic discipline). `mm:Claim`, `mm:Evidence`, `mm:Observation`,
+# `mm:Assumption`, `mm:Inference`, and `mm:Prediction` are already declared above;
+# Phase 6 reuses them rather than redeclaring them. Only the three classes its own
+# records need are added here.
+mm:Contradiction a owl:Class ;
+    rdfs:label "Contradiction" ;
+    rdfs:comment "An explicit conflict between two claims, carrying both sides and their evidence. Never resolved by a silent edit." .
+mm:Dependency a owl:Class ;
+    rdfs:label "Dependency" ;
+    rdfs:comment "One justification edge: the consequent is believed because of its antecedents." .
+mm:Justification a owl:Class ;
+    rdfs:label "Justification" ;
+    rdfs:comment "The support set of a derived belief (an ATMS in-list). Withdrawing one support withdraws the whole set." .
+
+# --- epistemic predicates (Phase 6) ------------------------------------------
+# `mm:status`, `mm:confidence`, `mm:source`, `mm:validFrom`, `mm:validUntil`,
+# `mm:supports`, `mm:contradicts`, `mm:derivedFrom`, and `mm:dependsOn` are already
+# declared above and are reused verbatim, not redeclared or re-domained. Only the
+# terms the epistemic records themselves need are added here.
+mm:evidenceFor a owl:ObjectProperty ;
+    rdfs:label "evidenceFor" ;
+    rdfs:comment "The claim an evidence record speaks for." .
+mm:observedAt a owl:DatatypeProperty ;
+    rdfs:label "observedAt" ;
+    rdfs:comment "The instant a claim was observed." ;
+    rdfs:range xsd:dateTime .
+mm:consequenceIfFalse a owl:DatatypeProperty ;
+    rdfs:label "consequenceIfFalse" ;
+    rdfs:comment "The risk accepted by holding an assumption that turns out false." ;
+    rdfs:range xsd:string .
+mm:verificationCost a owl:DatatypeProperty ;
+    rdfs:label "verificationCost" ;
+    rdfs:comment "What it costs to check an assumption." ;
+    rdfs:range xsd:double .
+mm:decisionDependence a owl:DatatypeProperty ;
+    rdfs:label "decisionDependence" ;
+    rdfs:comment "How much a decision leans on an assumption, in [0,1]." ;
+    rdfs:range xsd:double .
+
 # ---------------------------------------------------------------------- knowing
 
 mm:Policy a owl:Class .
@@ -384,6 +423,132 @@ mm:unit a owl:DatatypeProperty ;
 mm:ledgerEntry a owl:ObjectProperty ;
     rdfs:domain mm:ResourceAccount ;
     rdfs:range mm:LedgerEntry .
+
+# ------------------------------------------------------- decision & firewall
+#
+# Phase 9: the bounded-decision organ and the sanity firewall. Their records are
+# mirrored into `https://metamind.dev/graph/decision` and validated by
+# `ontology/shapes/decision.ttl`, which is a set of its own rather than part of
+# `mm-shapes.ttl` — `mm:Decision` is already an epistemic class (above), and a
+# shape that required `mm:questionKind` on every `mm:Decision` would fire on the
+# claim-level decisions the epistemic layer writes into `/epistemic`.
+#
+# `mm:Decision` and `mm:derivedFrom` are already declared above and are reused
+# verbatim; nothing here redeclares them.
+
+mm:Comparison a owl:Class ;
+    rdfs:label "Comparison" ;
+    rdfs:comment "One check of whether two things may be compared at all, with the verdict and the violations behind it." .
+mm:Risk a owl:Class ;
+    rdfs:label "Risk" ;
+    rdfs:comment "A risk profile measured over an outcome distribution: eight deterministic measures, never a model's opinion." .
+mm:RiskMeasure a owl:Class ;
+    rdfs:label "RiskMeasure" ;
+    rdfs:comment "Which of the risk measures a profile reports, e.g. variance, value at risk, conditional value at risk." .
+mm:FirewallRun a owl:Class ;
+    rdfs:label "FirewallRun" ;
+    rdfs:comment "One evaluation of the sanity firewall: the input's digest, one outcome, and the reasons behind it." .
+mm:ReasonCode a owl:Class ;
+    rdfs:label "ReasonCode" ;
+    rdfs:comment "One reason a firewall run reached its outcome, carrying the signal that raised it and its severity." .
+mm:Uncertainty a owl:Class ;
+    rdfs:label "Uncertainty" ;
+    rdfs:comment "One uncertainty measurement over a claim's samples: semantic entropy, kernel entropy or self-consistency." .
+
+mm:hasQuestion a owl:ObjectProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:label "hasQuestion" ;
+    rdfs:comment "The bounded question a decision answered." .
+mm:questionKind a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "questionKind" ;
+    rdfs:comment "Which of the three bounded shapes the question had: choice, score or yes_no." .
+mm:selectedOption a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "selectedOption" ;
+    rdfs:comment "The option a choice question selected. Absent for the other two kinds." .
+mm:hasConfidence a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:double ;
+    rdfs:label "hasConfidence" ;
+    rdfs:comment "The pre-calibration confidence the core answered with, in [0,1] by construction." .
+mm:calibratedConfidence a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:double ;
+    rdfs:label "calibratedConfidence" ;
+    rdfs:comment "The confidence after the class's temperature was applied. Present only when a calibrator was fitted, so the graph never confuses the two numbers." .
+mm:decidedBy a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "decidedBy" ;
+    rdfs:comment "Which core answered: rules, local or hosted." .
+mm:hasFeature a owl:DatatypeProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "hasFeature" ;
+    rdfs:comment "One feature the decision was made from, rendered key=value. These are what a later phase calibrates on." .
+mm:hasOutcome a owl:ObjectProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:label "hasOutcome" ;
+    rdfs:comment "The episode or record the decision belongs to." .
+mm:hasRisk a owl:ObjectProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:range mm:Risk ;
+    rdfs:label "hasRisk" ;
+    rdfs:comment "The risk profile a firewall run graded the episode on." .
+mm:usesMeasure a owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "usesMeasure" ;
+    rdfs:comment "Which measure a node reports: a risk measure's name, or an uncertainty scorer's kind." .
+mm:measuredValue a owl:DatatypeProperty ;
+    rdfs:range xsd:double ;
+    rdfs:label "measuredValue" ;
+    rdfs:comment "The number a measurement node reports." .
+mm:comparedTo a owl:ObjectProperty ;
+    rdfs:domain mm:Comparison ;
+    rdfs:label "comparedTo" ;
+    rdfs:comment "The pair a comparison check put against each other." .
+mm:comparisonValid a owl:DatatypeProperty ;
+    rdfs:domain mm:Comparison ;
+    rdfs:range xsd:string ;
+    rdfs:label "comparisonValid" ;
+    rdfs:comment "The check's verdict: valid, non_comparable or rejected. A mismatch is never coerced into a number." .
+mm:hasViolation a owl:DatatypeProperty ;
+    rdfs:domain mm:Comparison ;
+    rdfs:range xsd:string ;
+    rdfs:label "hasViolation" ;
+    rdfs:comment "One reason the pair may not be compared, rendered code: field." .
+mm:firewallOutcome a owl:DatatypeProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:range xsd:string ;
+    rdfs:label "firewallOutcome" ;
+    rdfs:comment "The run's one outcome: PROCEED, PROCEED_WITH_CAUTION, VERIFY_FIRST, ASK_USER, REPLAN, HUMAN_REVIEW or REJECT." .
+mm:hasReasonCode a owl:DatatypeProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:range xsd:string ;
+    rdfs:label "hasReasonCode" ;
+    rdfs:comment "One reason behind the outcome. Every run carries at least one, including a clean run's signal.nominal." .
+mm:consultedDecision a owl:ObjectProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:label "consultedDecision" ;
+    rdfs:comment "A bounded judgment the run consulted. Empty when a hard prohibition short-circuited before anything was asked." .
+mm:hasUncertainty a owl:ObjectProperty ;
+    rdfs:domain mm:Decision ;
+    rdfs:range mm:Uncertainty ;
+    rdfs:label "hasUncertainty" ;
+    rdfs:comment "An uncertainty measurement a decision was made with." .
+mm:inputDigest a owl:DatatypeProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:range xsd:string ;
+    rdfs:label "inputDigest" ;
+    rdfs:comment "The content hash of the input the run graded, so a decision can never be replayed against a state it did not see." .
+mm:hardProhibition a owl:DatatypeProperty ;
+    rdfs:domain mm:FirewallRun ;
+    rdfs:range xsd:string ;
+    rdfs:label "hardProhibition" ;
+    rdfs:comment "The prohibition that short-circuited a run to REJECT. Deterministic and model-independent; model output can only ever make a run more cautious." .
 
 # -------------------------------------------------------------------- provenance
 #

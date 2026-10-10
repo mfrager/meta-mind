@@ -1,0 +1,28 @@
+{
+  "_comment": "The novel goal Phase 12's closed loop is asked to satisfy with no human code edits. It is *novel* in the phase's sense: no module in the tree, and no fixture corpus in `bench/`, already provides goal-attainment progress, so the loop cannot answer it by retrieving an existing capability — it has to produce a capability. The goal carries the identity of the thing it wants (target_uri, target_path, capability, function), the episode that motivates it, the design document the revision is of, the Pi task contract that authors the module, and the frozen benchmark the change is judged against. `expected` is what the qualification test asserts after the run.",
+  "id": "01h0000000000000000000gq01",
+  "description": "make goal-attainment progress a first-class cognition capability: given a goal and the evidence recorded for it, report how far it has advanced, without a human writing the module",
+  "novel": true,
+  "success_criteria": [
+    "a module exposes cognition.goal_attainment_progress",
+    "the generated module carries a test",
+    "the frozen benchmark does not regress",
+    "the promotion carries a written reason"
+  ],
+  "module_name": "goal-attainment",
+  "target_path": "modules/cognition/goal-attainment",
+  "target_uri": "https://metamind.dev/code/module/cognition/goal-attainment",
+  "capability": "mm:GoalAttainment",
+  "function": "cognition.goal_attainment_progress",
+  "design_doc": "design/qualification/goal_attainment.md",
+  "episode": "bench/episodes/seeded_failure_01.json",
+  "pi_task": "bench/pi/qualification_novel.json",
+  "benchmark": "bench/qualification/baseline.json",
+  "session_file": "crates/mm-pi/fixtures/recorded_session_qualification_novel.jsonl",
+  "expected": {
+    "novel": true,
+    "design_revision": true,
+    "promoted": true,
+    "hot_loaded": true
+  }
+}

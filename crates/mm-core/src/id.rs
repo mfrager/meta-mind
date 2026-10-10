@@ -172,6 +172,65 @@ impl Drop for UlidFactory {
     }
 }
 
+/// The identifier's JSON rendering, which is the system's rendering.
+///
+/// `ulid`'s own `Serialize` emits **uppercase** Crockford — the spec's text form — while
+/// every identifier Metamind stores, compares and prints is lowercase (see
+/// [`crate::ulid_string`]). A struct that is printed as JSON is an interface, and an
+/// interface that renders an identifier differently from the row it names is one a script
+/// cannot join on: `jq -r .run_id` would hand a caller a string that no `WHERE id = ?`
+/// matches, and the `/self` graph's IRIs — built from `ulid_string` — would disagree with
+/// the JSON that describes them.
+///
+/// So a struct field carrying an id is annotated `#[serde(with = "mm_core::serde_ulid")]`
+/// (or `…::serde_ulid::option` for an `Option`), which makes the JSON the same text as the
+/// database and the graph. Deserialization accepts either case, because a payload may have
+/// been written by either form, and [`parse_ulid`] normalizes it.
+pub mod serde_ulid {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use ulid::Ulid;
+
+    /// Serialize an id as lowercase Crockford text.
+    pub fn serialize<S: Serializer>(id: &Ulid, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&crate::ulid_string(id))
+    }
+
+    /// Deserialize an id from lowercase or uppercase Crockford text.
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Ulid, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        crate::id::parse_ulid(&text).map_err(serde::de::Error::custom)
+    }
+
+    /// The same, for an id that may be absent: `null` in, `null` out.
+    pub mod option {
+        use serde::{Deserialize, Deserializer, Serializer};
+        use ulid::Ulid;
+
+        /// Serialize an optional id.
+        pub fn serialize<S: Serializer>(
+            id: &Option<Ulid>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error> {
+            match id {
+                Some(id) => serializer.serialize_some(&crate::ulid_string(id)),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        /// Deserialize an optional id.
+        pub fn deserialize<'de, D: Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<Ulid>, D::Error> {
+            match Option::<String>::deserialize(deserializer)? {
+                Some(text) => crate::id::parse_ulid(&text)
+                    .map(Some)
+                    .map_err(serde::de::Error::custom),
+                None => Ok(None),
+            }
+        }
+    }
+}
+
 /// Parse a lowercase or uppercase Crockford ULID.
 pub fn parse_ulid(s: &str) -> Result<Ulid, MmError> {
     let normalized = s.trim().to_ascii_lowercase();
@@ -190,6 +249,38 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn the_serde_rendering_is_the_systems_rendering() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Ids {
+            #[serde(with = "super::serde_ulid")]
+            one: Ulid,
+            #[serde(with = "super::serde_ulid::option")]
+            none: Option<Ulid>,
+        }
+
+        let id = Ulid::from_parts(1_700_000_000_000, 42);
+        let json = serde_json::to_string(&Ids {
+            one: id,
+            none: None,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            format!("{{\"one\":\"{}\",\"none\":null}}", crate::ulid_string(&id)),
+            "the id is rendered the way the store and the graph render it"
+        );
+        // Uppercase is what `ulid`'s own `Serialize` would have written, and it must still
+        // read back: a payload may have been produced by either form.
+        let upper = format!("{{\"one\":\"{}\",\"none\":null}}", id);
+        let parsed: Ids = serde_json::from_str(&upper).unwrap();
+        assert_eq!(parsed.one, id);
+        assert_eq!(parsed.none, None);
+        let round_trip: Ids = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.one, id);
+        assert_eq!(round_trip.none, None);
+    }
 
     #[test]
     fn ids_are_lowercase_26_characters() {

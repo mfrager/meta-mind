@@ -134,7 +134,11 @@ impl RetrievalWeights {
 /// Returns the gated total and the auditable parts. The parts sum to the total
 /// *before* the gate, which is what makes a mismatch between them a bug rather
 /// than a rounding question.
-pub fn hybrid_score(weights: &RetrievalWeights, raws: &[(Channel, f64)], confidence: f32) -> (f64, Vec<ScorePart>) {
+pub fn hybrid_score(
+    weights: &RetrievalWeights,
+    raws: &[(Channel, f64)],
+    confidence: f32,
+) -> (f64, Vec<ScorePart>) {
     let mut parts = Vec::with_capacity(raws.len());
     let mut total = 0.0;
     for (channel, raw) in raws {
@@ -236,7 +240,9 @@ impl<'a> RetrievalEngine<'a> {
 
         // --- [3] graph --------------------------------------------------------
         let graph = EntityGraph::load(store, Some(query.now)).await?;
-        let ppr = self.graph_scores(store, &graph, &eligible, &lexical_by_id, &vector_by_id).await?;
+        let ppr = self
+            .graph_scores(store, &graph, &eligible, &lexical_by_id, &vector_by_id)
+            .await?;
         let graph_n = ppr.values().filter(|v| **v > 0.0).count();
         let ppr_max = ppr.values().copied().fold(0.0f64, f64::max);
 
@@ -255,23 +261,14 @@ impl<'a> RetrievalEngine<'a> {
             let raws = [
                 (
                     Channel::Lexical,
-                    lexical_by_id
-                        .remove(id)
-                        .map(normalize_bm25)
-                        .unwrap_or(0.0),
+                    lexical_by_id.remove(id).map(normalize_bm25).unwrap_or(0.0),
                 ),
                 (
                     Channel::Vector,
-                    vector_by_id
-                        .remove(id)
-                        .map(normalize_cosine)
-                        .unwrap_or(0.0),
+                    vector_by_id.remove(id).map(normalize_cosine).unwrap_or(0.0),
                 ),
                 (Channel::Graph, graph_raw),
-                (
-                    Channel::Recency,
-                    recency_score(age_ns, self.half_life_ns),
-                ),
+                (Channel::Recency, recency_score(age_ns, self.half_life_ns)),
                 (Channel::Importance, f64::from(memory.importance)),
             ];
             let (score, parts) = hybrid_score(&self.weights, &raws, memory.confidence);
@@ -365,7 +362,11 @@ impl<'a> RetrievalEngine<'a> {
         // say something.
         if seeds.is_empty() {
             let mut by_recency: Vec<&Memory> = eligible.values().collect();
-            by_recency.sort_by(|a, b| b.recorded_at.cmp(&a.recorded_at).then_with(|| a.id.cmp(&b.id)));
+            by_recency.sort_by(|a, b| {
+                b.recorded_at
+                    .cmp(&a.recorded_at)
+                    .then_with(|| a.id.cmp(&b.id))
+            });
             for memory in by_recency.into_iter().take(GRAPH_SEEDS) {
                 seeds.extend(memory.entities.iter().copied());
             }

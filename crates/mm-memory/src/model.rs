@@ -228,7 +228,8 @@ impl TimeInterval {
 
     /// Length in nanoseconds, when the interval is closed.
     pub fn duration_ns(&self) -> Option<u128> {
-        self.until.map(|end| end.as_nanos().saturating_sub(self.from.as_nanos()))
+        self.until
+            .map(|end| end.as_nanos().saturating_sub(self.from.as_nanos()))
     }
 }
 
@@ -436,8 +437,22 @@ impl Memory {
 
     /// A memory with the kernel's default confidence and importance, its own
     /// provenance node, and an open interval starting at `from`.
-    pub fn draft(id: Ulid, kind: MemoryKind, content: impl Into<String>, from: Timestamp) -> Result<Self> {
-        Memory::new(id, kind, content, TimeInterval::open(from), 0.5, 0.5, id, from)
+    pub fn draft(
+        id: Ulid,
+        kind: MemoryKind,
+        content: impl Into<String>,
+        from: Timestamp,
+    ) -> Result<Self> {
+        Memory::new(
+            id,
+            kind,
+            content,
+            TimeInterval::open(from),
+            0.5,
+            0.5,
+            id,
+            from,
+        )
     }
 
     /// Set the source this memory was derived from.
@@ -991,7 +1006,8 @@ mod tests {
 
     #[test]
     fn a_draft_memory_is_valid_and_self_provenanced() {
-        let memory = Memory::draft(id(1), MemoryKind::Episodic, "a thing happened", ts(10)).unwrap();
+        let memory =
+            Memory::draft(id(1), MemoryKind::Episodic, "a thing happened", ts(10)).unwrap();
         assert_eq!(memory.provenance, memory.id);
         assert_eq!(memory.recorded_ulid, memory.id);
         assert_eq!(memory.tier, Tier::Recall);
@@ -1027,7 +1043,10 @@ mod tests {
     #[test]
     fn a_developmental_memory_must_be_protected() {
         let mut memory = Memory::draft(id(3), MemoryKind::Developmental, "I exist", ts(1)).unwrap();
-        assert!(memory.validate().is_err(), "unprotected developmental memory");
+        assert!(
+            memory.validate().is_err(),
+            "unprotected developmental memory"
+        );
         memory.protected = true;
         assert!(memory.validate().is_ok());
         assert!(memory.is_unforgettable());
@@ -1084,7 +1103,10 @@ mod tests {
         for tier in TIERS {
             assert_eq!(Tier::parse(tier.as_str()), Some(tier));
         }
-        assert_eq!(RecordStatus::parse("archived"), Some(RecordStatus::Archived));
+        assert_eq!(
+            RecordStatus::parse("archived"),
+            Some(RecordStatus::Archived)
+        );
         assert_eq!(RecordStatus::parse("gone"), None);
         assert_eq!(
             ConsolidationMethod::parse("generalize"),

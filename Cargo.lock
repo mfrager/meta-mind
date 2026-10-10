@@ -207,6 +207,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "calibration"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "mm-decision",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "cc"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -310,10 +321,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "closed-loop"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
+
+[[package]]
+name = "comparison-integrity"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "mm-decision",
+ "serde",
+ "tempfile",
+ "toml",
+]
 
 [[package]]
 name = "console"
@@ -420,6 +452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "decision-ir"
+version = "0.1.0"
+dependencies = [
+ "logic-ir",
+ "logic-types",
+ "rdf-codec",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,6 +525,16 @@ name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
+name = "epistemic-ops"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "mm-epistemic",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "equivalent"
@@ -567,6 +618,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "frame-activate"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "serde",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "futures"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -611,6 +687,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
 
 [[package]]
+name = "futures-macro"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -628,8 +715,10 @@ version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
+ "futures-channel",
  "futures-core",
  "futures-io",
+ "futures-macro",
  "futures-sink",
  "futures-task",
  "memchr",
@@ -987,6 +1076,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "library-query"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "serde",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1037,6 +1136,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "logic-ir"
+version = "0.1.0"
+dependencies = [
+ "logic-types",
+ "rdf-codec",
+]
+
+[[package]]
+name = "logic-types"
+version = "0.1.0"
+dependencies = [
+ "math-types",
+ "rdf-codec",
+]
+
+[[package]]
 name = "math-core"
 version = "0.1.0"
 dependencies = [
@@ -1085,6 +1200,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "metacog"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "mm-metacog",
+ "serde_json",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1108,6 +1232,7 @@ dependencies = [
  "async-trait",
  "insta",
  "mm-core",
+ "mm-epistemic",
  "mm-log",
  "mm-store-graph",
  "mm-store-sqlite",
@@ -1131,14 +1256,28 @@ dependencies = [
  "mm-being",
  "mm-codex",
  "mm-core",
+ "mm-decision",
+ "mm-epistemic",
  "mm-eventlog",
+ "mm-firewall",
+ "mm-library",
  "mm-llm",
  "mm-log",
+ "mm-memory",
+ "mm-metaanalysis",
+ "mm-metacog",
+ "mm-mistakes",
+ "mm-pi",
+ "mm-runtime",
+ "mm-selfeng",
  "mm-store-graph",
  "mm-store-sqlite",
+ "mm-tools",
  "proptest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1186,18 +1325,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-decision"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "decision-ir",
+ "mm-core",
+ "mm-epistemic",
+ "mm-llm",
+ "mm-log",
+ "mm-store-sqlite",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
+]
+
+[[package]]
 name = "mm-e2e"
 version = "0.1.0"
 dependencies = [
  "mm-core",
  "mm-eventlog",
  "mm-log",
+ "mm-metaanalysis",
+ "mm-mistakes",
+ "mm-pi",
+ "mm-selfeng",
  "mm-store-graph",
  "mm-store-sqlite",
  "proptest",
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "mm-epistemic"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "insta",
+ "mm-core",
+ "mm-eventlog",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "oxrdf",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
 ]
 
 [[package]]
@@ -1215,6 +1403,51 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "mm-firewall"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-decision",
+ "mm-log",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
+]
+
+[[package]]
+name = "mm-library"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "insta",
+ "mm-core",
+ "mm-epistemic",
+ "mm-llm",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "oxrdf",
+ "proptest",
+ "rdf-codec",
+ "rdf-shacl",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
 ]
 
 [[package]]
@@ -1279,6 +1512,130 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-metaanalysis"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-decision",
+ "mm-library",
+ "mm-llm",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
+name = "mm-metacog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-epistemic",
+ "mm-library",
+ "mm-llm",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
+name = "mm-mistakes"
+version = "0.1.0"
+dependencies = [
+ "mm-core",
+ "mm-log",
+ "mm-memory",
+ "mm-store-sqlite",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
+name = "mm-pi"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "mm-core",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
+name = "mm-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-eventlog",
+ "mm-log",
+ "mm-metaanalysis",
+ "mm-mistakes",
+ "mm-pi",
+ "mm-selfeng",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
+]
+
+[[package]]
+name = "mm-selfeng"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-firewall",
+ "mm-log",
+ "mm-mistakes",
+ "mm-pi",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
 name = "mm-store-graph"
 version = "0.1.0"
 dependencies = [
@@ -1311,6 +1668,30 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "mm-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "insta",
+ "mm-core",
+ "mm-epistemic",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "oxrdf",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "ulid",
 ]
 
 [[package]]

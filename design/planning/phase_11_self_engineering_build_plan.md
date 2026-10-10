@@ -464,8 +464,11 @@ cargo build --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
-# Calibration improves over the recorded baseline on a labeled cycle (objective thresholds)
-mm-cli calibrate --bench bench/calibration/labeled.jsonl \
+# Calibration improves over the recorded baseline on a labeled cycle (objective thresholds).
+# The corpus is the phase's own `predictions.jsonl`, which `compute_reference.py` builds and
+# `reference.json` grades — not Phase 9's `labeled.jsonl`, whose calibrated Brier floor is
+# ~0.212 under any temperature.
+mm-cli calibrate --bench bench/calibration/predictions.jsonl \
   --assert-brier-le 0.20 --assert-ece-le 0.10 --assert-improves-baseline
 
 # Event-triggered meta-analysis produces a diagnosis + lesson
@@ -477,7 +480,9 @@ mm-cli regression run --suite bench/regression \
 
 # Gap → ChangeSet → Pi-authored module → sandbox build/test → benchmark → gate
 mm-cli changeset new --from-gap bench/gaps/gap_01.json
-mm-cli pi run --task bench/pi/module_scaffold_01.json --assert-session-ingested
+# `--offline` replays the task's recorded session (deterministic, no provider); without it
+# the contract goes to a live session, which needs `--provider` and `--model`.
+mm-cli pi run --task bench/pi/module_scaffold_01.json --offline --assert-session-ingested
 mm-cli sandbox run "$CHANGESET" --assert-isolated
 mm-cli promote "$CHANGESET" --assert-reason-present
 mm-cli codex verify

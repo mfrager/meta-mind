@@ -1,0 +1,15 @@
+{
+  "_comment": "The seeded capability gap Phase 11's `mm-cli changeset new --from-gap` turns into a typed ChangeSet. A gap is a statement about what the system cannot do, with the evidence that showed it; a gap with no evidence is an opinion.",
+  "gap_id": "01h0000000000000000000ga01",
+  "kind": "capability",
+  "statement": "no module can summarize a drifting calibration bin, so a class that has become overconfident is only visible as a number an operator has to read",
+  "evidence": [
+    "01h0000000000000000000ga02"
+  ],
+  "target_uri": "https://metamind.dev/code/module/cognition/calibration",
+  "target_path": "modules/cognition/calibration",
+  "expected": {
+    "kind": "capability",
+    "status": "draft"
+  }
+}

@@ -1,0 +1,301 @@
+# The deterministic decision table.
+#
+# Every entry here is a *rule*: a bounded question shape (`yes_no`, `score` or
+# `choice`), the words that have to be in the prompt for the rule to apply, the
+# answer the rule gives, and the confidence the rule claims. The table is data, not
+# code, because the rules core is the one core that is always available and always
+# cheap — so the safety-critical, high-volume bounded calls go to it, and an
+# operator can read and review the whole policy in one file.
+#
+# ## How matching works
+#
+# A rule applies when
+#
+#   * its `kind` equals the question's shape, and
+#   * *every* string in `keywords` appears as a case-insensitive substring of the
+#     question's prompt.
+#
+# Both conditions are required, so a keyword list is a conjunction. Among the rules
+# that apply, the highest `priority` wins and equal priorities are broken by `id`
+# ascending — that tie-break is part of the contract, because two cores that broke
+# a tie differently would answer the same question two ways and the conformance
+# suite could not tell which was right.
+#
+# ## What a rules answer is worth
+#
+# A rules answer is *evidence for the firewall*, never authority over it. The hard
+# prohibitions in `mm-firewall` are computed deterministically without consulting a
+# core at all (Phase 9 §1: "hard prohibitions are deterministic and short-circuit
+# to REJECT"); everything a core says here can only ever make the firewall *more*
+# cautious. So a rule that fires on a danger-flavoured prompt and answers `true`
+# pushes the outcome toward verification, and a rule that misses leaves the
+# fallback in `default_confidence` — a low number, on purpose.
+#
+# ## Polarity
+#
+# A `yes_no` rule answers the question *"is this a problem?"*, so the safety rules
+# below answer `true`. Their keyword lists carry the negative marker as well as the
+# subject (`"irreversible"` *and* `"approval"`, `"contradiction"` *and*
+# `"critical"`) so that a prompt merely mentioning the subject cannot trip them.
+# A `choice` rule's answer is only used when the option it names is actually
+# offered by the question; otherwise the rule is skipped and the next admissible
+# rule is tried. That is why the choice rules can name safe options freely.
+
+version = "1"
+default_confidence = 0.2
+
+# ── Safety: the prohibitions, repeated as evidence ────────────────────────────
+# The firewall's prohibition rails decide these deterministically. These rules
+# exist so the *scan* escalates too, on the path where judgements are calibrated.
+
+[[rules]]
+id = "safety.irreversible_without_approval"
+priority = 100
+kind = "yes_no"
+keywords = ["irreversible", "approval"]
+answer = { kind = "bool", value = true }
+confidence = 0.9
+notes = "Phase 9 §4.6 prohibition `irreversible_without_approval`."
+
+[[rules]]
+id = "safety.identity_invariant"
+priority = 99
+kind = "yes_no"
+keywords = ["identity invariant"]
+answer = { kind = "bool", value = true }
+confidence = 0.95
+notes = "Phase 4 identity invariants; any hit is a hard prohibition."
+
+[[rules]]
+id = "safety.unresolved_contradiction"
+priority = 98
+kind = "yes_no"
+keywords = ["contradiction", "critical"]
+answer = { kind = "bool", value = true }
+confidence = 0.9
+notes = "An unresolved mm:Contradiction on a decision-critical claim."
+
+[[rules]]
+id = "safety.spend_over_budget"
+priority = 96
+kind = "yes_no"
+keywords = ["spend", "budget"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "Projected spend above the Phase 4 budget."
+
+[[rules]]
+id = "safety.unauthorized_tool"
+priority = 95
+kind = "yes_no"
+keywords = ["permission", "grant"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "A tool with no matching permission grant (Phase 10)."
+
+[[rules]]
+id = "safety.schema_invalid_action"
+priority = 94
+kind = "yes_no"
+keywords = ["schema", "invalid"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "The action does not satisfy its declared schema."
+
+# ── Epistemic pressure ───────────────────────────────────────────────────────
+
+[[rules]]
+id = "epistemic.critical_assumption_unverified"
+priority = 88
+kind = "yes_no"
+keywords = ["critical", "unverified"]
+answer = { kind = "bool", value = true }
+confidence = 0.8
+notes = "A decision-critical assumption with no verification."
+
+[[rules]]
+id = "epistemic.missing_step_critical"
+priority = 86
+kind = "yes_no"
+keywords = ["missing step", "critical"]
+answer = { kind = "bool", value = true }
+confidence = 0.8
+notes = "A critical step the plan does not contain."
+
+[[rules]]
+id = "epistemic.uncertainty_above_cutoff"
+priority = 84
+kind = "yes_no"
+keywords = ["uncertainty", "cutoff"]
+answer = { kind = "bool", value = true }
+confidence = 0.75
+notes = "Semantic or self-consistency uncertainty above the conformal cutoff."
+
+# ── Comparison integrity ─────────────────────────────────────────────────────
+
+[[rules]]
+id = "comparison.units_mismatch"
+priority = 82
+kind = "yes_no"
+keywords = ["units", "incomparable"]
+answer = { kind = "bool", value = true }
+confidence = 0.9
+notes = "Dimensional inconsistency between two contracts."
+
+[[rules]]
+id = "comparison.conditions_mismatch"
+priority = 81
+kind = "yes_no"
+keywords = ["conditions", "incomparable"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "Operating conditions do not line up."
+
+[[rules]]
+id = "comparison.timeframes_disjoint"
+priority = 80
+kind = "yes_no"
+keywords = ["timeframe", "disjoint"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "The two timeframes do not overlap."
+
+[[rules]]
+id = "comparison.definitions_mismatch"
+priority = 79
+kind = "yes_no"
+keywords = ["definition", "mismatch"]
+answer = { kind = "bool", value = true }
+confidence = 0.85
+notes = "The same measure is defined two ways."
+
+[[rules]]
+id = "comparison.purpose_mismatch"
+priority = 78
+kind = "yes_no"
+keywords = ["objective", "mismatch"]
+answer = { kind = "bool", value = true }
+confidence = 0.9
+notes = "Two contracts answering different questions are not a comparison."
+
+# ── Scores ───────────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "risk.catastrophic_max_loss"
+priority = 92
+kind = "score"
+keywords = ["maximum loss", "catastrophic"]
+answer = { kind = "score", value = 0.95 }
+confidence = 0.8
+notes = "A maximum loss at or beyond the catastrophic band."
+
+[[rules]]
+id = "risk.residual"
+priority = 70
+kind = "score"
+keywords = ["residual risk"]
+answer = { kind = "score", value = 0.5 }
+confidence = 0.5
+notes = "Bounded residual risk with no other evidence: the middle of the scale."
+
+[[rules]]
+id = "risk.ruin"
+priority = 71
+kind = "score"
+keywords = ["ruin"]
+answer = { kind = "score", value = 0.9 }
+confidence = 0.7
+notes = "Any ruin probability worth naming is a high risk score."
+
+[[rules]]
+id = "uncertainty.general"
+priority = 60
+kind = "score"
+keywords = ["uncertainty"]
+answer = { kind = "score", value = 0.5 }
+confidence = 0.4
+notes = "An uncertainty question with no more specific evidence."
+
+[[rules]]
+id = "precedent.confidence"
+priority = 55
+kind = "score"
+keywords = ["precedent"]
+answer = { kind = "score", value = 0.6 }
+confidence = 0.4
+notes = "A precedent exists but the rule table cannot judge how close it is."
+
+[[rules]]
+id = "precedent.absent"
+priority = 56
+kind = "score"
+keywords = ["no precedent"]
+answer = { kind = "score", value = 0.1 }
+confidence = 0.6
+notes = "No precedent at all is weak support, not strong support."
+
+[[rules]]
+id = "factuality.support"
+priority = 58
+kind = "score"
+keywords = ["factuality", "support"]
+answer = { kind = "score", value = 0.5 }
+confidence = 0.4
+notes = "Claim-level support with no measured atomic precision."
+
+# ── Choices ──────────────────────────────────────────────────────────────────
+# A choice rule is only used when the option it names is on offer.
+
+[[rules]]
+id = "route.roll_back"
+priority = 90
+kind = "choice"
+keywords = ["regression", "roll back"]
+answer = { kind = "option", value = "roll back" }
+confidence = 0.75
+notes = "A regression with a rollback available: take the reversible action."
+
+[[rules]]
+id = "route.verify_first"
+priority = 88
+kind = "choice"
+keywords = ["uncertain", "verify"]
+answer = { kind = "option", value = "verify first" }
+confidence = 0.7
+notes = "Verification is cheaper than being wrong."
+
+[[rules]]
+id = "route.ask_user"
+priority = 86
+kind = "choice"
+keywords = ["ambiguous", "intent"]
+answer = { kind = "option", value = "ask the user" }
+confidence = 0.7
+notes = "An ambiguous intent is the user's to settle, not the kernel's to guess."
+
+[[rules]]
+id = "route.defer"
+priority = 84
+kind = "choice"
+keywords = ["deferrable"]
+answer = { kind = "option", value = "defer" }
+confidence = 0.6
+notes = "Deferring is free when the decision is not yet forced."
+
+[[rules]]
+id = "route.fail_over"
+priority = 83
+kind = "choice"
+keywords = ["outage", "fail over"]
+answer = { kind = "option", value = "fail over" }
+confidence = 0.7
+notes = "An outage with a standby: fail over, then diagnose."
+
+[[rules]]
+id = "route.status_quo"
+priority = 40
+kind = "choice"
+keywords = ["no change necessary"]
+answer = { kind = "option", value = "keep the status quo" }
+confidence = 0.5
+notes = "The lowest-priority route: only chosen when nothing else is admissible."

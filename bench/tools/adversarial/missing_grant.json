@@ -1,0 +1,12 @@
+{
+  "id": "missing_grant",
+  "description": "A tool the principal holds no grant for is denied before it can run, and the ledger records the denial.",
+  "principal": "system",
+  "tool": "process.exec",
+  "args": { "cmd": "cargo test" },
+  "expect": {
+    "status": "denied",
+    "code": "permission.no_grant",
+    "records": ["action.proposed", "permission.check", "invoke.end"]
+  }
+}

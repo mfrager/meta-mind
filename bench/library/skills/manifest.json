@@ -1,0 +1,9 @@
+{
+  "slug": "api-capability-check",
+  "name": "API capability check",
+  "description": "Confirm an external api behaves as documented before relying on it.",
+  "impl_ref": "data/library/skills/api-capability-check.wasm",
+  "entrypoint": "check",
+  "signature": "fn(check: Capability) -> Verdict",
+  "tests_ref": "https://metamind.dev/bench/skills/api-capability-check.test"
+}

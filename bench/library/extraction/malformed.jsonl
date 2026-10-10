@@ -1,0 +1,5 @@
+{"kind":"Technique","slug":"missing-title","purpose":"A candidate with no title cannot be named."}
+not json at all
+{"kind":"Frame","slug":"frame-is-not-prose","title":"A frame","purpose":"Frames are registered from roles and slots, not extracted."}
+{"kind":"Technique","slug":"unknown-key","title":"Unknown key","purpose":"An unknown key is a hard error.","surprise":1}
+{"kind":"Technique","slug":"bad confidence","title":"Bad slug","purpose":"A slug with a space cannot be an IRI.","confidence":0.5}

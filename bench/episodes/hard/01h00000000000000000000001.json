@@ -1,0 +1,132 @@
+{
+  "difficulty": "hard",
+  "episode": {
+    "id": "01h00000000000000000000001",
+    "goal": "01h00000000000000000000002",
+    "context": {
+      "summary": "decide how to recover a sharded store that lost a replica",
+      "novelty": 0.9,
+      "time_pressure": 0.0
+    },
+    "claims": [
+      "01h00000000000000000000003",
+      "01h00000000000000000000004"
+    ],
+    "assumptions": [
+      "01h00000000000000000000005",
+      "01h00000000000000000000006"
+    ],
+    "uncertainties": [
+      "the replica is genuinely lost",
+      "the primary is healthy",
+      "no writes were lost",
+      "the backup is current"
+    ],
+    "constraints": [
+      "no data loss",
+      "no downtime"
+    ],
+    "active_frames": [
+      "https://metamind.dev/library/frame/incident_response"
+    ],
+    "active_doctrines": [
+      "https://metamind.dev/library/doctrine/first_do_not_lose_data"
+    ],
+    "active_techniques": [
+      "https://metamind.dev/library/technique/narrow-before-acting"
+    ],
+    "candidates": [
+      "restore from the backup",
+      "rebuild the shard from peers",
+      "fail over"
+    ],
+    "evidence": [
+      "the replica's last heartbeat"
+    ],
+    "risks": [],
+    "decision": null,
+    "budget": {
+      "max_ops": 24,
+      "max_llm_calls": 12,
+      "max_cost": 8.0,
+      "max_wall_ms": 300000,
+      "spent_ops": 0,
+      "spent_llm_calls": 0,
+      "spent_cost": 0.0,
+      "spent_wall_ms": 0
+    },
+    "tier": "T0",
+    "timescale": "minutes"
+  },
+  "scan": {
+    "issues": [
+      {
+        "kind": "missing_evidence",
+        "materiality": 0.8,
+        "target": "restore from the backup"
+      },
+      {
+        "kind": "contested",
+        "materiality": 0.7,
+        "target": "rebuild the shard from peers"
+      },
+      {
+        "kind": "irreversible",
+        "materiality": 0.9,
+        "target": "fail over"
+      }
+    ],
+    "uncertainties": [
+      {
+        "id": "u1",
+        "description": "how much data the backup is missing",
+        "magnitude": 0.9
+      },
+      {
+        "id": "u2",
+        "description": "whether the peers can serve a rebuild",
+        "magnitude": 0.85
+      },
+      {
+        "id": "u3",
+        "description": "whether failing over loses writes",
+        "magnitude": 0.95
+      },
+      {
+        "id": "u4",
+        "description": "whether the primary is really healthy",
+        "magnitude": 0.7
+      }
+    ],
+    "comparison_requirements": [
+      {
+        "subject": "restore from the backup",
+        "versus": "rebuild the shard from peers",
+        "criterion": "data loss"
+      },
+      {
+        "subject": "restore from the backup",
+        "versus": "fail over",
+        "criterion": "time to recovery"
+      }
+    ],
+    "failure_modes": [
+      {
+        "mode": "the backup is stale and the restore loses writes",
+        "likelihood": 0.4,
+        "impact": 0.9
+      },
+      {
+        "mode": "a rebuild corrupts the shard",
+        "likelihood": 0.2,
+        "impact": 0.95
+      }
+    ],
+    "simpler_alternatives": [
+      "restore from the backup"
+    ],
+    "stakes": 0.95,
+    "irreversibility": 0.6,
+    "verification_value": 0.9
+  }
+}

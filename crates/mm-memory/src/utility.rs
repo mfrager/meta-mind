@@ -52,8 +52,14 @@ pub fn weight_of(channel: crate::model::Channel) -> f64 {
 /// them has a bug, and a clamped score would hide it.
 pub fn memory_utility(inputs: &UtilityInputs) -> Result<f64> {
     for (field, value) in [
-        ("future_behavior_impact", f64::from(inputs.future_behavior_impact)),
-        ("retrieval_probability", f64::from(inputs.retrieval_probability)),
+        (
+            "future_behavior_impact",
+            f64::from(inputs.future_behavior_impact),
+        ),
+        (
+            "retrieval_probability",
+            f64::from(inputs.retrieval_probability),
+        ),
         ("reliability", f64::from(inputs.reliability)),
     ] {
         if !(0.0..=1.0).contains(&value) {
@@ -247,7 +253,10 @@ mod tests {
         assert_eq!(weight_of(Channel::Recency), 0.10);
         assert_eq!(weight_of(Channel::Importance), 0.05);
         let sum: f64 = crate::model::CHANNELS.into_iter().map(weight_of).sum();
-        assert!((sum - 1.0).abs() < 1e-12, "weights must sum to 1, got {sum}");
+        assert!(
+            (sum - 1.0).abs() < 1e-12,
+            "weights must sum to 1, got {sum}"
+        );
     }
 
     #[test]

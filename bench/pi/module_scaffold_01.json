@@ -1,0 +1,19 @@
+{
+  "_comment": "The Pi task contract for Phase 11's first generated-module workflow. `mm-cli pi run --task bench/pi/module_scaffold_01.json --offline` replays `session_file` instead of spawning the installed `pi` binary, so the gate is deterministic and needs no provider; without `--offline` the same contract is sent to a real session.",
+  "task_id": "01h0000000000000000000pt01",
+  "goal": "scaffold modules/cognition/calibration from the mm-module-scaffold skill",
+  "skill": "pi/skills/mm-module-scaffold/SKILL.md",
+  "prompt_file": "pi/prompts/module_scaffold.md",
+  "allowed_paths": [
+    "modules/cognition/calibration/**"
+  ],
+  "session_file": "crates/mm-pi/fixtures/recorded_session_module_scaffold_01.jsonl",
+  "expected": {
+    "module": "calibration",
+    "files": [
+      "plugin.toml",
+      "src/lib.rs",
+      "manual/module.md"
+    ]
+  }
+}

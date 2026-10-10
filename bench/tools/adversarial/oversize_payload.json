@@ -1,0 +1,14 @@
+{
+  "id": "oversize_payload",
+  "description": "A write larger than the sandbox's payload ceiling is refused by the capability guard rather than attempted and truncated.",
+  "principal": "system",
+  "tool": "fs.write",
+  "args": { "path": "data/sandbox/huge.txt", "text": "" },
+  "generate": { "field": "text", "repeat": "x", "count": 2000000 },
+  "construct": "oversize",
+  "expect": {
+    "status": "denied",
+    "code": "sandbox.too_large",
+    "records": ["permission.check", "sandbox.deny", "invoke.end"]
+  }
+}

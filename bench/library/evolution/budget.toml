@@ -1,0 +1,8 @@
+# The budget one `policy evolve` run is allowed.
+#
+# `max_versions` is the hard cap: the run stops when it is reached, whatever the
+# generation count says, so an evolution run cannot grow the library without bound.
+
+generations = 3
+candidates_per_generation = 3
+max_versions = 12

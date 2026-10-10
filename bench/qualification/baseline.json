@@ -1,0 +1,10 @@
+[
+  {
+    "_comment": "The frozen benchmark the qualification run is judged against. It is the *same* harness Phase 11's promotion gate uses — `sh bench/promotion/score.sh`, which runs the seeded regression case through its fail-before/pass-after contract three times — and it is deliberately not a second, phase-12-specific harness: a candidate that could be measured by a harness living beside it is a candidate that could be measured by its own rewrite. `baseline_value` is the mean of a run that holds (three ones), and the noise margin is zero, so any regression is a rejection rather than a coin flip.",
+    "id": "qualification_bench",
+    "name": "the frozen regression case still fails before and passes after",
+    "command": "sh bench/promotion/score.sh",
+    "baseline_value": 1.0,
+    "noise_margin": 0.0
+  }
+]

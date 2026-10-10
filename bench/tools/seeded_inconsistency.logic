@@ -1,0 +1,14 @@
+# A clause set with one seeded inconsistency.
+#
+# Two unit clauses assert `p(a)` and its negation, which `mm-cli verify run symbolic`
+# refutes by unit resolution. The gate line is:
+#
+#     mm-cli verify run symbolic --subject bench/tools/seeded_inconsistency.logic ; test $? -ne 0
+#
+# The refutation is sound — it can only fire when the two literals really are
+# complementary — and the check is deliberately incomplete in the other direction: a set
+# it cannot refute is reported `inconclusive`, never `proven`. That is what makes this
+# fixture a test of the verifier rather than a test of a grep.
+
+p(a)
+not p(a)

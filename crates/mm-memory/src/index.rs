@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use mm_core::{Ulid, content_hash};
+use mm_core::{content_hash, Ulid};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MemoryError, Result};
@@ -238,7 +238,11 @@ mod tests {
         let b = MemoryIndex::embed("the workspace build was broken by the toolchain");
         assert_eq!(a.len(), DIM);
         assert_eq!(a, b);
-        let norm: f64 = a.iter().map(|x| f64::from(*x) * f64::from(*x)).sum::<f64>().sqrt();
+        let norm: f64 = a
+            .iter()
+            .map(|x| f64::from(*x) * f64::from(*x))
+            .sum::<f64>()
+            .sqrt();
         assert!((norm - 1.0).abs() < 1e-6, "norm {norm}");
     }
 
@@ -284,10 +288,7 @@ mod tests {
             "{\"version\":99,\"embedder\":\"x\",\"dim\":64,\"count\":0}\n",
         )
         .unwrap();
-        assert_eq!(
-            MemoryIndex::load(&path).unwrap_err().code(),
-            "memory.codec"
-        );
+        assert_eq!(MemoryIndex::load(&path).unwrap_err().code(), "memory.codec");
     }
 
     #[test]
@@ -300,10 +301,7 @@ mod tests {
              {\"id\":\"01hf7yat000000000000000001\",\"v\":[0.1]}\n",
         )
         .unwrap();
-        assert_eq!(
-            MemoryIndex::load(&path).unwrap_err().code(),
-            "memory.codec"
-        );
+        assert_eq!(MemoryIndex::load(&path).unwrap_err().code(), "memory.codec");
     }
 
     #[test]

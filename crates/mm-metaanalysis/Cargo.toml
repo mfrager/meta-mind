@@ -1,0 +1,40 @@
+[package]
+name = "mm-metaanalysis"
+description = "Metamind self-observation: the append-only prediction ledger, calibration (Brier, log loss, ECE, coverage, selective risk), the error taxonomy, the eight event triggers, one bounded diagnosis pass, and lesson extraction into the cognitive library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 11
+capability = "mm:PredictionCalibration"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+mm-store-sqlite = { workspace = true }
+# The `/selfeng` mirror is written through the graph store's handle, the same one every
+# other phase's mirror uses.
+mm-store-graph = { workspace = true }
+# One bounded diagnosis pass is a strict structured call, so the module programs
+# against the substrate rather than against a provider.
+mm-llm = { workspace = true }
+# The metric arithmetic is Phase 9's, not a second implementation: a Brier score
+# that disagreed with `mm-decision`'s would make two gates contradict each other.
+mm-decision = { workspace = true }
+# A lesson is a library entry, written through the library's own gate.
+mm-library = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,14 @@
+{
+  "root": "01hf7yat000000000000000001",
+  "nodes": [
+    "01hf7yat000000000000000001",
+    "01hf7yat000000000000000002",
+    "01hf7yat000000000000000003",
+    "01hf7yat000000000000000004"
+  ],
+  "edges": [
+    {"consequent":"01hf7yat000000000000000002","antecedents":["01hf7yat000000000000000001"],"kind":"derivation","criticality":0.5},
+    {"consequent":"01hf7yat000000000000000003","antecedents":["01hf7yat000000000000000002"],"kind":"derivation","criticality":0.5},
+    {"consequent":"01hf7yat000000000000000004","antecedents":["01hf7yat000000000000000001"],"kind":"derivation","criticality":0.5}
+  ]
+}

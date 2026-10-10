@@ -1,0 +1,51 @@
+[package]
+name = "mm-runtime"
+description = "Metamind autonomy: the ten-stage closed developmental loop, the five-timescale scheduler, the numeric self-model, architectural-debt scanning with reversible GC, the design writer, and the hot module loader"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 12
+capability = "mm:Autonomy"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mm-loop"
+path = "src/bin/mm-loop.rs"
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }
+# The run is a fold over committed events, so the loop appends through the same log the
+# rest of the kernel does rather than writing its own table.
+mm-eventlog = { workspace = true }
+# Stage 3 is Phase 11's trigger/diagnosis pass, called rather than re-implemented.
+mm-metaanalysis = { workspace = true }
+# Stage 7 is Phase 11's regression suite.
+mm-mistakes = { workspace = true }
+# Stages 5, 6 and 9 are Phase 11's change set, sandbox and promotion gate, unchanged.
+mm-selfeng = { workspace = true }
+# Stage 6 records the Pi session that authored the candidate.
+mm-pi = { workspace = true }
+# The loop reads and writes its own projections with guarded SQL, the way `mm-selfeng`
+# and `mm-being` do.
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# A budget envelope and a module manifest are both TOML documents in this repository.
+toml = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+proptest = { workspace = true }

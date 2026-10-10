@@ -1,0 +1,19 @@
+[package]
+name = "closed-loop"
+description = "Metamind closed-loop module: the ten-stage order and a deterministic summary of a loop run's stage records"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# The manifest is embedded with `include_str!` and parsed by a test, so a malformed
+# `plugin.toml` — or a `uri` that has drifted from this directory — fails a test rather
+# than a load. That is the same use calibration's manifest test makes of it.
+toml = { workspace = true }

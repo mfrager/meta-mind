@@ -1,0 +1,12 @@
+{
+  "id": "scope_too_narrow",
+  "description": "The caller holds an fs:read grant for data/sandbox/** and asks fs.list for a directory outside it: the grant does not reach, so the call is denied rather than silently widened.",
+  "principal": "system",
+  "tool": "fs.list",
+  "args": { "dir": "src" },
+  "expect": {
+    "status": "denied",
+    "code": "sandbox.escape",
+    "records": ["permission.check", "sandbox.deny", "invoke.end"]
+  }
+}

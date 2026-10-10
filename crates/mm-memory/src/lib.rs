@@ -36,10 +36,11 @@ pub mod model;
 pub mod procedural;
 pub mod rdf;
 pub mod retrieval;
+pub mod screen;
 pub mod store;
 pub mod utility;
 
-pub use consolidate::{ConsolidationPolicy, Episode, Outcome};
+pub use consolidate::{entity_ulid, ConsolidationPolicy, Episode, Outcome};
 pub use error::{AdmissionDenied, MemoryError, ProtectedRefusal, Result, UtilityDenied};
 pub use forgetting::{forget_cycle, ForgetPolicy};
 pub use graph::{ppr_scores, EntityEdge, EntityGraph};
@@ -53,6 +54,7 @@ pub use model::{
 };
 pub use procedural::Procedure;
 pub use retrieval::{hybrid_score, RetrievalEngine, RetrievalWeights};
+pub use screen::{Candidate, Flag, FlagKind, ScreenReport, FLAG_KINDS};
 pub use store::{MemoryStore, SqliteMemoryStore};
 pub use utility::{
     memory_utility, normalize_bm25, normalize_cosine, recency_score, retention_score, salience,
@@ -186,6 +188,26 @@ impl MemoryEngine {
 
     // --------------------------------------------------------------- writes ----
 
+    /// Screen a candidate write without storing it.
+    ///
+    /// Screening is a *read*: it reports what a memory would be flagged for. The
+    /// adversarial fixtures are driven through it directly, and [`MemoryEngine::remember`]
+    /// uses it as its admission gate.
+    pub async fn screen(
+        &self,
+        candidate: &screen::Candidate,
+        now: Timestamp,
+    ) -> Result<screen::ScreenReport> {
+        screen::screen(
+            &self.store,
+            &self.index,
+            candidate,
+            now,
+            NEAR_DUPLICATE_COSINE,
+        )
+        .await
+    }
+
     /// Admit a memory, or refuse it and say why.
     ///
     /// The admission gate is the plan's answer to retrieval poisoning: a duplicate
@@ -193,48 +215,57 @@ impl MemoryEngine {
     /// contradiction is recorded as a link rather than resolved silently.
     pub async fn remember(&mut self, memory: Memory) -> Result<Admission> {
         memory.validate()?;
-        // Exact duplicate: the same content learned true at the same instant is the
-        // same fact, and storing it twice would double its weight in every rank.
-        if let Some(existing) = self
-            .store
-            .find_by_hash(memory.kind, &memory.content_hash(), memory.validity.from)
-            .await?
-        {
-            self.record_admission(&memory, "duplicate", Some(&existing))
+        let candidate = screen::Candidate::from_memory(&memory);
+        // `recorded_at` is the instant the kernel took the memory in, so using it
+        // as the reference point keeps admission free of a clock: a replayed write
+        // is screened exactly as the original was.
+        let report = self.screen(&candidate, memory.recorded_at).await?;
+
+        // A duplicate is the one flag that stops the write: the same fact stored
+        // twice would double its weight in every rank.
+        if let Some(flag) = report.get(screen::FlagKind::Duplicate) {
+            let existing = flag.existing.unwrap_or(memory.id);
+            self.record_admission(&memory, &report, Some(&existing))
                 .await?;
             return Ok(Admission::Duplicate { existing });
         }
-        // Near-duplicate: distinct enough to keep, close enough to say so. It is
-        // stored *and* flagged, because discarding a real episode would be worse
-        // than keeping a redundant one.
-        let nearest = self
-            .index
-            .knn(&MemoryIndex::embed(&memory.content), 1)
-            .into_iter()
-            .find(|(id, cosine)| *id != memory.id && *cosine >= NEAR_DUPLICATE_COSINE);
+        let near = report
+            .get(screen::FlagKind::NearDuplicate)
+            .and_then(|flag| flag.existing.zip(flag.score));
+        let contradiction = report
+            .get(screen::FlagKind::Contradiction)
+            .and_then(|flag| flag.existing);
+
         self.store.insert(&memory).await?;
         self.index.insert_text(memory.id, &memory.content);
-        match nearest {
-            Some((existing, cosine)) => {
-                self.store
-                    .link(memory.id, existing, LinkKind::SimilarTo, cosine as f32)
-                    .await?;
-                self.record_admission(&memory, "near_duplicate", Some(&existing))
-                    .await?;
-                self.mirror().await?;
-                Ok(Admission::NearDuplicate { existing, cosine })
-            }
-            None => {
-                self.mirror().await?;
-                Ok(Admission::Accepted)
-            }
+
+        // The remaining flags never discard a trace; they make it visible. A
+        // near-duplicate and a contradiction become links, which is how a later
+        // read (or a human) can see that the write was noticed.
+        if let Some((existing, cosine)) = near {
+            self.store
+                .link(memory.id, existing, LinkKind::SimilarTo, cosine as f32)
+                .await?;
         }
+        if let Some(existing) = contradiction {
+            self.store
+                .link(memory.id, existing, LinkKind::Contradicts, 1.0)
+                .await?;
+        }
+        if !report.is_clean() {
+            self.record_admission(&memory, &report, None).await?;
+        }
+        self.mirror().await?;
+        Ok(match near {
+            Some((existing, cosine)) => Admission::NearDuplicate { existing, cosine },
+            None => Admission::Accepted,
+        })
     }
 
     async fn record_admission(
         &self,
         memory: &Memory,
-        flag: &str,
+        report: &screen::ScreenReport,
         existing: Option<&Ulid>,
     ) -> Result<()> {
         self.logger
@@ -248,8 +279,8 @@ impl MemoryEngine {
                     .with_field("importance", memory.importance)
                     .with_field("protected", memory.protected)
                     .with_field("provenance", mm_core::ulid_string(&memory.provenance))
-                    .with_field("admitted", false)
-                    .with_field("flag", flag)
+                    .with_field("admitted", !report.is_blocked())
+                    .with_field("flags", report.names().join(","))
                     .with_field(
                         "existing",
                         existing
@@ -262,13 +293,7 @@ impl MemoryEngine {
     }
 
     /// Wire a link between two memories.
-    pub async fn link(
-        &self,
-        from: Ulid,
-        to: Ulid,
-        relation: LinkKind,
-        weight: f32,
-    ) -> Result<()> {
+    pub async fn link(&self, from: Ulid, to: Ulid, relation: LinkKind, weight: f32) -> Result<()> {
         self.store.link(from, to, relation, weight).await
     }
 
@@ -296,8 +321,7 @@ impl MemoryEngine {
 
     /// Recall the `k` best memories for a query.
     pub async fn recall(&self, query: RecallQuery) -> Result<Vec<RecallHit>> {
-        let engine =
-            RetrievalEngine::new(self.weights, self.half_life_ns).with_index(&self.index);
+        let engine = RetrievalEngine::new(self.weights, self.half_life_ns).with_index(&self.index);
         engine
             .recall(&self.store, &self.logger, &self.ids, &query)
             .await
@@ -340,10 +364,7 @@ impl MemoryEngine {
     }
 
     /// Record a procedure.
-    pub async fn record_procedure(
-        &mut self,
-        procedure: procedural::Procedure,
-    ) -> Result<Ulid> {
+    pub async fn record_procedure(&mut self, procedure: procedural::Procedure) -> Result<Ulid> {
         let id =
             procedural::record_procedure(&self.store, &self.logger, &self.ids, &procedure).await?;
         self.index.rebuild(&self.store).await?;
@@ -370,15 +391,12 @@ impl MemoryEngine {
     ///
     /// Ingestion is keyed on the episode's stable `ref`, so running the same file
     /// twice adds nothing the second time — which is what lets the gate be rerun.
-    pub async fn ingest_episodes(
-        &mut self,
-        path: &Path,
-        logger: &Logger,
-    ) -> Result<Vec<Ulid>> {
+    pub async fn ingest_episodes(&mut self, path: &Path, logger: &Logger) -> Result<Vec<Ulid>> {
         let episodes = consolidate::read_episodes(path)?;
         let mut ingested = Vec::new();
         for episode in &episodes {
-            let id = consolidate::ingest_episode(&self.store, &self.logger, &self.ids, episode).await?;
+            let id =
+                consolidate::ingest_episode(&self.store, &self.logger, &self.ids, episode).await?;
             ingested.push(id);
         }
         let _ = logger;
@@ -456,9 +474,7 @@ impl MemoryEngine {
 
         let dangling = self.store.dangling_consolidation_sources().await?;
         if dangling > 0 {
-            failures.push(format!(
-                "{dangling} consolidation source(s) do not resolve"
-            ));
+            failures.push(format!("{dangling} consolidation source(s) do not resolve"));
         }
 
         let reconciled = classes.iter().all(|(_, a, b)| a == b);

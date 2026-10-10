@@ -1,0 +1,35 @@
+# Metamind module manifest.
+#
+# The `uri` is stable and path-derived: it follows this module's position in the
+# repository, so moving the directory is the only thing that changes it and no
+# other module may reuse the value.
+#
+# The `name` is the directory name, as it is for every other module in the tree.
+#
+# This module is the remediation of the capability gap recorded in
+# `bench/gaps/gap_01.json` — "no module can summarize a drifting calibration bin"
+# — and its `uri` is that gap's `target_uri`. The shape is deliberately the one
+# every other module has: a scaffolded module that invented its own layout would
+# not be discoverable by `mm-cli codex scan`, and the phase's first workflow is
+# only a workflow if the artifact it produces registers like every other module.
+
+[plugin]
+name = "calibration"
+uri = "https://metamind.dev/code/module/cognition/calibration"
+version = "0.1.0"
+
+[metadata]
+category = "cognition"
+owned_by_phase = 11
+capability = "mm:CalibrationSummary"
+
+[tbox.functions]
+"cognition.calibration_summary" = { source = "handlers::calibration_summary" }
+"cognition.calibration_drift" = { source = "handlers::calibration_drift" }
+
+[monad.operations]
+name = "cognition"
+arity = 1
+
+[build]
+rust_edition = "2021"

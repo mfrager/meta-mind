@@ -152,3 +152,93 @@ mmc:CapabilityShape a sh:NodeShape ;
         sh:class mmc:Symbol ;
         sh:severity sh:Violation ;
     ] .
+
+# ------------------------------------------------------- Pi sessions (Phase 11) --
+#
+# A session states where its file is, when it ran and how many records it held. The count
+# is required on purpose: a session ingested from a truncated file would otherwise look
+# exactly like a complete one, and "the agent ran and produced nothing" is a claim an
+# operator should be able to check.
+#
+# One rule the phase plan §4.3 asks for is NOT expressible here and is enforced in the
+# store instead: **gapless `mmc:seq`**. SHACL cannot say "1..n with no holes" in the
+# enforced fragment, so `pi_events` carries `UNIQUE (session_ulid, seq)`, the ingester
+# refuses a stream whose sequence is not 1..=n, and `mm-pi`'s tests assert both.
+mmc:PiSessionShape a sh:NodeShape ;
+    sh:targetClass mmc:PiSession ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:sessionFile ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:startedAt ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:eventCount ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An edit names its path, its position in the stream and the session that made it. The
+# `generatedBy` edge is an IRI reference to the session node, so an edit cannot be an
+# orphan that "somebody" made.
+mmc:EditShape a sh:NodeShape ;
+    sh:targetClass mmc:Edit ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:path ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:seq ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:generatedBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A tool call names its tool, its position and its session, for the same reason.
+mmc:ToolCallShape a sh:NodeShape ;
+    sh:targetClass mmc:ToolCall ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mmc:toolName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:seq ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mmc:generatedBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .

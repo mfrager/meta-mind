@@ -381,9 +381,15 @@ cargo run -p mm-cli -- doctor
 cargo run -p mm-cli -- logs verify
 
 # The qualification scenario: novel goal, no human edits.
+#
+# `--json` is what makes the run's own report a machine-readable object; it is the
+# convention every other command group in this CLI follows, and the build recorded it as a
+# deviation from this section's sketch (see `crates/mm-cli/src/runtime_cmd.rs`). The gate
+# below is also asserted as an e2e test — `tests/e2e/phase12_autonomy.rs` — and run in CI
+# (`.github/workflows/ci.yml`, the `Phase 12 gate` step).
 RUN=$(cargo run -p mm-cli -- loop run \
         --goal-file bench/qualification/goal_novel.json \
-        --budget-file bench/qualification/budget.toml --novel | jq -r .run_id)
+        --budget-file bench/qualification/budget.toml --novel --json | jq -r .run_id)
 
 cargo run -p mm-cli -- loop status --run "$RUN"         # status=completed
 cargo run -p mm-cli -- loop artifacts --run "$RUN"       # full provenance chain present
@@ -397,6 +403,12 @@ cargo run -p mm-cli -- logs verify                       # audit chain intact af
 
 # Deterministic reproduction of the entire run.
 cargo run -p mm-cli -- loop replay --run "$RUN"          # byte-identical artifacts
+
+# The loop as a supervised process: readiness on stdout, a completed run, and the five
+# clocks ticked — Identity never fires while a run is open.
+cargo run -p mm-runtime --bin mm-loop -- \
+        --goal-file bench/qualification/goal_novel.json \
+        --budget-file bench/qualification/budget.toml --assert-completed --ticks 3
 ```
 
 **Pass criteria (definition of "functional prototype"):**

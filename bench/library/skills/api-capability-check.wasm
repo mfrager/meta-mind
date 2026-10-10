@@ -1,0 +1,9 @@
+The committed mirror of `data/library/skills/api-capability-check.wasm`, the
+artefact the seed skill `https://metamind.dev/library/skill/api-capability-check@1`
+declares as its `mm:implRef`.
+
+`/data/**` is gitignored (it is the runtime data directory), so the declared path
+does not survive a fresh checkout. `mm-cli skill verify` therefore resolves an
+artefact as: the declared path when it exists, otherwise this mirror; it prints
+which one answered, so a run against the mirror is never mistaken for a run
+against a real artefact. The stub stands in until the Phase 10 sandbox lands.

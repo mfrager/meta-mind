@@ -1,0 +1,269 @@
+# Self-engineering SHACL shapes (Phase 11).
+#
+# `mm-cli graph validate --graph selfeng` validates `/selfeng` against this file. The
+# graph is written only by `mm-metaanalysis::rdf` (predictions, calibration runs,
+# meta-analyses, lessons) and `mm-selfeng::journal` (change sets and evolution events).
+#
+# Why one file and not the plan's three: the phase plan §3 names
+# `phase11_{metaanalysis,changeset,pisession}.ttl`. This repository's convention since
+# Phase 7 is one shape set *per graph* (`decision.ttl`, `tools.ttl`), and
+# `Config::shapes_file_for` maps a graph to exactly one file, so the meta-analysis and
+# change-set shapes live here together. The Pi-session shapes are not here at all: a
+# session and its edits are code metadata written into `/code`, so they belong to
+# `mmc-shapes.ttl`, which is where `PiSessionShape` is. The deviation is recorded
+# rather than silently taken.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`, `sh:node`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard error, so
+# documentation lives in these comments rather than inside a shape.
+#
+# Three rules the phase plan (§4.3) asks for cannot be stated in this fragment, and they
+# are named here rather than silently dropped:
+#
+#   * "`mm:probability ∈ [0,1]`" — the fragment has `sh:datatype` and counts, but no
+#     numeric range. The bound is enforced by the ledger's
+#     `CHECK (probability BETWEEN 0 AND 1)` and by `Prediction::validate` in
+#     `mm-metaanalysis`; what this file pins is that there is *exactly one* probability,
+#     which is the half a shape can hold.
+#   * "gapless `mmc:seq`" on a Pi session — SHACL cannot express "1..n with no holes".
+#     `pi_events` has `UNIQUE (session_ulid, seq)`, the ingester refuses a session whose
+#     sequence is not 1..=n, and `mm-pi`'s tests assert both.
+#   * "the ledger is append-only" — a database trigger refuses UPDATE and DELETE on
+#     `prediction_ledger` and `prediction_outcomes`; the graph is a mirror of rows that
+#     cannot change, so a shape would be asserting what the trigger already guarantees.
+#
+# The vocabulary used below is declared in `ontology/selfeng.ttl`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# A calibrated prediction stakes exactly one probability, over a positive horizon, in a
+# named class, with the instant it was staked. All four are required: a prediction with no
+# horizon can never come due, and one with no class is scored against nothing.
+mm:CalibratedPredictionShape a sh:NodeShape ;
+    sh:targetClass mm:CalibratedPrediction ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:probability ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:predictionClass ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:horizonSeconds ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:created ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A prediction has at most one resolution. `sh:maxCount 1` is the graph half of the
+# table's primary key: "resolve it twice, keeping the better score" fails here as well as
+# in SQL.
+mm:PredictionOutcomeShape a sh:NodeShape ;
+    sh:targetClass mm:PredictionOutcome ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:observedOutcome ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:resolvedAt ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:producedEvidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A calibration run reports its subject and all three metrics the gate checks. The
+# baseline is required too: a run that cannot say what it improved on is not evidence.
+mm:CalibrationRunShape a sh:NodeShape ;
+    sh:targetClass mm:CalibrationRun ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:calibrationSubject ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:brierScore ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:logLoss ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:eceScore ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:baselineBrier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A meta-analysis names its trigger, its written diagnosis, and at least one error class.
+# The last is the load-bearing one: an analysis that classifies nothing cannot be acted
+# on, and `minCount 1` makes that a violation rather than an empty list.
+mm:MetaAnalysisShape a sh:NodeShape ;
+    sh:targetClass mm:MetaAnalysis ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:triggerKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:diagnosis ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:errorClass ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A lesson states what it learned and how thin the evidence is. The evidence count is
+# required for the same reason confidence is: a lesson drawn from one occurrence is an
+# anecdote, and the count is what lets a reader see that.
+mm:LessonShape a sh:NodeShape ;
+    sh:targetClass mm:Lesson ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:lessonText ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:lessonConfidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidenceCount ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A change set must say why it exists, what it tests, and how to undo it. All three are
+# `minCount 1` / `maxCount 1` because each is a single sentence, not a list, and the
+# promotion gate's rule 5 (required evidence) reads exactly these.
+mm:ChangeSetShape a sh:NodeShape ;
+    sh:targetClass mm:ChangeSet ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:changesetReason ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hypothesis ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:rollbackPlan ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:changesetStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A journal entry records a decision and the reason for it. The reason is required on
+# both sides of the decision: the gate's contract is that a rejection is written, not
+# implied.
+mm:EvolutionEventShape a sh:NodeShape ;
+    sh:targetClass mm:EvolutionEvent ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:promotionDecision ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:promotionReason ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:selfVersion ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:journalOutcome ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

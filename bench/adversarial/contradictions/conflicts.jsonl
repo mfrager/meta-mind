@@ -1,0 +1,6 @@
+{"kind":"fact","subject":"https://metamind.dev/data/pipeline","predicate":"https://metamind.dev/ontology#deploymentState","object":"green","status":"REPORTED","confidence":0.7}
+{"kind":"fact","subject":"https://metamind.dev/data/pipeline","predicate":"https://metamind.dev/ontology#deploymentState","object":"red","status":"REPORTED","confidence":0.7}
+{"kind":"fact","subject":"https://metamind.dev/data/service","predicate":"https://metamind.dev/ontology#deploymentState","object":"up","status":"REPORTED","confidence":0.6}
+{"kind":"fact","subject":"https://metamind.dev/data/service","predicate":"https://metamind.dev/ontology#deploymentState","object":"down","status":"REPORTED","confidence":0.6}
+{"kind":"fact","subject":"https://metamind.dev/data/queue","predicate":"https://metamind.dev/ontology#deploymentState","object":"empty","status":"REPORTED","confidence":0.5}
+{"kind":"fact","subject":"https://metamind.dev/data/queue","predicate":"https://metamind.dev/ontology#deploymentState","object":"full","status":"REPORTED","confidence":0.5}

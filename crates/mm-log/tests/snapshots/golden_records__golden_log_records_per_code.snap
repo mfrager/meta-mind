@@ -3,6 +3,45 @@ source: crates/mm-log/tests/golden_records.rs
 expression: golden
 ---
 {
+  "action.ledger.append": {
+    "at": "2023-11-14T22:15:44.000000000Z",
+    "audit": false,
+    "event_code": "action.ledger.append",
+    "fields": {
+      "code_index": 144
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "action.rollback.end": {
+    "at": "2023-11-14T22:15:46.000000000Z",
+    "audit": false,
+    "event_code": "action.rollback.end",
+    "fields": {
+      "code_index": 146
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "action.rollback.start": {
+    "at": "2023-11-14T22:15:45.000000000Z",
+    "audit": false,
+    "event_code": "action.rollback.start",
+    "fields": {
+      "code_index": 145
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
   "audit.sequence.check": {
     "at": "2023-11-14T22:13:36.000000000Z",
     "audit": false,
@@ -191,6 +230,97 @@ expression: golden
     "event_code": "being.relationship.update",
     "fields": {
       "code_index": 52
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "bench.run": {
+    "at": "2023-11-14T22:16:03.000000000Z",
+    "audit": false,
+    "event_code": "bench.run",
+    "fields": {
+      "code_index": 163
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "budget.debit": {
+    "at": "2023-11-14T22:16:09.000000000Z",
+    "audit": false,
+    "event_code": "budget.debit",
+    "fields": {
+      "code_index": 169
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "budget.deny": {
+    "at": "2023-11-14T22:16:10.000000000Z",
+    "audit": false,
+    "event_code": "budget.deny",
+    "fields": {
+      "code_index": 170
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "calib.report": {
+    "at": "2023-11-14T22:15:56.000000000Z",
+    "audit": false,
+    "event_code": "calib.report",
+    "fields": {
+      "code_index": 156
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "calibration.fit": {
+    "at": "2023-11-14T22:15:30.000000000Z",
+    "audit": false,
+    "event_code": "calibration.fit",
+    "fields": {
+      "code_index": 130
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "changeset.create": {
+    "at": "2023-11-14T22:15:58.000000000Z",
+    "audit": false,
+    "event_code": "changeset.create",
+    "fields": {
+      "code_index": 158
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "changeset.stage": {
+    "at": "2023-11-14T22:15:59.000000000Z",
+    "audit": false,
+    "event_code": "changeset.stage",
+    "fields": {
+      "code_index": 159
     },
     "level": "info",
     "record_id": "01h00000000000000000000000",
@@ -393,6 +523,331 @@ expression: golden
     "target": "mm.kernel",
     "trace_id": "01h00000000000000000000001"
   },
+  "compare.check": {
+    "at": "2023-11-14T22:15:26.000000000Z",
+    "audit": false,
+    "event_code": "compare.check",
+    "fields": {
+      "code_index": 126
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "compare.contract": {
+    "at": "2023-11-14T22:15:25.000000000Z",
+    "audit": false,
+    "event_code": "compare.contract",
+    "fields": {
+      "code_index": 125
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "compare.normalize": {
+    "at": "2023-11-14T22:15:27.000000000Z",
+    "audit": false,
+    "event_code": "compare.normalize",
+    "fields": {
+      "code_index": 127
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "conformal.adjust": {
+    "at": "2023-11-14T22:15:31.000000000Z",
+    "audit": false,
+    "event_code": "conformal.adjust",
+    "fields": {
+      "code_index": 131
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "copy.integrate": {
+    "at": "2023-11-14T22:16:16.000000000Z",
+    "audit": false,
+    "event_code": "copy.integrate",
+    "fields": {
+      "code_index": 176
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "debt.finding": {
+    "at": "2023-11-14T22:16:28.000000000Z",
+    "audit": false,
+    "event_code": "debt.finding",
+    "fields": {
+      "code_index": 188
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "debt.scan": {
+    "at": "2023-11-14T22:16:27.000000000Z",
+    "audit": false,
+    "event_code": "debt.scan",
+    "fields": {
+      "code_index": 187
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.abstain": {
+    "at": "2023-11-14T22:15:22.000000000Z",
+    "audit": false,
+    "event_code": "decision.abstain",
+    "fields": {
+      "code_index": 122
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.core.answer": {
+    "at": "2023-11-14T22:15:18.000000000Z",
+    "audit": false,
+    "event_code": "decision.core.answer",
+    "fields": {
+      "code_index": 118
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.core.unavailable": {
+    "at": "2023-11-14T22:15:19.000000000Z",
+    "audit": false,
+    "event_code": "decision.core.unavailable",
+    "fields": {
+      "code_index": 119
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.hosted.call": {
+    "at": "2023-11-14T22:15:21.000000000Z",
+    "audit": false,
+    "event_code": "decision.hosted.call",
+    "fields": {
+      "code_index": 121
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.log.write": {
+    "at": "2023-11-14T22:15:23.000000000Z",
+    "audit": false,
+    "event_code": "decision.log.write",
+    "fields": {
+      "code_index": 123
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "decision.rules.match": {
+    "at": "2023-11-14T22:15:20.000000000Z",
+    "audit": false,
+    "event_code": "decision.rules.match",
+    "fields": {
+      "code_index": 120
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "design.revision": {
+    "at": "2023-11-14T22:16:31.000000000Z",
+    "audit": false,
+    "event_code": "design.revision",
+    "fields": {
+      "code_index": 191
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.assumption.create": {
+    "at": "2023-11-14T22:14:34.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.assumption.create",
+    "fields": {
+      "code_index": 74
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.assumption.priority": {
+    "at": "2023-11-14T22:14:35.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.assumption.priority",
+    "fields": {
+      "code_index": 75
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.cascade": {
+    "at": "2023-11-14T22:14:38.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.cascade",
+    "fields": {
+      "code_index": 78
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.claim.ingest": {
+    "at": "2023-11-14T22:14:30.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.claim.ingest",
+    "fields": {
+      "code_index": 70
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.contradiction.detect": {
+    "at": "2023-11-14T22:14:36.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.contradiction.detect",
+    "fields": {
+      "code_index": 76
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.data_tests.fail": {
+    "at": "2023-11-14T22:14:39.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.data_tests.fail",
+    "fields": {
+      "code_index": 79
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.evidence.attach": {
+    "at": "2023-11-14T22:14:31.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.evidence.attach",
+    "fields": {
+      "code_index": 71
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.justification.edge": {
+    "at": "2023-11-14T22:14:37.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.justification.edge",
+    "fields": {
+      "code_index": 77
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.promotion.reject": {
+    "at": "2023-11-14T22:14:32.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.promotion.reject",
+    "fields": {
+      "code_index": 72
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.status.transition": {
+    "at": "2023-11-14T22:14:33.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.status.transition",
+    "fields": {
+      "code_index": 73
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "epistemic.world.write": {
+    "at": "2023-11-14T22:14:40.000000000Z",
+    "audit": false,
+    "event_code": "epistemic.world.write",
+    "fields": {
+      "code_index": 80
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
   "eventlog.abort": {
     "at": "2023-11-14T22:13:31.000000000Z",
     "audit": false,
@@ -464,6 +919,318 @@ expression: golden
     "event_code": "eventlog.replay.start",
     "fields": {
       "code_index": 12
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "experience.compile": {
+    "at": "2023-11-14T22:14:53.000000000Z",
+    "audit": false,
+    "event_code": "experience.compile",
+    "fields": {
+      "code_index": 93
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "factuality.check": {
+    "at": "2023-11-14T22:15:29.000000000Z",
+    "audit": false,
+    "event_code": "factuality.check",
+    "fields": {
+      "code_index": 129
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "firewall.aggregate": {
+    "at": "2023-11-14T22:15:34.000000000Z",
+    "audit": false,
+    "event_code": "firewall.aggregate",
+    "fields": {
+      "code_index": 134
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "firewall.prohibition.shortcircuit": {
+    "at": "2023-11-14T22:15:33.000000000Z",
+    "audit": false,
+    "event_code": "firewall.prohibition.shortcircuit",
+    "fields": {
+      "code_index": 133
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "firewall.report": {
+    "at": "2023-11-14T22:15:35.000000000Z",
+    "audit": false,
+    "event_code": "firewall.report",
+    "fields": {
+      "code_index": 135
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "firewall.scan.start": {
+    "at": "2023-11-14T22:15:32.000000000Z",
+    "audit": false,
+    "event_code": "firewall.scan.start",
+    "fields": {
+      "code_index": 132
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "gate.decide": {
+    "at": "2023-11-14T22:16:05.000000000Z",
+    "audit": false,
+    "event_code": "gate.decide",
+    "fields": {
+      "code_index": 165
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "gc.action": {
+    "at": "2023-11-14T22:16:29.000000000Z",
+    "audit": false,
+    "event_code": "gc.action",
+    "fields": {
+      "code_index": 189
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "gc.refuse": {
+    "at": "2023-11-14T22:16:30.000000000Z",
+    "audit": false,
+    "event_code": "gc.refuse",
+    "fields": {
+      "code_index": 190
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "genome.evolve.end": {
+    "at": "2023-11-14T22:15:00.000000000Z",
+    "audit": false,
+    "event_code": "genome.evolve.end",
+    "fields": {
+      "code_index": 100
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "genome.evolve.generation": {
+    "at": "2023-11-14T22:14:59.000000000Z",
+    "audit": false,
+    "event_code": "genome.evolve.generation",
+    "fields": {
+      "code_index": 99
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "genome.evolve.start": {
+    "at": "2023-11-14T22:14:58.000000000Z",
+    "audit": false,
+    "event_code": "genome.evolve.start",
+    "fields": {
+      "code_index": 98
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "invariant.check": {
+    "at": "2023-11-14T22:16:34.000000000Z",
+    "audit": false,
+    "event_code": "invariant.check",
+    "fields": {
+      "code_index": 194
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.applicable.rank": {
+    "at": "2023-11-14T22:14:51.000000000Z",
+    "audit": false,
+    "event_code": "library.applicable.rank",
+    "fields": {
+      "code_index": 91
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.case.retrieve": {
+    "at": "2023-11-14T22:14:52.000000000Z",
+    "audit": false,
+    "event_code": "library.case.retrieve",
+    "fields": {
+      "code_index": 92
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.dup.detected": {
+    "at": "2023-11-14T22:14:44.000000000Z",
+    "audit": false,
+    "event_code": "library.dup.detected",
+    "fields": {
+      "code_index": 84
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.entry.rejected": {
+    "at": "2023-11-14T22:14:43.000000000Z",
+    "audit": false,
+    "event_code": "library.entry.rejected",
+    "fields": {
+      "code_index": 83
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.entry.upsert": {
+    "at": "2023-11-14T22:14:41.000000000Z",
+    "audit": false,
+    "event_code": "library.entry.upsert",
+    "fields": {
+      "code_index": 81
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.entry.validated": {
+    "at": "2023-11-14T22:14:42.000000000Z",
+    "audit": false,
+    "event_code": "library.entry.validated",
+    "fields": {
+      "code_index": 82
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.extract.job.end": {
+    "at": "2023-11-14T22:14:50.000000000Z",
+    "audit": false,
+    "event_code": "library.extract.job.end",
+    "fields": {
+      "code_index": 90
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.extract.job.start": {
+    "at": "2023-11-14T22:14:49.000000000Z",
+    "audit": false,
+    "event_code": "library.extract.job.start",
+    "fields": {
+      "code_index": 89
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.frame.compose": {
+    "at": "2023-11-14T22:14:54.000000000Z",
+    "audit": false,
+    "event_code": "library.frame.compose",
+    "fields": {
+      "code_index": 94
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.frame.switch": {
+    "at": "2023-11-14T22:14:55.000000000Z",
+    "audit": false,
+    "event_code": "library.frame.switch",
+    "fields": {
+      "code_index": 95
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "library.orphan.detected": {
+    "at": "2023-11-14T22:14:45.000000000Z",
+    "audit": false,
+    "event_code": "library.orphan.detected",
+    "fields": {
+      "code_index": 85
     },
     "level": "info",
     "record_id": "01h00000000000000000000000",
@@ -666,6 +1433,591 @@ expression: golden
     "target": "mm.kernel",
     "trace_id": "01h00000000000000000000001"
   },
+  "loop.budget.debit": {
+    "at": "2023-11-14T22:16:21.000000000Z",
+    "audit": false,
+    "event_code": "loop.budget.debit",
+    "fields": {
+      "code_index": 181
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.budget.deny": {
+    "at": "2023-11-14T22:16:22.000000000Z",
+    "audit": false,
+    "event_code": "loop.budget.deny",
+    "fields": {
+      "code_index": 182
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.iteration.end": {
+    "at": "2023-11-14T22:16:20.000000000Z",
+    "audit": false,
+    "event_code": "loop.iteration.end",
+    "fields": {
+      "code_index": 180
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.iteration.start": {
+    "at": "2023-11-14T22:16:19.000000000Z",
+    "audit": false,
+    "event_code": "loop.iteration.start",
+    "fields": {
+      "code_index": 179
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.run.end": {
+    "at": "2023-11-14T22:16:18.000000000Z",
+    "audit": false,
+    "event_code": "loop.run.end",
+    "fields": {
+      "code_index": 178
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.run.start": {
+    "at": "2023-11-14T22:16:17.000000000Z",
+    "audit": false,
+    "event_code": "loop.run.start",
+    "fields": {
+      "code_index": 177
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "loop.stage.resume": {
+    "at": "2023-11-14T22:16:23.000000000Z",
+    "audit": false,
+    "event_code": "loop.stage.resume",
+    "fields": {
+      "code_index": 183
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "mcp.tools.call": {
+    "at": "2023-11-14T22:15:52.000000000Z",
+    "audit": false,
+    "event_code": "mcp.tools.call",
+    "fields": {
+      "code_index": 152
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "mcp.tools.list": {
+    "at": "2023-11-14T22:15:51.000000000Z",
+    "audit": false,
+    "event_code": "mcp.tools.list",
+    "fields": {
+      "code_index": 151
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.access": {
+    "at": "2023-11-14T22:14:21.000000000Z",
+    "audit": false,
+    "event_code": "memory.access",
+    "fields": {
+      "code_index": 61
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.add": {
+    "at": "2023-11-14T22:14:18.000000000Z",
+    "audit": false,
+    "event_code": "memory.add",
+    "fields": {
+      "code_index": 58
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.consolidate": {
+    "at": "2023-11-14T22:14:22.000000000Z",
+    "audit": false,
+    "event_code": "memory.consolidate",
+    "fields": {
+      "code_index": 62
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.forget": {
+    "at": "2023-11-14T22:14:24.000000000Z",
+    "audit": false,
+    "event_code": "memory.forget",
+    "fields": {
+      "code_index": 64
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.index.rebuild": {
+    "at": "2023-11-14T22:14:28.000000000Z",
+    "audit": false,
+    "event_code": "memory.index.rebuild",
+    "fields": {
+      "code_index": 68
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.mistake.create": {
+    "at": "2023-11-14T22:14:26.000000000Z",
+    "audit": false,
+    "event_code": "memory.mistake.create",
+    "fields": {
+      "code_index": 66
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.near_miss.create": {
+    "at": "2023-11-14T22:14:27.000000000Z",
+    "audit": false,
+    "event_code": "memory.near_miss.create",
+    "fields": {
+      "code_index": 67
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.protected_refusal": {
+    "at": "2023-11-14T22:14:25.000000000Z",
+    "audit": false,
+    "event_code": "memory.protected_refusal",
+    "fields": {
+      "code_index": 65
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.recall": {
+    "at": "2023-11-14T22:14:19.000000000Z",
+    "audit": false,
+    "event_code": "memory.recall",
+    "fields": {
+      "code_index": 59
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.rerank": {
+    "at": "2023-11-14T22:14:20.000000000Z",
+    "audit": false,
+    "event_code": "memory.rerank",
+    "fields": {
+      "code_index": 60
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.summary.build": {
+    "at": "2023-11-14T22:14:23.000000000Z",
+    "audit": false,
+    "event_code": "memory.summary.build",
+    "fields": {
+      "code_index": 63
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "memory.verify": {
+    "at": "2023-11-14T22:14:29.000000000Z",
+    "audit": false,
+    "event_code": "memory.verify",
+    "fields": {
+      "code_index": 69
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "meta.diagnose": {
+    "at": "2023-11-14T22:15:54.000000000Z",
+    "audit": false,
+    "event_code": "meta.diagnose",
+    "fields": {
+      "code_index": 154
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "meta.lesson": {
+    "at": "2023-11-14T22:15:55.000000000Z",
+    "audit": false,
+    "event_code": "meta.lesson",
+    "fields": {
+      "code_index": 155
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "meta.trigger": {
+    "at": "2023-11-14T22:15:53.000000000Z",
+    "audit": false,
+    "event_code": "meta.trigger",
+    "fields": {
+      "code_index": 153
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.budget.debit": {
+    "at": "2023-11-14T22:15:11.000000000Z",
+    "audit": false,
+    "event_code": "metacog.budget.debit",
+    "fields": {
+      "code_index": 111
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.budget.exhausted": {
+    "at": "2023-11-14T22:15:12.000000000Z",
+    "audit": false,
+    "event_code": "metacog.budget.exhausted",
+    "fields": {
+      "code_index": 112
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.episode.open": {
+    "at": "2023-11-14T22:15:01.000000000Z",
+    "audit": false,
+    "event_code": "metacog.episode.open",
+    "fields": {
+      "code_index": 101
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.force.decide": {
+    "at": "2023-11-14T22:15:13.000000000Z",
+    "audit": false,
+    "event_code": "metacog.force.decide",
+    "fields": {
+      "code_index": 113
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.op.consider": {
+    "at": "2023-11-14T22:15:07.000000000Z",
+    "audit": false,
+    "event_code": "metacog.op.consider",
+    "fields": {
+      "code_index": 107
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.op.execute": {
+    "at": "2023-11-14T22:15:09.000000000Z",
+    "audit": false,
+    "event_code": "metacog.op.execute",
+    "fields": {
+      "code_index": 109
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.op.outcome": {
+    "at": "2023-11-14T22:15:10.000000000Z",
+    "audit": false,
+    "event_code": "metacog.op.outcome",
+    "fields": {
+      "code_index": 110
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.op.select": {
+    "at": "2023-11-14T22:15:08.000000000Z",
+    "audit": false,
+    "event_code": "metacog.op.select",
+    "fields": {
+      "code_index": 108
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.program.compile": {
+    "at": "2023-11-14T22:15:06.000000000Z",
+    "audit": false,
+    "event_code": "metacog.program.compile",
+    "fields": {
+      "code_index": 106
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.program.lower": {
+    "at": "2023-11-14T22:15:16.000000000Z",
+    "audit": false,
+    "event_code": "metacog.program.lower",
+    "fields": {
+      "code_index": 116
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.replay": {
+    "at": "2023-11-14T22:15:17.000000000Z",
+    "audit": false,
+    "event_code": "metacog.replay",
+    "fields": {
+      "code_index": 117
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.scan.begin": {
+    "at": "2023-11-14T22:15:02.000000000Z",
+    "audit": false,
+    "event_code": "metacog.scan.begin",
+    "fields": {
+      "code_index": 102
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.scan.end": {
+    "at": "2023-11-14T22:15:04.000000000Z",
+    "audit": false,
+    "event_code": "metacog.scan.end",
+    "fields": {
+      "code_index": 104
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.scan.issue": {
+    "at": "2023-11-14T22:15:03.000000000Z",
+    "audit": false,
+    "event_code": "metacog.scan.issue",
+    "fields": {
+      "code_index": 103
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.stop": {
+    "at": "2023-11-14T22:15:14.000000000Z",
+    "audit": false,
+    "event_code": "metacog.stop",
+    "fields": {
+      "code_index": 114
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.tier.select": {
+    "at": "2023-11-14T22:15:05.000000000Z",
+    "audit": false,
+    "event_code": "metacog.tier.select",
+    "fields": {
+      "code_index": 105
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "metacog.trace.persist": {
+    "at": "2023-11-14T22:15:15.000000000Z",
+    "audit": false,
+    "event_code": "metacog.trace.persist",
+    "fields": {
+      "code_index": 115
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "mistake.regress": {
+    "at": "2023-11-14T22:15:57.000000000Z",
+    "audit": false,
+    "event_code": "mistake.regress",
+    "fields": {
+      "code_index": 157
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "module.load": {
+    "at": "2023-11-14T22:16:32.000000000Z",
+    "audit": false,
+    "event_code": "module.load",
+    "fields": {
+      "code_index": 192
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "module.rollback": {
+    "at": "2023-11-14T22:16:33.000000000Z",
+    "audit": false,
+    "event_code": "module.rollback",
+    "fields": {
+      "code_index": 193
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "observation.record": {
+    "at": "2023-11-14T22:15:47.000000000Z",
+    "audit": false,
+    "event_code": "observation.record",
+    "fields": {
+      "code_index": 147
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
   "ontology.load": {
     "at": "2023-11-14T22:13:34.000000000Z",
     "audit": false,
@@ -679,12 +2031,272 @@ expression: golden
     "target": "mm.kernel",
     "trace_id": "01h00000000000000000000001"
   },
+  "pi.command": {
+    "at": "2023-11-14T22:16:12.000000000Z",
+    "audit": false,
+    "event_code": "pi.command",
+    "fields": {
+      "code_index": 172
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "pi.edit": {
+    "at": "2023-11-14T22:16:15.000000000Z",
+    "audit": false,
+    "event_code": "pi.edit",
+    "fields": {
+      "code_index": 175
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "pi.event": {
+    "at": "2023-11-14T22:16:13.000000000Z",
+    "audit": false,
+    "event_code": "pi.event",
+    "fields": {
+      "code_index": 173
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "pi.session.ingest": {
+    "at": "2023-11-14T22:16:14.000000000Z",
+    "audit": false,
+    "event_code": "pi.session.ingest",
+    "fields": {
+      "code_index": 174
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "pi.spawn": {
+    "at": "2023-11-14T22:16:11.000000000Z",
+    "audit": false,
+    "event_code": "pi.spawn",
+    "fields": {
+      "code_index": 171
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "policy.fitness.update": {
+    "at": "2023-11-14T22:14:57.000000000Z",
+    "audit": false,
+    "event_code": "policy.fitness.update",
+    "fields": {
+      "code_index": 97
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "policy.version.create": {
+    "at": "2023-11-14T22:14:56.000000000Z",
+    "audit": false,
+    "event_code": "policy.version.create",
+    "fields": {
+      "code_index": 96
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "promote.commit": {
+    "at": "2023-11-14T22:16:06.000000000Z",
+    "audit": false,
+    "event_code": "promote.commit",
+    "fields": {
+      "code_index": 166
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "promote.reject": {
+    "at": "2023-11-14T22:16:07.000000000Z",
+    "audit": false,
+    "event_code": "promote.reject",
+    "fields": {
+      "code_index": 167
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "risk.analyze": {
+    "at": "2023-11-14T22:15:24.000000000Z",
+    "audit": false,
+    "event_code": "risk.analyze",
+    "fields": {
+      "code_index": 124
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "rollback.apply": {
+    "at": "2023-11-14T22:16:08.000000000Z",
+    "audit": false,
+    "event_code": "rollback.apply",
+    "fields": {
+      "code_index": 168
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "sandbox.build": {
+    "at": "2023-11-14T22:16:01.000000000Z",
+    "audit": false,
+    "event_code": "sandbox.build",
+    "fields": {
+      "code_index": 161
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "sandbox.prepare": {
+    "at": "2023-11-14T22:16:00.000000000Z",
+    "audit": false,
+    "event_code": "sandbox.prepare",
+    "fields": {
+      "code_index": 160
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "sandbox.test": {
+    "at": "2023-11-14T22:16:02.000000000Z",
+    "audit": false,
+    "event_code": "sandbox.test",
+    "fields": {
+      "code_index": 162
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "self_model.divergence": {
+    "at": "2023-11-14T22:16:26.000000000Z",
+    "audit": false,
+    "event_code": "self_model.divergence",
+    "fields": {
+      "code_index": 186
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "self_model.report": {
+    "at": "2023-11-14T22:16:25.000000000Z",
+    "audit": false,
+    "event_code": "self_model.report",
+    "fields": {
+      "code_index": 185
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
   "shacl.validate": {
     "at": "2023-11-14T22:13:35.000000000Z",
     "audit": false,
     "event_code": "shacl.validate",
     "fields": {
       "code_index": 15
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "shadow.start": {
+    "at": "2023-11-14T22:16:04.000000000Z",
+    "audit": false,
+    "event_code": "shadow.start",
+    "fields": {
+      "code_index": 164
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "skill.register": {
+    "at": "2023-11-14T22:14:46.000000000Z",
+    "audit": false,
+    "event_code": "skill.register",
+    "fields": {
+      "code_index": 86
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "skill.retrieve": {
+    "at": "2023-11-14T22:14:48.000000000Z",
+    "audit": false,
+    "event_code": "skill.retrieve",
+    "fields": {
+      "code_index": 88
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "skill.verify": {
+    "at": "2023-11-14T22:14:47.000000000Z",
+    "audit": false,
+    "event_code": "skill.verify",
+    "fields": {
+      "code_index": 87
     },
     "level": "info",
     "record_id": "01h00000000000000000000000",
@@ -750,6 +2362,175 @@ expression: golden
     "event_code": "store.sql.open",
     "fields": {
       "code_index": 3
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "timescale.tick": {
+    "at": "2023-11-14T22:16:24.000000000Z",
+    "audit": false,
+    "event_code": "timescale.tick",
+    "fields": {
+      "code_index": 184
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.idempotency.hit": {
+    "at": "2023-11-14T22:15:42.000000000Z",
+    "audit": false,
+    "event_code": "tool.idempotency.hit",
+    "fields": {
+      "code_index": 142
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.invoke.end": {
+    "at": "2023-11-14T22:15:43.000000000Z",
+    "audit": false,
+    "event_code": "tool.invoke.end",
+    "fields": {
+      "code_index": 143
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.invoke.start": {
+    "at": "2023-11-14T22:15:37.000000000Z",
+    "audit": false,
+    "event_code": "tool.invoke.start",
+    "fields": {
+      "code_index": 137
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.permission.check": {
+    "at": "2023-11-14T22:15:38.000000000Z",
+    "audit": false,
+    "event_code": "tool.permission.check",
+    "fields": {
+      "code_index": 138
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.policy.forbid": {
+    "at": "2023-11-14T22:15:39.000000000Z",
+    "audit": false,
+    "event_code": "tool.policy.forbid",
+    "fields": {
+      "code_index": 139
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.registry.register": {
+    "at": "2023-11-14T22:15:36.000000000Z",
+    "audit": false,
+    "event_code": "tool.registry.register",
+    "fields": {
+      "code_index": 136
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.sandbox.deny": {
+    "at": "2023-11-14T22:15:41.000000000Z",
+    "audit": false,
+    "event_code": "tool.sandbox.deny",
+    "fields": {
+      "code_index": 141
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "tool.sandbox.start": {
+    "at": "2023-11-14T22:15:40.000000000Z",
+    "audit": false,
+    "event_code": "tool.sandbox.start",
+    "fields": {
+      "code_index": 140
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "uncertainty.score": {
+    "at": "2023-11-14T22:15:28.000000000Z",
+    "audit": false,
+    "event_code": "uncertainty.score",
+    "fields": {
+      "code_index": 128
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "verify.obligation.failure": {
+    "at": "2023-11-14T22:15:50.000000000Z",
+    "audit": false,
+    "event_code": "verify.obligation.failure",
+    "fields": {
+      "code_index": 150
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "verify.run.end": {
+    "at": "2023-11-14T22:15:49.000000000Z",
+    "audit": false,
+    "event_code": "verify.run.end",
+    "fields": {
+      "code_index": 149
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "verify.run.start": {
+    "at": "2023-11-14T22:15:48.000000000Z",
+    "audit": false,
+    "event_code": "verify.run.start",
+    "fields": {
+      "code_index": 148
     },
     "level": "info",
     "record_id": "01h00000000000000000000000",

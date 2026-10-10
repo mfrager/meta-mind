@@ -68,7 +68,10 @@ fn the_provenance_bearing_surfaces_name_their_invariant() {
     );
     // Recall asserts nothing; it only reads and records accesses.
     assert_eq!(by_function[memory_recall::RECALL].invariant, None);
-    assert_eq!(by_function[memory_recall::RECALL].writes, &["memory_access"]);
+    assert_eq!(
+        by_function[memory_recall::RECALL].writes,
+        &["memory_access"]
+    );
 }
 
 #[test]
@@ -83,14 +86,16 @@ fn every_memory_kind_has_a_surface_that_can_reach_it() {
             .find(|s| s.function == function)
             .expect("every function has a surface");
         assert!(!surface.reads.is_empty(), "{function} declares no reads");
-        assert!(!surface.contract.is_empty(), "{function} declares no contract");
+        assert!(
+            !surface.contract.is_empty(),
+            "{function} declares no contract"
+        );
     }
     // A procedure becomes a habit only through repetition *and* proficiency, which
     // is the rule that keeps a single success from being remembered as a skill.
     let procedures = memory_recall::procedures();
     assert!(
-        procedures.contract.contains("three successes")
-            && procedures.contract.contains("0.8"),
+        procedures.contract.contains("three successes") && procedures.contract.contains("0.8"),
         "{}",
         procedures.contract
     );

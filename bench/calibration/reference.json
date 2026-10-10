@@ -1,0 +1,33 @@
+{
+  "baseline_brier": 0.3,
+  "bins": 10,
+  "brier": 0.176200009,
+  "brier_before": 0.214450001,
+  "classes": {
+    "retrieval": {
+      "brier": 0.192400013,
+      "brier_before": 0.236499995,
+      "ece": 0.000114363,
+      "ece_before": 0.209999988,
+      "log_loss": 0.573056951,
+      "log_loss_before": 0.816847376,
+      "n": 50,
+      "temperature": 2.81663602
+    },
+    "safety": {
+      "brier": 0.160000005,
+      "brier_before": 0.192400007,
+      "ece": 6.7219e-05,
+      "ece_before": 0.180000019,
+      "log_loss": 0.500402438,
+      "log_loss_before": 0.798566942,
+      "n": 50,
+      "temperature": 2.80820655
+    }
+  },
+  "ece": 9.0791e-05,
+  "ece_before": 0.195000004,
+  "log_loss": 0.536729694,
+  "n": 100,
+  "precision": 1e-07
+}

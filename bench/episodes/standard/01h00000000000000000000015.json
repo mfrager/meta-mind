@@ -1,0 +1,95 @@
+{
+  "difficulty": "standard",
+  "episode": {
+    "id": "01h00000000000000000000015",
+    "goal": "01h00000000000000000000016",
+    "context": {
+      "summary": "choose whether to roll back the deploy or roll forward with a fix",
+      "novelty": 0.3,
+      "time_pressure": 0.1
+    },
+    "claims": [
+      "01h00000000000000000000017"
+    ],
+    "assumptions": [
+      "01h00000000000000000000018"
+    ],
+    "uncertainties": [
+      "the rollback window still holds",
+      "the fix is safe to ship"
+    ],
+    "constraints": [],
+    "active_frames": [],
+    "active_doctrines": [],
+    "active_techniques": [
+      "https://metamind.dev/library/technique/compare-and-choose"
+    ],
+    "candidates": [
+      "roll back",
+      "roll forward with a patch"
+    ],
+    "evidence": [
+      "the last deploy's logs"
+    ],
+    "risks": [],
+    "decision": null,
+    "budget": {
+      "max_ops": 12,
+      "max_llm_calls": 6,
+      "max_cost": 0.5,
+      "max_wall_ms": 120000,
+      "spent_ops": 0,
+      "spent_llm_calls": 0,
+      "spent_cost": 0.0,
+      "spent_wall_ms": 0
+    },
+    "tier": "T0",
+    "timescale": "minutes"
+  },
+  "scan": {
+    "issues": [
+      {
+        "kind": "missing_evidence",
+        "materiality": 0.6,
+        "target": "roll forward with a patch"
+      },
+      {
+        "kind": "material_difference",
+        "materiality": 0.5,
+        "target": "roll back"
+      }
+    ],
+    "uncertainties": [
+      {
+        "id": "u1",
+        "description": "does the rollback window still hold",
+        "magnitude": 0.5
+      },
+      {
+        "id": "u2",
+        "description": "is the patch safe without a full test run",
+        "magnitude": 0.5
+      }
+    ],
+    "comparison_requirements": [
+      {
+        "subject": "roll back",
+        "versus": "roll forward with a patch",
+        "criterion": "downtime"
+      }
+    ],
+    "failure_modes": [
+      {
+        "mode": "a partial rollback leaves two schemas live",
+        "likelihood": 0.3,
+        "impact": 0.7
+      }
+    ],
+    "simpler_alternatives": [
+      "ask the on-call engineer"
+    ],
+    "stakes": 0.6,
+    "irreversibility": 0.3,
+    "verification_value": 0.6
+  }
+}

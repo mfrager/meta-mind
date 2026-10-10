@@ -1,0 +1,8 @@
+@prefix mm:  <https://metamind.dev/ontology#> .
+@prefix mmd: <https://metamind.dev/data/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# A well-formed claim: exactly one status and one confidence, both in range.
+mmd:claim-clean a mm:Claim ;
+    mm:status "OBSERVED" ;
+    mm:confidence "0.9"^^xsd:double .

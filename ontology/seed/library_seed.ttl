@@ -1,0 +1,296 @@
+# The committed seed corpus (Phase 7).
+#
+# One entry per kind, plus the extra frames, techniques and cases the gate's
+# selection, composition and retrieval checks need. It is *data*: validated, and
+# imported by `mm-cli library import`. Nothing here is generated at runtime.
+#
+# Instance IRIs are written in full rather than as prefixed names: the library's
+# identifiers are path-style (`.../library/{kind}/{slug}`, `.../policy/{name}@{v}`)
+# and `/` and `@` are not characters a Turtle prefixed name may contain, so a
+# short prefix would force escapes at every call site. The ontology terms keep the
+# `mm:` prefix, as in `ontology/mm.ttl`.
+#
+# Rules this file must satisfy, all enforced by
+# `ontology/shapes/library.shacl.ttl`:
+#   * every entry is typed `mm:LibraryEntry` *and* its own kind;
+#   * it carries exactly one `mm:title`, `mm:purpose` and `mm:version`;
+#   * a Technique/Heuristic/Pattern states `mm:applicableWhen` and `mm:evidence`,
+#     and a Technique also `mm:example` and `mm:confidence`;
+#   * an AntiPattern carries `mm:correctiveRule`;
+#   * a Case carries its three qualities; a Skill its test, verification,
+#     artefact, entrypoint and signature; a Policy its activation, behavior,
+#     scope and confidence; a Frame its slots, roles and domain; an Insight its
+#     votes and trajectory; a Workflow its steps.
+#
+# `mm:evidence`/`mm:example`/`mm:testedBy` point only at other entries in this
+# file or at the T-Box individuals in `ontology/library.ttl`, so
+# `mm-cli library orphans --fail-if-any` finds nothing dangling.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# --------------------------------------------------------------------- doctrine --
+
+<https://metamind.dev/library/doctrine/evidence-before-action> a mm:LibraryEntry, mm:Doctrine ;
+    mm:title "Evidence before action" ;
+    mm:purpose "Do not change the world on a belief that nothing supports." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software", "high_stakes" ;
+    mm:applicableWhen "an action would change state that others depend on" ;
+    mm:inapplicableWhen "the action is read-only and reversible" ;
+    mm:contraindication "waiting for evidence while the outage grows" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:improves <https://metamind.dev/library/heuristic/simplest-explanation> ;
+    mm:confidence "0.9"^^xsd:double ;
+    mm:derivedFromTrajectory "trajectory-success-1" .
+
+# -------------------------------------------------------------------- principle --
+
+<https://metamind.dev/library/principle/charitable-interpretation> a mm:LibraryEntry, mm:Principle ;
+    mm:title "Charitable interpretation" ;
+    mm:purpose "Read an ambiguous statement the strongest way it can be read." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "communication" ;
+    mm:applicableWhen "the intent of a statement is ambiguous" ;
+    mm:evidence <https://metamind.dev/library/case/api-latency-misattribution> ;
+    mm:example <https://metamind.dev/library/case/api-latency-misattribution> ;
+    mm:confidence "0.7"^^xsd:double .
+
+# --------------------------------------------------------------------- heuristic --
+
+<https://metamind.dev/library/heuristic/simplest-explanation> a mm:LibraryEntry, mm:Heuristic ;
+    mm:title "Simplest explanation" ;
+    mm:purpose "Prefer the hypothesis with the fewest unsupported parts." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "diagnosis", "software" ;
+    mm:applicableWhen "two or more hypotheses explain the same observation" ;
+    mm:inapplicableWhen "the simple explanation is already excluded" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:confidence "0.75"^^xsd:double ;
+    mm:activationScore "0.80"^^xsd:double ;
+    mm:domainFitness "diagnosis=0.8", "software=0.6" ;
+    mm:derivedFromTrajectory "trajectory-success-1" .
+
+# --------------------------------------------------------------------- technique --
+
+<https://metamind.dev/library/technique/decompose-and-conquer> a mm:LibraryEntry, mm:Technique ;
+    mm:title "Decompose and conquer" ;
+    mm:purpose "Split a problem into independent parts and solve each." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software", "problem_solving" ;
+    mm:applicableWhen "the problem has parts that can be solved independently" ;
+    mm:inapplicableWhen "the parts interact strongly" ;
+    mm:contraindication "splitting a problem whose parts share mutable state" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:counterexample <https://metamind.dev/library/case/schema-migration-regression> ;
+    mm:confidence "0.85"^^xsd:double ;
+    mm:activationScore "0.72"^^xsd:double ;
+    mm:domainFitness "software=0.9", "problem_solving=0.7" ;
+    mm:derivedFromTrajectory "trajectory-success-1" .
+
+<https://metamind.dev/library/technique/verify-before-use> a mm:LibraryEntry, mm:Technique ;
+    mm:title "Verify before use" ;
+    mm:purpose "Check that an external capability does what it claims before relying on it." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software", "high_stakes" ;
+    mm:applicableWhen "an external api or tool is about to be relied on" ;
+    mm:contraindication "high stakes decisions taken without verifying the capability" ;
+    mm:evidence <https://metamind.dev/library/case/api-latency-misattribution> ;
+    mm:example <https://metamind.dev/library/case/api-latency-misattribution> ;
+    mm:confidence "0.8"^^xsd:double ;
+    mm:activationScore "0.66"^^xsd:double ;
+    mm:domainFitness "software=0.8", "high_stakes=0.9" .
+
+<https://metamind.dev/library/technique/cheapest-experiment-first> a mm:LibraryEntry, mm:Technique ;
+    mm:title "Cheapest experiment first" ;
+    mm:purpose "Order experiments by information gained per unit of cost." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "problem_solving" ;
+    mm:applicableWhen "several experiments could resolve the uncertainty" ;
+    mm:inapplicableWhen "no experiment is safe to run" ;
+    mm:evidence <https://metamind.dev/library/case/schema-migration-regression> ;
+    mm:example <https://metamind.dev/library/case/schema-migration-regression> ;
+    mm:confidence "0.7"^^xsd:double ;
+    mm:activationScore "0.58"^^xsd:double ;
+    mm:domainFitness "problem_solving=0.75" ;
+    mm:derivedFromTrajectory "trajectory-failure-1" .
+
+<https://metamind.dev/library/technique/seek-disconfirming-evidence> a mm:LibraryEntry, mm:Technique ;
+    mm:title "Seek disconfirming evidence" ;
+    mm:purpose "Look for the observation that would make the hypothesis false." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "high_stakes", "diagnosis" ;
+    mm:applicableWhen "a hypothesis has been accepted quickly" ;
+    mm:contraindication "high stakes decisions taken on confirming evidence alone" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:confidence "0.75"^^xsd:double ;
+    mm:activationScore "0.64"^^xsd:double ;
+    mm:domainFitness "high_stakes=0.85", "diagnosis=0.6" .
+
+# ----------------------------------------------------------------------- pattern --
+
+<https://metamind.dev/library/pattern/reproduce-then-fix> a mm:LibraryEntry, mm:Pattern ;
+    mm:title "Reproduce, then fix" ;
+    mm:purpose "Make the failure happen on demand before changing anything." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:applicableWhen "a failure is reported but not reproducible" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:confidence "0.8"^^xsd:double .
+
+# ------------------------------------------------------------------------ case --
+
+<https://metamind.dev/library/case/outage-rollback> a mm:LibraryEntry, mm:Case ;
+    mm:title "Outage resolved by rolling back the deploy" ;
+    mm:purpose "A precedent: a regression traced to a deploy and removed by rollback." ;
+    mm:version "1"^^xsd:integer ;
+    mm:problem "latency doubled after the deploy; errors clustered on one service" ;
+    mm:solution "roll back the deploy, reproduce the regression locally, fix forward" ;
+    mm:outcomeQuality "0.9"^^xsd:double ;
+    mm:transferability "0.8"^^xsd:double ;
+    mm:evidenceQuality "0.85"^^xsd:double ;
+    mm:derivedFromTrajectory "trajectory-success-1" .
+
+<https://metamind.dev/library/case/schema-migration-regression> a mm:LibraryEntry, mm:Case ;
+    mm:title "Schema migration caused a read regression" ;
+    mm:purpose "A precedent: a migration that widened a column changed a query plan." ;
+    mm:version "1"^^xsd:integer ;
+    mm:problem "queries slowed after a migration that changed a column type" ;
+    mm:solution "compare query plans before and after the migration" ;
+    mm:outcomeQuality "0.7"^^xsd:double ;
+    mm:transferability "0.6"^^xsd:double ;
+    mm:evidenceQuality "0.75"^^xsd:double ;
+    mm:derivedFromTrajectory "trajectory-failure-1" .
+
+<https://metamind.dev/library/case/api-latency-misattribution> a mm:LibraryEntry, mm:Case ;
+    mm:title "Latency blamed on an api that was not at fault" ;
+    mm:purpose "A precedent: an external api was suspected before our own retry storm was." ;
+    mm:version "1"^^xsd:integer ;
+    mm:problem "p99 latency rose while the external api reported normal latency" ;
+    mm:solution "measure our own request amplification before blaming the dependency" ;
+    mm:outcomeQuality "0.6"^^xsd:double ;
+    mm:transferability "0.7"^^xsd:double ;
+    mm:evidenceQuality "0.65"^^xsd:double ;
+    mm:derivedFromTrajectory "trajectory-failure-1" .
+
+# ----------------------------------------------------------------- anti-pattern --
+
+<https://metamind.dev/library/antipattern/premature-optimization> a mm:LibraryEntry, mm:AntiPattern ;
+    mm:title "Premature optimization" ;
+    mm:purpose "Tuning a path nobody measured, at the cost of clarity." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:applicableWhen "a change is justified only by how it might perform" ;
+    mm:failureMode "complexity added for a speedup that was never needed" ;
+    mm:correctiveRule "measure first, and optimize the measured bottleneck" ;
+    mm:evidence <https://metamind.dev/library/case/schema-migration-regression> ;
+    mm:example <https://metamind.dev/library/case/schema-migration-regression> ;
+    mm:confidence "0.8"^^xsd:double .
+
+# ----------------------------------------------------------------------- skill --
+
+<https://metamind.dev/library/skill/api-capability-check@1> a mm:LibraryEntry, mm:Skill ;
+    mm:title "API capability check" ;
+    mm:purpose "Confirm an external api behaves as documented before relying on it." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:testedBy <https://metamind.dev/library/evaluation/regression-suite> ;
+    mm:verification "verified" ;
+    mm:implRef "data/library/skills/api-capability-check.wasm" ;
+    mm:entrypoint "check" ;
+    mm:signature "fn(check: Capability) -> Verdict" ;
+    mm:confidence "0.85"^^xsd:double .
+
+# ---------------------------------------------------------------------- policy --
+
+<https://metamind.dev/policy/prefer_simpler_solution@1> a mm:LibraryEntry, mm:Policy ;
+    mm:title "Prefer the simpler solution" ;
+    mm:purpose "When two solutions are equally effective, take the simpler one." ;
+    mm:version "1"^^xsd:integer ;
+    mm:scope "global" ;
+    mm:activationCondition "two candidate solutions are both viable" ;
+    mm:behavior "weights:1.0+0.2+0.2" ;
+    mm:confidence "0.6"^^xsd:double ;
+    mm:evidence <https://metamind.dev/library/heuristic/simplest-explanation> .
+
+# ----------------------------------------------------------------------- frames --
+
+<https://metamind.dev/library/frame/problem_solving> a mm:LibraryEntry, mm:Frame ;
+    mm:title "Problem solving" ;
+    mm:purpose "The general frame for turning an unclear situation into a solved one." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "problem_solving" ;
+    mm:role "solver", "stakeholder" ;
+    mm:frameSlot "goal", "obstacle", "options", "evidence", "constraint" ;
+    mm:typicalAction "state the goal before proposing a solution" ;
+    mm:failureMode "solving the stated problem instead of the real one" .
+
+<https://metamind.dev/library/frame/software> a mm:LibraryEntry, mm:Frame ;
+    mm:title "Software" ;
+    mm:purpose "The frame for work on a running system." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:parentFrame <https://metamind.dev/library/frame/problem_solving> ;
+    mm:role "operator", "service" ;
+    mm:frameSlot "deployment", "regression", "rollback" ;
+    mm:affordance "deploy", "rollback", "observe" .
+
+<https://metamind.dev/library/frame/debugging> a mm:LibraryEntry, mm:Frame ;
+    mm:title "Debugging" ;
+    mm:purpose "The frame for finding the cause of a failure." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:parentFrame <https://metamind.dev/library/frame/software> ;
+    mm:role "observer", "suspect" ;
+    mm:frameSlot "symptom", "reproduction", "cause" ;
+    mm:typicalAction "reproduce before reasoning" .
+
+<https://metamind.dev/library/frame/high_stakes> a mm:LibraryEntry, mm:Frame ;
+    mm:title "High stakes" ;
+    mm:purpose "The frame for decisions that are expensive to reverse." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "high_stakes" ;
+    mm:parentFrame <https://metamind.dev/library/frame/problem_solving> ;
+    mm:role "decision_maker", "affected_party" ;
+    mm:frameSlot "reversibility", "consequence", "uncertainty" ;
+    mm:typicalAction "ask what evidence would change the decision" .
+
+# ------------------------------------------------------------------- evaluation --
+
+<https://metamind.dev/library/evaluation/regression-suite> a mm:LibraryEntry, mm:Evaluation ;
+    mm:title "Regression suite" ;
+    mm:purpose "Judge a change by whether every previously passing case still passes." ;
+    mm:version "1"^^xsd:integer ;
+    mm:domain "software" ;
+    mm:evidence <https://metamind.dev/library/case/outage-rollback> ;
+    mm:example <https://metamind.dev/library/case/outage-rollback> ;
+    mm:confidence "0.8"^^xsd:double .
+
+# ---------------------------------------------------------------------- insight --
+
+<https://metamind.dev/library/insight/repeat-failure-means-assumption> a mm:LibraryEntry, mm:Insight ;
+    mm:title "A repeated failure is a hidden assumption" ;
+    mm:purpose "When the same fix fails twice, an assumption underneath is wrong." ;
+    mm:version "1"^^xsd:integer ;
+    mm:upvotes "3"^^xsd:integer ;
+    mm:downvotes "1"^^xsd:integer ;
+    mm:derivedFromTrajectory "trajectory-failure-1" ;
+    mm:evidence <https://metamind.dev/library/case/schema-migration-regression> .
+
+# --------------------------------------------------------------------- workflow --
+
+<https://metamind.dev/library/workflow/reproduce-isolate-fix-verify> a mm:LibraryEntry, mm:Workflow ;
+    mm:title "Reproduce, isolate, fix, verify" ;
+    mm:purpose "The workflow induced from the successful fix trajectory." ;
+    mm:version "1"^^xsd:integer ;
+    mm:scriptStep "reproduce the failure" ;
+    mm:scriptStep "isolate the smallest failing case" ;
+    mm:scriptStep "fix the cause, not the symptom" ;
+    mm:scriptStep "verify with the regression suite" ;
+    mm:derivedFromTrajectory "trajectory-success-1" .

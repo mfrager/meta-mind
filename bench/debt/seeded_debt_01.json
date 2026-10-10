@@ -1,0 +1,84 @@
+{
+  "_comment": "The seeded architectural-debt corpus Phase 12's `mm-cli debt scan` must reproduce: six findings, each naming the evidence that showed it, so a scanner that reports 'something looks unused' without a quotable record fails the gate rather than passing it. One finding deliberately names a protected developmental-ledger subject (`https://metamind.dev/data/...`, a record in `memories`/`events`) rather than a module or a policy: the collector must record it, refuse it, and leave it untouched, which is what makes the ledger guard exercised rather than described. Severities are distinct and given in descending order so a queue can be ordered deterministically, and the ordering is a property of the data rather than of a sort that might change.",
+  "corpus_id": "01h0000000000000000000db01",
+  "findings": [
+    {
+      "kind": "unused_capability",
+      "subject": "https://metamind.dev/code/module/cognition/summarize-drift",
+      "severity": 0.9,
+      "evidence": [
+        "module_index: cognition/summarize-drift has no edge from any caller",
+        "capability_index: mm:SummarizeDrift is referenced by zero workflows"
+      ],
+      "detail": "a module implements a capability that nothing in the dependency graph reaches, so it costs compile time and code review attention while answering no question anyone asks",
+      "protects_ledger": false
+    },
+    {
+      "kind": "duplicate_policy",
+      "subject": "https://metamind.dev/ontology#prefer_simpler_solution",
+      "severity": 0.8,
+      "evidence": [
+        "policy_versions: two rows share name prefer_simpler_solution at version 1",
+        "policies: two policy IRIs claim one name"
+      ],
+      "detail": "one policy name is owned by two policy IRIs, so a caller that addresses the policy by name reads whichever row the query happened to return first",
+      "protects_ledger": false
+    },
+    {
+      "kind": "conflicting_policy",
+      "subject": "https://metamind.dev/ontology#abstain_when_uncertain",
+      "severity": 0.7,
+      "evidence": [
+        "policy_versions: behavior_ttl of version 2 forbids answering below 0.6 confidence",
+        "policy_versions: behavior_ttl of version 3 permits answering below 0.4 confidence"
+      ],
+      "detail": "two live versions of one policy give opposite instructions about when to abstain, so the decision path is decided by load order rather than by policy",
+      "protects_ledger": false
+    },
+    {
+      "kind": "stale_memory",
+      "subject": "https://metamind.dev/data/01h0000000000000000000db02",
+      "severity": 0.6,
+      "evidence": [
+        "memories: 01h0000000000000000000db02 is a developmental memory with protected = 1",
+        "events: the record is the only audit of the bootstrap cycle that produced it"
+      ],
+      "detail": "the record is old enough that an ordinary sweep would archive it, but it is part of the immutable developmental ledger and must never be collected",
+      "protects_ledger": true
+    },
+    {
+      "kind": "unused_schema",
+      "subject": "https://metamind.dev/ontology#ScratchGraph",
+      "severity": 0.4,
+      "evidence": [
+        "sqlite_master: no table or view declares a foreign key to the graph",
+        "named graphs: the graph holds zero quads"
+      ],
+      "detail": "a declared schema exists that no writer populates and no reader queries, so it is carried by every migration and validated by every shape load for nothing",
+      "protects_ledger": false
+    },
+    {
+      "kind": "obsolete_technique",
+      "subject": "https://metamind.dev/code/module/cognition/linear-scan-retrieve",
+      "severity": 0.3,
+      "evidence": [
+        "library_entries: retrieval technique superseded by cognition/case-retrieve",
+        "applicability_runs: no ranked result has come from this technique since the superseding entry was registered"
+      ],
+      "detail": "a retrieval technique has been superseded by a faster one and is still offered to callers, so a caller can be routed to it by a stale ranking",
+      "protects_ledger": false
+    }
+  ],
+  "expected": {
+    "findings": 6,
+    "protected": 1,
+    "kinds": [
+      "unused_capability",
+      "duplicate_policy",
+      "conflicting_policy",
+      "stale_memory",
+      "unused_schema",
+      "obsolete_technique"
+    ]
+  }
+}

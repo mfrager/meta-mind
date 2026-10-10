@@ -1,0 +1,28 @@
+{
+  "_comment": "The seeded self-model gap Phase 12's `mm-cli self-model report` is checked against. Three scalars in [0,1] are measured over one run: Actual is what the run *did*, Model is what the run *says it did*, and Ideal is what the declared principles demand. The three divergences are the three pairwise absolute gaps, so the report is a vector of named numbers rather than one aggregate that would hide which axis moved. The numbers here are deliberately chosen so each gap is distinct and exact in binary (0.3, 0.2, 0.5), which is what lets the gate compare within a stated tolerance instead of an epsilon nobody can read.",
+  "fixture_id": "01h0000000000000000000sm01",
+  "actual": 0.8,
+  "model": 0.5,
+  "ideal": 1.0,
+  "dimensions": [
+    {
+      "dimension": "actual_model",
+      "value": 0.3
+    },
+    {
+      "dimension": "actual_ideal",
+      "value": 0.2
+    },
+    {
+      "dimension": "model_ideal",
+      "value": 0.5
+    }
+  ],
+  "tolerance": 0.000001,
+  "expected": {
+    "actual_model": 0.3,
+    "actual_ideal": 0.2,
+    "model_ideal": 0.5,
+    "tolerance": 0.000001
+  }
+}

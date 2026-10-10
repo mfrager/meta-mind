@@ -39,6 +39,11 @@ enum GraphCmd {
         graph: String,
         ack: oneshot::Sender<Result<usize, MmError>>,
     },
+    Sparql {
+        graph: String,
+        query: String,
+        ack: oneshot::Sender<Result<Vec<Value>, MmError>>,
+    },
     LoadOntology {
         files: Vec<PathBuf>,
         ack: oneshot::Sender<Result<usize, MmError>>,
@@ -100,6 +105,26 @@ impl GraphHandle {
             .map_err(|e| MmError::Graph(format!("graph actor dropped the ack: {e}")))?
     }
 
+    /// Run a SPARQL query scoped to one named graph.
+    ///
+    /// Reads normally go through [`GraphStore`]'s own reader handle, which this type does
+    /// not hold: a `GraphHandle` is the *write* half. A caller that holds only the handle
+    /// — Phase 10's `/tools` mirror and the `graph.query` tool — therefore has its reads
+    /// travel the same mailbox its writes do. The query runs on the writer thread, which
+    /// briefly delays writes; that is the price of a handle that owns no store, and it is
+    /// the honest one, because the alternative is a second store handle per call site.
+    pub async fn sparql(&self, graph: &str, query: &str) -> Result<Vec<Value>, MmError> {
+        let (ack, rx) = oneshot::channel();
+        self.send(GraphCmd::Sparql {
+            graph: graph.to_string(),
+            query: query.to_string(),
+            ack,
+        })
+        .await?;
+        rx.await
+            .map_err(|e| MmError::Graph(format!("graph actor dropped the ack: {e}")))?
+    }
+
     /// Bulk-load ontology files into the default graph as one atomic batch.
     pub async fn load_ontology(&self, files: Vec<PathBuf>) -> Result<usize, MmError> {
         let (ack, rx) = oneshot::channel();
@@ -143,6 +168,9 @@ fn writer_loop(store: Arc<Store>, mut rx: mpsc::Receiver<GraphCmd>) {
             }
             GraphCmd::ClearGraph { graph, ack } => {
                 let _ = ack.send(clear_graph(&store, &graph));
+            }
+            GraphCmd::Sparql { graph, query, ack } => {
+                let _ = ack.send(scoped_query(&store, &graph, &query));
             }
             GraphCmd::LoadOntology { files, ack } => {
                 let _ = ack.send(load_ontology_files(&store, &files));
@@ -222,9 +250,56 @@ fn map_store(e: impl std::fmt::Display) -> MmError {
 pub struct GraphStore {
     handle: GraphHandle,
     reader: Arc<Store>,
+    /// The writer thread, held so [`GraphStore`]'s `Drop` can join it.
+    writer: Option<std::thread::JoinHandle<()>>,
     /// Where the RocksDB files live, or `None` for an in-memory store.
     path: Option<PathBuf>,
     shapes_path: PathBuf,
+}
+
+/// Stop the writer, and wait for it.
+///
+/// Two threads hold the `Store` — this one and the writer — so whichever drops
+/// its reference last is the one that destroys it. Without this, that can be the
+/// wrong one: the process exits, the writer is still inside RocksDB, and the
+/// store's internal mutexes are torn down underneath a live call, which glibc
+/// reports as `pthread lock: Invalid argument` and an abort *after* the command
+/// has already printed its result. Asking the writer to stop and joining it drops
+/// the writer's reference here — so the store is destroyed once, in one thread,
+/// with no writer mid-operation.
+impl Drop for GraphStore {
+    fn drop(&mut self) {
+        // `Drop` cannot await, so the shutdown goes out with `try_send`. The
+        // mailbox is empty by the time a command finishes with a store, so the
+        // first attempt is normally the one that lands. A full mailbox means a
+        // clone of the handle is mid-send from another thread, which is a reason
+        // to wait a moment rather than to block forever; and if it never drains,
+        // the channel's own close is what stops the writer, so the join is skipped
+        // rather than allowed to hang.
+        let mut asked = false;
+        for _ in 0..64 {
+            let (ack, _unread) = oneshot::channel();
+            match self.handle.tx.try_send(GraphCmd::Shutdown { ack }) {
+                Ok(()) => {
+                    asked = true;
+                    break;
+                }
+                // The writer has already stopped: there is nothing left to ask.
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    asked = true;
+                    break;
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }
+        }
+        if asked {
+            if let Some(writer) = self.writer.take() {
+                let _ = writer.join();
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for GraphStore {
@@ -259,13 +334,14 @@ impl GraphStore {
         let store = Arc::new(store);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
         let writer = Arc::clone(&store);
-        std::thread::Builder::new()
+        let writer = std::thread::Builder::new()
             .name("mm-graph-writer".into())
             .spawn(move || writer_loop(writer, rx))
             .map_err(|e| MmError::Graph(format!("cannot start the graph writer: {e}")))?;
         Ok(GraphStore {
             handle: GraphHandle { tx },
             reader: store,
+            writer: Some(writer),
             path,
             shapes_path: shapes_path.to_path_buf(),
         })
@@ -432,16 +508,10 @@ impl GraphStore {
     /// silently reading across all of them, because no fact is authoritative in
     /// two graphs.
     pub async fn sparql(&self, graph: &str, query: &str) -> Result<Vec<Value>, MmError> {
-        let name = named_graph(graph)?;
-        let iri = name.as_str();
-        if !query.contains(iri) {
-            return Err(MmError::Graph(format!(
-                "query is not scoped to <{iri}>: name the graph with GRAPH <{iri}> {{ … }} or FROM <{iri}>"
-            )));
-        }
         let store = Arc::clone(&self.reader);
+        let graph = graph.to_string();
         let query = query.to_string();
-        tokio::task::spawn_blocking(move || run_query(&store, &query))
+        tokio::task::spawn_blocking(move || scoped_query(&store, &graph, &query))
             .await
             .map_err(|e| MmError::Internal(format!("read task failed: {e}")))?
     }
@@ -476,6 +546,23 @@ pub fn graph_iri(graph: &str) -> String {
 fn named_graph(graph: &str) -> Result<NamedNode, MmError> {
     NamedNode::new(graph_iri(graph))
         .map_err(|e| MmError::Graph(format!("invalid graph name {graph:?}: {e}")))
+}
+
+/// Run a query that must name the graph it reads.
+///
+/// The scoping rule lives here, in one function, because both read paths use it: the
+/// store's own reader handle and the write handle's query command. A query that mentions
+/// no graph is rejected rather than silently reading across all of them, because no fact
+/// is authoritative in two graphs.
+fn scoped_query(store: &Store, graph: &str, query: &str) -> Result<Vec<Value>, MmError> {
+    let name = named_graph(graph)?;
+    let iri = name.as_str();
+    if !query.contains(iri) {
+        return Err(MmError::Graph(format!(
+            "query is not scoped to <{iri}>: name the graph with GRAPH <{iri}> {{ … }} or FROM <{iri}>"
+        )));
+    }
+    run_query(store, query)
 }
 
 fn run_query(store: &Store, query: &str) -> Result<Vec<Value>, MmError> {

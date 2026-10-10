@@ -1,0 +1,152 @@
+# Decision & firewall SHACL shapes (Phase 9).
+#
+# `mm-cli graph validate --graph decision` validates the `/decision` graph against
+# this file. The graph holds the bounded decisions (`mm:Decision`), the comparison
+# checks (`mm:Comparison`), the risk profiles (`mm:Risk`) and uncertainty
+# measurements (`mm:Uncertainty`) of the decision organ, and the firewall runs
+# (`mm:FirewallRun`) that graded them.
+#
+# Why a set of its own rather than an addition to `mm-shapes.ttl`: `mm:Decision` is
+# already an epistemic class, and the epistemic layer writes claim-level decisions
+# into `/epistemic`. A shape requiring `mm:questionKind` on every `mm:Decision`
+# would fire on those, so the constraint belongs to the graph that has the property
+# rather than to the shared one. `mm-core`'s `Config::shapes_file_for` is where that
+# decision is recorded.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:node`, `sh:severity`. The vendored validator treats every other predicate as a
+# hard error, so documentation lives in these comments rather than inside a shape.
+#
+# Two rules the plan (§4.9) asks for cannot be stated in this fragment, and they are
+# named here rather than silently dropped:
+#
+#   * "`mm:hasConfidence` and `mm:measuredValue` are in `[0,1]`" needs
+#     `sh:minInclusive` / `sh:maxInclusive`, which this validator does not support.
+#     Enforced three times over instead: `DecisionAnswer::new` refuses a confidence
+#     outside `[0,1]` (so no core can produce one), `RiskProfile::validate` and
+#     `FactualityReport::new` clamp their fields, and the SQLite columns carry
+#     `CHECK (confidence >= 0.0 AND confidence <= 1.0)`.
+#   * "a `REJECT` due to a prohibition MUST carry `mm:hardProhibition`" is a
+#     conditional, and a shape here cannot say "only when the outcome is REJECT".
+#     Requiring it on every run would mark every clean run a violation, which is the
+#     opposite of the intent. Enforced by construction in `mm-firewall`:
+#     `aggregate_with_prohibition` returns the prohibition with the report, and
+#     `FirewallReport::new` cannot be built with `Reject` and no prohibition and
+#     still emit `mm:hardProhibition` — a `Reject` without one has no path through
+#     `mm-firewall::evaluate`. The property *is* emitted whenever a prohibition
+#     fires, and that direction is asserted by the crate's RDF tests.
+#
+# Every predicate used below is declared in `ontology/mm.ttl`.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# A decision has to say what kind of bounded question it answered, which core
+# answered it, and how confident that core was. All three are exactly one value:
+# a decision with two kinds or two confidences is two decisions pretending to be
+# one, and the conformance suite's whole claim is that the kind is part of the
+# question rather than a label a core may choose.
+mm:DecisionShape a sh:NodeShape ;
+    sh:targetClass mm:Decision ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:questionKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:decidedBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hasConfidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A firewall run says one outcome and at least one reason for it. A run with no
+# reason code is a run nothing can explain — and the aggregation always writes one,
+# including `signal.nominal` for a clean run, precisely so this shape is satisfiable
+# without an exception for the good case.
+mm:FirewallRunShape a sh:NodeShape ;
+    sh:targetClass mm:FirewallRun ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:firewallOutcome ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:hasReasonCode ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An uncertainty measurement reports exactly one number and names exactly one
+# measure. Without the measure the number is uninterpretable (entropy over what?),
+# and without the number the measure says nothing.
+mm:UncertaintyShape a sh:NodeShape ;
+    sh:targetClass mm:Uncertainty ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:measuredValue ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:usesMeasure ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A comparison carries exactly one verdict. It is the verdict that makes a
+# comparison admissible or not, so a comparison that could not state one is a
+# comparison nobody checked.
+mm:ComparisonShape a sh:NodeShape ;
+    sh:targetClass mm:Comparison ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:comparisonValid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A risk profile names the measure it reports and the value of that measure. The
+# profile's other numbers live in the record; the graph keeps the pair that says
+# which measure was asked for, because a lone number with no measure is a number
+# nobody can defend.
+mm:RiskShape a sh:NodeShape ;
+    sh:targetClass mm:Risk ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:usesMeasure ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:measuredValue ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .

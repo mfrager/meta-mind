@@ -1,0 +1,191 @@
+# Autonomy / self-model vocabulary (Phase 12).
+#
+# The T-Box for `/self`, the named graph `mm-runtime` writes. It shares the `mm:`
+# namespace with `mm.ttl` and only *adds* classes and properties, which is what
+# `Config::ontology_self_model_file` relies on: loading it cannot change the meaning of a
+# graph that was already validated.
+#
+# What lives here: the numeric measurement of the being against itself
+# (`mm:SelfModelReport`, `mm:Divergence`), what the architecture has accumulated
+# (`mm:DebtFinding`), what was done about it (`mm:GcAction`), the module versions that
+# were hot-loaded (`mm:ModuleLoad`), and the design documents a promoted change set
+# revised (`mm:DesignRevision`).
+#
+# Why `/self` and not `/selfeng`: `/selfeng` is the lineage of *accepted changes* — what
+# the system became and why. `/self` is the system's measurement of *itself* — the gap
+# between what it does, what it says it does, and what it says it should do. A debt
+# finding is not an evolution event, and a GC refusal is not a rejected change set; both
+# would lose their meaning if they were filed under the lineage. The graph was added by
+# migration `0012_loop.sql`, which is what `mm-core::iri`'s rule for a new named graph
+# requires.
+#
+# Why the divergence is a node and not three numbers on the report: the phase's central
+# claim about the self-model is that it is *numeric and per-dimension*, so a report whose
+# dimensions were folded into one aggregate could not be inspected. `mm:Divergence` is
+# the class that makes each axis addressable on its own.
+#
+# Namespaces: `mm:` is `https://metamind.dev/ontology#`. Every predicate below is emitted
+# by `mm-runtime::rdf` and by nothing else.
+
+@prefix mm:    <https://metamind.dev/ontology#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+
+# ------------------------------------------------------------------ classes --
+
+mm:SelfModel a owl:Class ;
+    rdfs:label "Self-model" ;
+    rdfs:comment """The being's numeric model of itself: what it does, what it claims it
+does, and what its declared principles say it should do. Measuring the three against each
+other is what turns introspection into a number rather than a narrative.""" .
+
+mm:SelfModelReport a owl:Class ;
+    rdfs:label "Self-model report" ;
+    rdfs:comment """One measurement over one run: the three scalars (Actual vs Model,
+Actual vs Ideal, Model vs Ideal) and exactly three `mm:Divergence` nodes, one per
+comparison. A report is a vector, so a single aggregate cannot hide which axis moved.""" .
+
+mm:Divergence a owl:Class ;
+    rdfs:label "Divergence" ;
+    rdfs:comment """One scalar gap between two of the self-model's three views, named by
+its dimension. A gap with no name is a number nobody can act on.""" .
+
+mm:DebtFinding a owl:Class ;
+    rdfs:label "Debt finding" ;
+    rdfs:comment """Something the architecture has accumulated that costs more than it
+returns: an unused capability, a duplicate or conflicting policy, stale memory, an unused
+schema, an expensive workflow, an obsolete technique or unmotivated complexity. A finding
+carries the evidence that showed it; a finding with no evidence is an opinion.""" .
+
+mm:GcAction a owl:Class ;
+    rdfs:label "GC action" ;
+    rdfs:comment """One proposed or applied response to a debt finding, at one rung of the
+escalation ladder (temporary reasoning, context, data, policy, prompt, skill, code,
+architecture, model). Every action records whether it is reversible and what it does to
+the developmental ledger; the ladder's rule is cheapest-first, and any rung at or above
+`code` is itself a change set through the promotion gate.""" .
+
+mm:ModuleLoad a owl:Class ;
+    rdfs:label "Module load" ;
+    rdfs:comment """One hot-load of a module version without restarting the process. Prior
+versions stay rows: "the previous version kept serving" is only checkable if it is still
+recorded.""" .
+
+mm:DesignRevision a owl:Class ;
+    rdfs:label "Design revision" ;
+    rdfs:comment """One revision of one design document, produced by a promoted change
+set. The document is never written directly: the change set's payload is the diff, and the
+revision is what the promotion left behind.""" .
+
+# ------------------------------------------------------------- properties --
+
+mm:inRun a owl:ObjectProperty ;
+    rdfs:label "in run" ;
+    rdfs:comment "The loop run a record belongs to. A record with no run is one that happened outside the loop, which is the report's own business to justify." .
+
+mm:hasDivergence a owl:ObjectProperty ;
+    rdfs:domain mm:SelfModelReport ;
+    rdfs:range mm:Divergence ;
+    rdfs:label "has divergence" ;
+    rdfs:comment "One divergence of the report. Exactly three, one per comparison of the three views." .
+
+mm:divergenceDimension a owl:DatatypeProperty ;
+    rdfs:domain mm:Divergence ;
+    rdfs:range xsd:string ;
+    rdfs:label "divergence dimension" ;
+    rdfs:comment "Which comparison this gap is: actual_model, actual_ideal or model_ideal." .
+
+mm:divergenceValue a owl:DatatypeProperty ;
+    rdfs:domain mm:Divergence ;
+    rdfs:range xsd:double ;
+    rdfs:label "divergence value" ;
+    rdfs:comment "The absolute gap between the two views, in [0,1]." .
+
+mm:subjectOf a owl:ObjectProperty ;
+    rdfs:label "subject of" ;
+    rdfs:comment "The resource a finding or an action is about. Required in both shapes: an action against no subject changes nothing." .
+
+mm:severity a owl:DatatypeProperty ;
+    rdfs:domain mm:DebtFinding ;
+    rdfs:range xsd:double ;
+    rdfs:label "severity" ;
+    rdfs:comment "How much the debt costs, in [0,1]. It orders the queue; it never overrides the ledger guard." .
+
+mm:debtKind a owl:DatatypeProperty ;
+    rdfs:domain mm:DebtFinding ;
+    rdfs:range xsd:string ;
+    rdfs:label "debt kind" ;
+    rdfs:comment "unused_capability, duplicate_policy, conflicting_policy, stale_memory, unused_schema, expensive_workflow, obsolete_technique or complexity." .
+
+mm:debtEvidence a owl:DatatypeProperty ;
+    rdfs:domain mm:DebtFinding ;
+    rdfs:range xsd:string ;
+    rdfs:label "debt evidence" ;
+    rdfs:comment "One record that showed the finding. At least one: a finding with no evidence is an opinion." .
+
+mm:gcKind a owl:DatatypeProperty ;
+    rdfs:domain mm:GcAction ;
+    rdfs:range xsd:string ;
+    rdfs:label "GC action kind" ;
+    rdfs:comment "The rung of the escalation ladder the action sits on." .
+
+mm:reversible a owl:DatatypeProperty ;
+    rdfs:domain mm:GcAction ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "reversible" ;
+    rdfs:comment "Whether the action can be undone. A non-reversible action is refused, not applied." .
+
+mm:protectsLedger a owl:DatatypeProperty ;
+    rdfs:domain mm:GcAction ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "protects the ledger" ;
+    rdfs:comment "True when the action's subject is part of the immutable developmental ledger. Such an action is recorded, refused, and made append-only by a database trigger: the refusal has to survive the process that recorded it." .
+
+mm:ledgerImpact a owl:DatatypeProperty ;
+    rdfs:domain mm:GcAction ;
+    rdfs:range xsd:string ;
+    rdfs:label "ledger impact" ;
+    rdfs:comment "What the action would do to the developmental ledger: none, metadata or row." .
+
+mm:addressesFinding a owl:ObjectProperty ;
+    rdfs:domain mm:GcAction ;
+    rdfs:range mm:DebtFinding ;
+    rdfs:label "addresses finding" ;
+    rdfs:comment "The finding the action answers." .
+
+mm:loadedModule a owl:ObjectProperty ;
+    rdfs:domain mm:ModuleLoad ;
+    rdfs:label "loaded module" ;
+    rdfs:comment "The module IRI the load activated." .
+
+mm:moduleVersion a owl:DatatypeProperty ;
+    rdfs:domain mm:ModuleLoad ;
+    rdfs:range xsd:string ;
+    rdfs:label "module version" ;
+    rdfs:comment "The version string the load activated. A load without a version is a load nobody can roll back to." .
+
+mm:loadStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:ModuleLoad ;
+    rdfs:range xsd:string ;
+    rdfs:label "load status" ;
+    rdfs:comment "loaded, rolled_back or failed. A rollback is a new row with this status, never a deletion of the load it undid." .
+
+mm:generatedRevision a owl:DatatypeProperty ;
+    rdfs:domain mm:DesignRevision ;
+    rdfs:range xsd:integer ;
+    rdfs:label "generated revision" ;
+    rdfs:comment "The revision number of the document. Unique per document, which the `design_revisions` table enforces with UNIQUE (doc_uri, revision)." .
+
+mm:hasChangeSet a owl:ObjectProperty ;
+    rdfs:domain mm:DesignRevision ;
+    rdfs:range mm:ChangeSet ;
+    rdfs:label "has change set" ;
+    rdfs:comment "The promoted change set that produced the revision. Exactly one: a revision nobody proposed is a revision nobody judged." .
+
+mm:designDoc a owl:ObjectProperty ;
+    rdfs:domain mm:DesignRevision ;
+    rdfs:label "design document" ;
+    rdfs:comment "The design document the revision is of." .

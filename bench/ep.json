@@ -1,0 +1,38 @@
+{
+  "episode": "01h00000000000000000000040",
+  "assumptions": [],
+  "contradictions": [],
+  "comparisons": [],
+  "constraints": [],
+  "missing_steps": [],
+  "risks": {
+    "expected_loss": 0.0,
+    "max_loss": 0.0,
+    "tail_probability": 0.0,
+    "ruin_probability": 0.0,
+    "variance": 0.0,
+    "downside_asymmetry": 0.0,
+    "reversibility": 1.0,
+    "optionality": 1.0,
+    "measure": "variance",
+    "measure_value": 0.0
+  },
+  "reversibility": "reversible",
+  "authorization": {
+    "granted": true,
+    "scope": "unspecified",
+    "approval_id": null
+  },
+  "precedent": null,
+  "simpler_alternative": null,
+  "stakes": {
+    "level": 0.0,
+    "irreversibility": 0.0
+  },
+  "uncertainty": [],
+  "identity_invariant_hits": [],
+  "tool": null,
+  "spend": null,
+  "action_schema_valid": true,
+  "factuality_support": null
+}

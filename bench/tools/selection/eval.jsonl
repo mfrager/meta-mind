@@ -1,0 +1,7 @@
+{"query": "what does the sandbox README say", "tools": ["fs.read", "fs.list", "graph.query", "verify.run"], "expected": "fs.read"}
+{"query": "show me what is in the data/sandbox directory", "tools": ["fs.list", "fs.read", "tabular.query", "http.fetch"], "expected": "fs.list"}
+{"query": "write hello world into target.txt inside the sandbox", "tools": ["fs.write", "fs.read", "process.exec", "pi_editor.open"], "expected": "fs.write"}
+{"query": "check that this crate builds cleanly", "tools": ["verify.run", "process.exec", "fs.read", "graph.query"], "expected": "verify.run"}
+{"query": "count the rows in the tool_calls table", "tools": ["tabular.query", "graph.query", "fs.list", "memory.recall"], "expected": "tabular.query"}
+{"query": "which observations carry evidence ids", "tools": ["graph.query", "tabular.query", "fs.read", "verify.run"], "expected": "graph.query"}
+{"query": "hand this file to the pi editor", "tools": ["pi_editor.open", "fs.write", "process.exec", "fs.list"], "expected": "pi_editor.open"}

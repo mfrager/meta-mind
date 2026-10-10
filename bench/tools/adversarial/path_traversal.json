@@ -1,0 +1,12 @@
+{
+  "id": "path_traversal",
+  "description": "A granted read whose path walks out of the sandbox root is refused, and the refusal is about the resolved path rather than the string that was typed.",
+  "principal": "system",
+  "tool": "fs.read",
+  "args": { "path": "data/sandbox/../../etc/shadow" },
+  "expect": {
+    "status": "denied",
+    "code": "sandbox.escape",
+    "records": ["permission.check", "sandbox.deny", "invoke.end"]
+  }
+}

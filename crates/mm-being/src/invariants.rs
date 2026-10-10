@@ -341,14 +341,22 @@ impl IdentityGuard for CoreGuard {
                 InvariantCode::NoFabricatedAutobiography,
                 "a memory must come from an event that happened, never from a claim",
             )),
-            BeingOp::PromoteBelief { to, evidence, .. }
-                if to.is_observation() && evidence.is_empty() =>
-            {
-                Err(CoreGuard::deny(
-                    op,
-                    InvariantCode::NoAssumptionToObservation,
-                    "an observation requires an observation record",
-                ))
+            // Phase 6 build step 13: the "an observation requires an observation
+            // record" rule is *one* predicate, `mm_epistemic::observation_requirement`,
+            // shared with the epistemic promotion guard. The two layers cannot
+            // drift because neither holds its own copy of the rule.
+            BeingOp::PromoteBelief { to, evidence, .. } => {
+                let wanted = mm_epistemic::EpistemicStatus::parse(to.as_str());
+                match wanted.and_then(|status| {
+                    mm_epistemic::observation_requirement(status, !evidence.is_empty())
+                }) {
+                    Some(reason) => Err(CoreGuard::deny(
+                        op,
+                        InvariantCode::NoAssumptionToObservation,
+                        reason,
+                    )),
+                    None => Ok(()),
+                }
             }
             BeingOp::ClaimAction { evidence, .. } if evidence.is_empty() => Err(CoreGuard::deny(
                 op,

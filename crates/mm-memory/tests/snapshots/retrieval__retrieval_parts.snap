@@ -1,0 +1,36 @@
+---
+source: crates/mm-memory/tests/retrieval.rs
+expression: parts
+---
+[
+  {
+    "channel": "lexical",
+    "contribution": 0.000001,
+    "raw": 0.000002,
+    "weight": 0.35
+  },
+  {
+    "channel": "vector",
+    "contribution": 0.217082,
+    "raw": 0.723607,
+    "weight": 0.3
+  },
+  {
+    "channel": "graph",
+    "contribution": 0.0,
+    "raw": 0.0,
+    "weight": 0.2
+  },
+  {
+    "channel": "recency",
+    "contribution": 0.1,
+    "raw": 1.0,
+    "weight": 0.1
+  },
+  {
+    "channel": "importance",
+    "contribution": 0.025,
+    "raw": 0.5,
+    "weight": 0.05
+  }
+]

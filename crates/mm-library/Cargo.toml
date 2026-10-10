@@ -1,0 +1,42 @@
+[package]
+name = "mm-library"
+description = "Metamind cognitive library: typed versioned entries, a SHACL commit gate, a verified skill library, structure-mapped cases, conceptual frames, and an evolving policy genome"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 7
+capability = "mm:CognitiveLibrary"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+# The Phase 6 `Outcome` is the only outcome type in the system (index decision
+# D2), so policy fitness consumes it rather than defining a parallel one.
+mm-epistemic = { workspace = true }
+mm-log = { workspace = true }
+mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }
+mm-llm = { workspace = true }
+oxrdf = { workspace = true }
+rdf-codec = { workspace = true }
+rdf-shacl = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+ulid = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+insta = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,10 @@
+[
+  {
+    "_comment": "The frozen promotion harness. The command runs with the candidate tree as its working directory and prints one number per sample; `mm-selfeng::benchmark` averages the samples and compares the mean with `baseline_value`. Both the baseline and the margin are data here, not a second run of the candidate: 'better than last time' and 'better than the frozen baseline' are different claims, and only the second survives a candidate that makes everything slower.",
+    "id": "promotion_bench",
+    "name": "the seeded regression case still fails before and passes after",
+    "command": "sh bench/promotion/score.sh",
+    "baseline_value": 1.0,
+    "noise_margin": 0.0
+  }
+]

@@ -1,0 +1,23 @@
+[package]
+name = "logic-types"
+version.workspace = true
+edition.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 9
+capability = "mm:LogicTypes"
+origin = "rust_symbolic"
+copied_from = "https://github.com/mfrager/blanc-scripts@c03aee5fb3a9947da1c7f21e491aa52f43d6f09d"
+license = "unspecified"
+
+# Vendored code is not held to Metamind's zero-warning bar; only `mm-*` crates are.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "allow", priority = -1 }
+
+[dependencies]
+math-types = { path = "../math-types" }
+rdf-codec = { path = "../rdf-codec" }

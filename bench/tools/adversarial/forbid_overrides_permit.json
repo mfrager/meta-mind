@@ -1,0 +1,12 @@
+{
+  "id": "forbid_overrides_permit",
+  "description": "The baseline policy set both permits fs.write on data/sandbox/** and forbids it on data/sandbox/forbidden/**. The grant covers the whole tree, so only the explicit forbid can refuse this write; it does.",
+  "principal": "system",
+  "tool": "fs.write",
+  "args": { "path": "data/sandbox/forbidden/x.txt", "text": "hello" },
+  "expect": {
+    "status": "denied",
+    "code": "permission.policy_forbidden",
+    "records": ["permission.check", "sandbox.deny", "invoke.end"]
+  }
+}

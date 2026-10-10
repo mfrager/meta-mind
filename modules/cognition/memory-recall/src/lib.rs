@@ -181,12 +181,7 @@ pub fn surfaces() -> Vec<Surface> {
         },
         Surface {
             function: FORGET,
-            reads: &[
-                "memories",
-                "memory_access",
-                "memory_links",
-                "commitments",
-            ],
+            reads: &["memories", "memory_access", "memory_links", "commitments"],
             writes: &["memories"],
             invariant: Some("no_fabricated_autobiography"),
             contract: "Forgetting archives and never deletes. A protected record, a \
@@ -213,8 +208,18 @@ pub fn surfaces() -> Vec<Surface> {
         },
         Surface {
             function: SUMMARIES,
-            reads: &["memories", "memory_summaries", "memory_communities", "memory_links"],
-            writes: &["memories", "memory_summaries", "memory_communities", "memory_links"],
+            reads: &[
+                "memories",
+                "memory_summaries",
+                "memory_communities",
+                "memory_links",
+            ],
+            writes: &[
+                "memories",
+                "memory_summaries",
+                "memory_communities",
+                "memory_links",
+            ],
             invariant: Some("no_history_rewrite"),
             contract: "The summary tree is a property of the store, not of one run: a \
                        node covers at least two memories, and a root exists only when \
@@ -318,7 +323,10 @@ mod tests {
     #[test]
     fn the_uri_is_the_path_derived_form_for_this_directory() {
         let m = manifest().unwrap();
-        assert_eq!(m.plugin.uri, mm_core::iri::module("cognition/memory-recall").as_str());
+        assert_eq!(
+            m.plugin.uri,
+            mm_core::iri::module("cognition/memory-recall").as_str()
+        );
     }
 
     #[test]
@@ -337,6 +345,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("plugin.toml");
         std::fs::write(&path, "[plugin]\nname = \"x\"\n").unwrap();
-        assert!(matches!(manifest_at(&path).unwrap_err(), MmError::Config(_)));
+        assert!(matches!(
+            manifest_at(&path).unwrap_err(),
+            MmError::Config(_)
+        ));
     }
 }

@@ -1,0 +1,211 @@
+# Episode SHACL shapes (Phase 8).
+#
+# `mm-cli graph validate --graph epistemic` validates the graph against
+# `epistemic_shapes.ttl` **and** this file: the metacognitive controller emits its
+# episodes and programs into the same `/epistemic` graph as the claims, because a
+# deliberation is a claim about how the being reached a decision and inherits the
+# epistemic discipline of one. So the pair must find zero violations on a clean
+# graph and at least one on a broken one.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard
+# error, so documentation lives in these comments rather than inside a shape.
+#
+# Six rules from the plan cannot be stated in this fragment and are enforced
+# elsewhere on purpose, which is stated here rather than silently dropped:
+#
+#   * "`tier` is in `[0..5]`" needs `sh:minInclusive` / `sh:maxInclusive`. Enforced
+#     by `Tier`, a six-variant enum that has no other value, and by the
+#     `episodes.tier` CHECK constraint (`tier BETWEEN 0 AND 5`). The shape can only
+#     say that a tier is present and is an integer.
+#   * "`stakes`, `uncertainty` and `reversibility` are in `[0,1]`" needs bounds.
+#     Enforced by `crate::episode::check_unit`, by `ScanResult::validate`, and by
+#     the `episodes` CHECK constraints
+#     (`stakes BETWEEN 0.0 AND 1.0` and its two siblings).
+#   * "`mm:opOrder` is contiguous from 1" needs a comparison between a node and its
+#     siblings. Enforced by `CognitiveProgram::validate`, which refuses a step list
+#     whose orders are not `1..=n`, and by the `program_traces` `UNIQUE
+#     (program_id, seq)` constraint.
+#   * "`mm:opDependsOn` is acyclic" needs a graph property no SHACL fragment in
+#     this validator expresses. Enforced by `OpGraph::topological`, which refuses a
+#     cycle, and by `OpGraph::parallel_layers`, which cannot layer one.
+#   * "a `Decide`/`Act` target resolves in `mm-epistemic`/`mm-being`" needs a SPARQL
+#     constraint. The operation carries its target as a literal precisely so that a
+#     *program* validates without the target stores being loaded — the program is
+#     compiled before the claims it names have necessarily been read. Resolution is
+#     checked by the compiler, which only names records the episode already holds.
+#   * "the program's budget is the episode's budget" is a cross-node identity, not
+#     a shape. Enforced by construction: `CognitiveProgram` has no budget field at
+#     all, so the only budget a program can be run against is its episode's. This
+#     is why `CognitiveProgramShape` below does **not** require `mm:budget`: a
+#     minCount on a property the emitter has no field to write would be a violation
+#     on every clean graph.
+#
+# Two datatypes are deliberately left unpinned, and the reason is the same in both
+# cases: the T-Box types `mm:budget` and `mm:stoppingCondition` as `xsd:string`
+# because each is a rendering of a structured value (four budget dimensions; a
+# condition with its threshold) rather than one number. `sh:nodeKind sh:Literal`
+# states that the value is a literal without asserting a datatype the emitter may
+# legitimately choose differently. `mm:tier`, `mm:opOrder`, `mm:opClass` and the
+# five `mm:OperationValue` components *are* single scalars, so their datatypes are
+# pinned exactly.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# A bounded deliberation has to say how much cognition it was allowed and how hard
+# the problem was. An episode that cannot name its tier, its budget or its three
+# situational factors is an episode whose program nobody could have justified, and
+# it has to name the program it compiled or the graph records a deliberation that
+# produced nothing.
+mm:CognitiveEpisodeShape a sh:NodeShape ;
+    sh:targetClass mm:CognitiveEpisode ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:tier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:budget ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:Literal ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:stakes ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:uncertainty ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:reversibility ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:compiledProgram ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class mm:CognitiveProgram ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A program with no operation is not a program, and a program that cannot say when
+# to stop is the overthinking the tier ladder and the budget exist to prevent — so
+# at least one operation and at least one stopping condition are required. The
+# tier is required too: it is what bounded the program, and a program whose bound
+# is unknown cannot be audited.
+mm:CognitiveProgramShape a sh:NodeShape ;
+    sh:targetClass mm:CognitiveProgram ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:hasOperation ;
+        sh:minCount 1 ;
+        sh:class mm:CognitiveOp ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:tier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:stoppingCondition ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:Literal ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An operation says what kind of cognition it is, where it sits in the execution
+# order, and at least one thing it is about. The class is what the compute policy
+# gates on and the order is what makes the step list replayable; an operation that
+# could not name a single target is one nobody wrote down the point of.
+#
+# The ordering and acyclicity of the *edges* are not checkable here (see above);
+# this shape only guarantees that each node carries the order its edges are
+# validated against.
+mm:CognitiveOpShape a sh:NodeShape ;
+    sh:targetClass mm:CognitiveOp ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:opClass ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:opOrder ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:targets ;
+        sh:minCount 1 ;
+        sh:severity sh:Violation ;
+    ] .
+
+# Every operation carries the value it was ranked by: the four components and the
+# score they produce. A value missing a component is a score nobody can recompute,
+# which is exactly what a replay would have to do, so each is required exactly once
+# and as a double. (The order in which an operation is selected is
+# `(score, node id)`; the tie-break is a property of the program, not a fifth
+# component, and is not modelled here.)
+mm:OperationValueShape a sh:NodeShape ;
+    sh:targetClass mm:OperationValue ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:valueEer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:valueImportance ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:valueChangeProbability ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:valueCost ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:score ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .

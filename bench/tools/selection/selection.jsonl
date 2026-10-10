@@ -1,0 +1,7 @@
+{"query": "read the contents of a file in the sandbox", "tools": ["fs.read", "fs.write", "fs.list", "graph.query"], "expected": "fs.read"}
+{"query": "list the files in the sandbox directory", "tools": ["fs.read", "fs.list", "tabular.query", "process.exec"], "expected": "fs.list"}
+{"query": "create a new note file with this text", "tools": ["fs.read", "fs.write", "http.fetch", "verify.run"], "expected": "fs.write"}
+{"query": "run the repository's test suite", "tools": ["process.exec", "verify.run", "graph.query", "fs.read"], "expected": "verify.run"}
+{"query": "how many claims are recorded in the epistemic tables", "tools": ["tabular.query", "graph.query", "memory.recall", "fs.read"], "expected": "tabular.query"}
+{"query": "find every action that produced an observation", "tools": ["graph.query", "tabular.query", "fs.list", "http.fetch"], "expected": "graph.query"}
+{"query": "open the pi editor on this file", "tools": ["pi_editor.open", "fs.write", "fs.read", "process.exec"], "expected": "pi_editor.open"}

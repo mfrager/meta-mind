@@ -1,0 +1,20 @@
+{
+  "_comment": "The Pi task contract for Phase 12's qualification workflow. `mm-cli pi run --task bench/pi/qualification_novel.json --offline` replays `session_file` instead of spawning the installed `pi` binary, so the run is deterministic and needs no provider; without `--offline` the same contract is sent to a real session. The allowlist is the phase's context rule written down: the session may write the module it is asked for and the design document it is revising, and nothing else.",
+  "task_id": "01h0000000000000000000pt12",
+  "goal": "author modules/cognition/goal-attainment from the mm-design-revise skill: a module that reports goal-attainment progress from recorded evidence, with its own test",
+  "skill": "pi/skills/mm-design-revise/SKILL.md",
+  "allowed_paths": [
+    "modules/cognition/goal-attainment/**",
+    "design/qualification/goal_attainment.md"
+  ],
+  "session_file": "crates/mm-pi/fixtures/recorded_session_qualification_novel.jsonl",
+  "expected": {
+    "module": "goal-attainment",
+    "files": [
+      "plugin.toml",
+      "src/lib.rs",
+      "tests/behaviour.rs",
+      "manual/module.md"
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "decision-ir"
+version.workspace = true
+edition.workspace = true
+description = "`decision-ir` — Decision & Utility Theory: decision problems as first-class objects, expected utility, risk measures, constraints, preferences, and regret (planning/logic2, subsystem 7)."
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 9
+capability = "mm:DecisionIr"
+origin = "rust_symbolic"
+copied_from = "https://github.com/mfrager/blanc-scripts@c03aee5fb3a9947da1c7f21e491aa52f43d6f09d"
+license = "unspecified"
+
+# Vendored code is not held to Metamind's zero-warning bar; only `mm-*` crates are.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "allow", priority = -1 }
+
+[dependencies]
+logic-ir = { path = "../logic-ir" }
+logic-types = { path = "../logic-types" }
+rdf-codec = { path = "../rdf-codec" }
+

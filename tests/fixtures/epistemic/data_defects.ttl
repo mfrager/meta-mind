@@ -1,0 +1,9 @@
+@prefix mm:  <https://metamind.dev/ontology#> .
+@prefix mmd: <https://metamind.dev/data/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# A claim asserting two statuses: violates the exactly-one-status cardinality.
+mmd:claim-two-statuses a mm:Claim ;
+    mm:status "OBSERVED" ;
+    mm:status "VERIFIED" ;
+    mm:confidence "0.9"^^xsd:double .

@@ -1,0 +1,6 @@
+{"ideal": [0.6, 0.25, 0.15], "expected": "simplicity"}
+{"ideal": [0.55, 0.3, 0.15], "expected": "simplicity"}
+{"ideal": [0.2, 0.6, 0.2], "expected": "speed"}
+{"ideal": [0.25, 0.5, 0.25], "expected": "speed"}
+{"ideal": [0.15, 0.25, 0.6], "expected": "safety"}
+{"ideal": [0.2, 0.2, 0.6], "expected": "safety"}

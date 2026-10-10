@@ -1,0 +1,15 @@
+[package]
+name = "metacog"
+description = "Metamind cognition module: the metacognitive controller's compile and operation-value contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-metacog = { workspace = true }
+serde_json = { workspace = true }

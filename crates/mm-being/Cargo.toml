@@ -17,6 +17,9 @@ workspace = true
 [dependencies]
 mm-core = { workspace = true }
 mm-log = { workspace = true }
+# Phase 6's deterministic observation-requirement predicate is the single source
+# of truth for the "no assumption to observation" invariant (build step 13).
+mm-epistemic = { workspace = true }
 mm-store-sqlite = { workspace = true }
 mm-store-graph = { workspace = true }
 oxrdf = { workspace = true }

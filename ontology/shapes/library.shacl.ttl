@@ -1,0 +1,349 @@
+# Library SHACL shapes (Phase 7).
+#
+# `mm-cli library validate --graph library` (and `graph validate --graph library`)
+# must find zero violations on the seed corpus and at least one on a broken one.
+#
+# Only the enforced fragment is used — `sh:targetClass`, `sh:property`, `sh:path`,
+# `sh:datatype`, `sh:class`, `sh:minCount`, `sh:maxCount`, `sh:nodeKind`,
+# `sh:severity`. The vendored validator treats every other predicate as a hard
+# error, so documentation lives in these comments rather than inside a shape.
+#
+# The plan asks for these shapes to be *generated* by `rdf-shacl::generate_shacl`
+# and then hand-tuned. Generation is not wired into the kernel (nothing calls it;
+# `generate` derives a much weaker shape set — presence of the property and
+# nothing about its datatype or count), so the enforced set is written here. What
+# the generator would have produced for the entry classes is a subset of what is
+# below.
+#
+# Three rules from the plan cannot be stated in this fragment and are enforced
+# elsewhere on purpose, which is stated here rather than silently dropped:
+#
+#   * "`mm:confidence` in `[0,1]`" needs `sh:minInclusive`/`sh:maxInclusive`.
+#     Enforced by the `library_entries`/`cases` CHECK constraints, by
+#     `Declarative::validate`, and by `library validate`'s data-quality pass.
+#   * "a referenced id resolves" (the orphan rule) needs a cross-entry
+#     reachability check. Enforced by `mm-cli library orphans`, which walks every
+#     `referenced_iris()` against the committed set.
+#   * "no duplicate entry" needs a comparison between two entries. Enforced by the
+#     unique `content_hash`/`version_iri` indexes and by `LibraryManager::upsert_entry`.
+#
+# Every entry is typed both `mm:LibraryEntry` and its own kind, so the entry-level
+# shape and the kind shape both apply to it.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+# Every entry can name itself and say what it is for, once. An entry without a
+# purpose is a label, and the library is not a glossary.
+mm:LibraryEntryShape a sh:NodeShape ;
+    sh:targetClass mm:LibraryEntry ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:title ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:purpose ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:version ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A doctrine says what to stand for and what backs it.
+mm:DoctrineShape a sh:NodeShape ;
+    sh:targetClass mm:Doctrine ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:applicableWhen ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:PrincipleShape a sh:NodeShape ;
+    sh:targetClass mm:Principle ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:HeuristicShape a sh:NodeShape ;
+    sh:targetClass mm:Heuristic ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:applicableWhen ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# The plan's central shape: a technique that cannot say when it applies, what it
+# was tried on, and what backs it is not a technique.
+mm:TechniqueShape a sh:NodeShape ;
+    sh:targetClass mm:Technique ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:applicableWhen ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:example ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:confidence ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:PatternShape a sh:NodeShape ;
+    sh:targetClass mm:Pattern ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:applicableWhen ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An anti-pattern without a corrective rule is a complaint.
+mm:AntiPatternShape a sh:NodeShape ;
+    sh:targetClass mm:AntiPattern ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:correctiveRule ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A case's three qualities are what make it retrievable: without them
+# `case_utility` has no arithmetic and a precedent cannot be ranked.
+mm:CaseShape a sh:NodeShape ;
+    sh:targetClass mm:Case ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:problem ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:solution ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:outcomeQuality ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:transferability ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:evidenceQuality ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A skill is executable and verified, so it carries an artefact, an entrypoint, a
+# signature and the test that decides it.
+mm:SkillShape a sh:NodeShape ;
+    sh:targetClass mm:Skill ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:testedBy ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:verification ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:implRef ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:entrypoint ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:signature ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:PolicyShape a sh:NodeShape ;
+    sh:targetClass mm:Policy ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:activationCondition ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:behavior ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:scope ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:confidence ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A frame is its roles and its slots; one without either cannot be filled in.
+mm:FrameShape a sh:NodeShape ;
+    sh:targetClass mm:Frame ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:frameSlot ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:role ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:domain ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:EvaluationShape a sh:NodeShape ;
+    sh:targetClass mm:Evaluation ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:evidence ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .
+
+# An insight records its votes and the trajectories it came from, so a lesson can
+# be questioned rather than merely believed.
+mm:InsightShape a sh:NodeShape ;
+    sh:targetClass mm:Insight ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:upvotes ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:downvotes ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:derivedFromTrajectory ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:WorkflowShape a sh:NodeShape ;
+    sh:targetClass mm:Workflow ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:scriptStep ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:derivedFromTrajectory ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+# A frame instance names the frames it was composed from.
+mm:FrameInstanceShape a sh:NodeShape ;
+    sh:targetClass mm:FrameInstance ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:parentFrame ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:severity sh:Violation ;
+    ] .

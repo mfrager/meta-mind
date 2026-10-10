@@ -1,0 +1,11 @@
+# Transitions the deterministic table forbids whatever the evidence says.
+# `epistemic promotable --fixture` must report allowed=0 for this file.
+# Each line is `{from, to, evidence:[kinds], why}`.
+{"from":"ASSUMED","to":"OBSERVED","evidence":["observation","external_tool"],"why":"an assumption is never an observation"}
+{"from":"ASSUMED","to":"VERIFIED","evidence":["external_tool"],"why":"an assumption is never verified"}
+{"from":"INFERRED","to":"OBSERVED","evidence":["observation"],"why":"an inference is never an observation"}
+{"from":"PREDICTED","to":"OBSERVED","evidence":["observation"],"why":"a prediction is never an observation"}
+{"from":"SIMULATED","to":"VERIFIED","evidence":["external_tool"],"why":"a simulation is never verification"}
+{"from":"FICTIONAL","to":"VERIFIED","evidence":["external_tool"],"why":"nothing rises out of fiction"}
+{"from":"UNKNOWN","to":"OBSERVED","evidence":["observation"],"why":"nothing rises out of the unclassified"}
+{"from":"OBSERVED","to":"VERIFIED","evidence":["external_tool"],"why":"an observation is never rewritten"}

@@ -26,7 +26,37 @@ pub const PHASE: &str = "https://metamind.dev/phase/";
 pub const PROV: &str = "http://www.w3.org/ns/prov#";
 
 /// The named graphs Metamind owns. A quad outside this set requires a migration.
-pub const NAMED_GRAPHS: [&str; 7] = [
+///
+/// `decision` is Phase 9's graph: the decisions, comparisons, risk profiles and
+/// uncertainty measurements of the bounded-decision organ and the firewall runs
+/// that graded them. It was added by migration `0009_decision_firewall.sql`, which
+/// is what the rule above requires of a new graph — adding a name here without the
+/// migration would let the mirror write into a graph no store was told about.
+/// `tools` is Phase 10's graph: the tool specs, the actions and the observations the
+/// executor produced. It was added by migration `0010_tools.sql`, and it is a separate
+/// graph from `/provenance` because Phase 6's epistemic mirror *clears and rewrites*
+/// `/provenance` from its snapshot on every mutation — an action record written there
+/// would be erased by the next claim promotion. The claims observations produce still
+/// reach `/world`, through the barrier.
+///
+/// `selfeng` is Phase 11's graph: the calibrated predictions, the calibration runs, the
+/// meta-analyses and lessons, the change sets, the promotion decisions and the
+/// evolution lineage. The phase plan's §4 asks for `/provenance`, and this is the one
+/// place it is deliberately not followed: `/provenance` is the epistemic mirror's
+/// scratch graph, rewritten from its snapshot on every claim mutation, so a journal
+/// written there would lose the entry that justified a promotion — the opposite of
+/// what an immutable lineage is for. It was added by migration
+/// `0011_self_engineering.sql`, which is what the rule above requires of a new graph.
+/// Pi sessions and edits still go to `/code`, because they are codemetadata and
+/// belong with the module they changed.
+///
+/// `self` is Phase 12's graph: the numeric self-model reports and their divergence
+/// dimensions, the debt findings, the GC actions, the hot-loaded module versions and
+/// the design revisions a promoted change set produced. It is separate from
+/// `/selfeng` because the two answer different questions — `/selfeng` is the lineage of
+/// accepted changes, `/self` is the being's measurement of *itself* — and it was added
+/// by migration `0012_loop.sql`, which is what the rule above requires of a new graph.
+pub const NAMED_GRAPHS: [&str; 11] = [
     "being",
     "memory",
     "epistemic",
@@ -34,6 +64,10 @@ pub const NAMED_GRAPHS: [&str; 7] = [
     "world",
     "provenance",
     "code",
+    "decision",
+    "tools",
+    "selfeng",
+    "self",
 ];
 
 /// The instance IRI of an entity: `https://metamind.dev/data/{ulid}`.
@@ -115,6 +149,18 @@ mod tests {
         assert!(is_named_graph("https://metamind.dev/graph/provenance"));
         assert!(!is_named_graph("unknown"));
         assert_eq!(graph("being"), "https://metamind.dev/graph/being");
+        // Phase 9's graph, in both spellings, because `graph validate` takes either.
+        assert!(is_named_graph("decision"));
+        assert!(is_named_graph(&graph("decision")));
+        assert_eq!(graph("decision"), "https://metamind.dev/graph/decision");
+        // Phase 10's graph, for the same reason.
+        assert!(is_named_graph("tools"));
+        assert!(is_named_graph(&graph("tools")));
+        assert_eq!(graph("tools"), "https://metamind.dev/graph/tools");
+        // Phase 11's graph, likewise.
+        assert!(is_named_graph("selfeng"));
+        assert!(is_named_graph(&graph("selfeng")));
+        assert_eq!(graph("selfeng"), "https://metamind.dev/graph/selfeng");
     }
 
     #[test]

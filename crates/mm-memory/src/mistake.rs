@@ -142,11 +142,16 @@ pub async fn record_mistake(
         ids.next(),
         now,
     )?;
-    memory.cues.push(RetrievalCue::keyword(input.failure_mode.clone()));
+    memory
+        .cues
+        .push(RetrievalCue::keyword(input.failure_mode.clone()));
     for signal in &input.missed_signal {
         memory.cues.push(RetrievalCue::keyword(signal.clone()));
     }
-    for token in crate::store::tokenize(&input.failure_mode).into_iter().take(8) {
+    for token in crate::store::tokenize(&input.failure_mode)
+        .into_iter()
+        .take(8)
+    {
         memory.cues.push(RetrievalCue::keyword(token));
     }
     store.insert(&memory).await?;
@@ -230,9 +235,7 @@ pub async fn record_near_miss(
 }
 
 /// Every stored mistake detail row.
-pub async fn mistake_rows(
-    store: &SqliteMemoryStore,
-) -> Result<Vec<crate::model::MistakeRecord>> {
+pub async fn mistake_rows(store: &SqliteMemoryStore) -> Result<Vec<crate::model::MistakeRecord>> {
     store.list_mistakes().await
 }
 

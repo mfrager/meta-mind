@@ -74,18 +74,25 @@ impl MemorySnapshot {
     }
 
     /// Every quad the mirror should hold, in a deterministic order.
+    ///
+    /// The result holds each triple at most once. Two parts of a snapshot can
+    /// legitimately agree on a triple — a summary link and the summary node that
+    /// records the same membership both say `mm:summarizes`, for instance — and a
+    /// duplicate would make the written graph differ from the snapshot by count
+    /// while a triplestore silently deduplicated it. Collapsing here keeps "what
+    /// the snapshot renders" and "what the graph holds" the same set.
     pub fn to_quads(&self) -> Vec<Quad> {
         let mut quads: Vec<Quad> = Vec::new();
 
         for memory in &self.memories {
             let node = iri::data(&memory.id).into_string();
             quads.push(q(&node, mm("Memory"), subject(&node)));
+            quads.push(q(&node, mm(memory.kind.rdf_class()), subject(&node)));
             quads.push(q(
                 &node,
-                mm(memory.kind.rdf_class()),
-                subject(&node),
+                mm("memoryKind"),
+                literal_str(memory.kind.as_str()),
             ));
-            quads.push(q(&node, mm("memoryKind"), literal_str(memory.kind.as_str())));
             quads.push(q(&node, mm("tier"), literal_str(memory.tier.as_str())));
             quads.push(q(&node, mm("status"), literal_str(memory.status.as_str())));
             quads.push(q(&node, mm("content"), literal_str(&memory.content)));
@@ -97,13 +104,29 @@ impl MemorySnapshot {
                 .map(|s| iri::data(&s).into_string())
                 .unwrap_or_else(|| format!("{}unknownSource", iri::MM));
             quads.push(q(&node, mm("source"), subject(&source)));
-            quads.push(q(&node, mm("confidence"), literal_double(f64::from(memory.confidence))));
-            quads.push(q(&node, mm("importance"), literal_double(f64::from(memory.importance))));
-            quads.push(q(&node, mm("validFrom"), literal_dt(&memory.validity.from.to_rfc3339())));
+            quads.push(q(
+                &node,
+                mm("confidence"),
+                literal_double(f64::from(memory.confidence)),
+            ));
+            quads.push(q(
+                &node,
+                mm("importance"),
+                literal_double(f64::from(memory.importance)),
+            ));
+            quads.push(q(
+                &node,
+                mm("validFrom"),
+                literal_dt(&memory.validity.from.to_rfc3339()),
+            ));
             if let Some(until) = memory.validity.until {
                 quads.push(q(&node, mm("validUntil"), literal_dt(&until.to_rfc3339())));
             }
-            quads.push(q(&node, mm("recordedAt"), literal_dt(&memory.recorded_at.to_rfc3339())));
+            quads.push(q(
+                &node,
+                mm("recordedAt"),
+                literal_dt(&memory.recorded_at.to_rfc3339()),
+            ));
             quads.push(q(&node, mm("protected"), literal_bool(memory.protected)));
             quads.push(q(
                 &node,
@@ -145,7 +168,11 @@ impl MemorySnapshot {
         for step in &self.consolidations {
             let node = iri::data(&step.id).into_string();
             quads.push(q(&node, mm("Consolidation"), subject(&node)));
-            quads.push(q(&node, mm("consolidationMethod"), literal_str(step.method.as_str())));
+            quads.push(q(
+                &node,
+                mm("consolidationMethod"),
+                literal_str(step.method.as_str()),
+            ));
             for source in &step.source_ids {
                 quads.push(q(
                     &node,
@@ -163,7 +190,11 @@ impl MemorySnapshot {
         for node in &self.summaries {
             let iri_node = iri::data(&node.memory_id).into_string();
             quads.push(q(&iri_node, mm("SummaryNode"), subject(&iri_node)));
-            quads.push(q(&iri_node, mm("treeLevel"), literal_int(i64::from(node.level))));
+            quads.push(q(
+                &iri_node,
+                mm("treeLevel"),
+                literal_int(i64::from(node.level)),
+            ));
             if let Some(parent) = node.parent_id {
                 quads.push(q(
                     &iri_node,
@@ -183,7 +214,11 @@ impl MemorySnapshot {
         for community in &self.communities {
             let iri_node = iri::data(&community.memory_id).into_string();
             quads.push(q(&iri_node, mm("Community"), subject(&iri_node)));
-            quads.push(q(&iri_node, mm("communityLabel"), literal_str(&community.label)));
+            quads.push(q(
+                &iri_node,
+                mm("communityLabel"),
+                literal_str(&community.label),
+            ));
             if let Some(modularity) = community.modularity {
                 quads.push(q(&iri_node, mm("modularity"), literal_double(modularity)));
             }
@@ -199,7 +234,11 @@ impl MemorySnapshot {
         for mistake in &self.mistakes {
             let node = iri::data(&mistake.memory_id).into_string();
             quads.push(q(&node, mm("FailureRecord"), subject(&node)));
-            quads.push(q(&node, mm("failureMode"), literal_str(&mistake.failure_mode)));
+            quads.push(q(
+                &node,
+                mm("failureMode"),
+                literal_str(&mistake.failure_mode),
+            ));
             quads.push(q(
                 &node,
                 mm("recurrenceRisk"),
@@ -227,6 +266,14 @@ impl MemorySnapshot {
             }
         }
 
+        // Collapse duplicates, keeping the first occurrence so the order stays a
+        // function of the snapshot alone.
+        let mut seen: std::collections::BTreeSet<(String, String, String)> =
+            std::collections::BTreeSet::new();
+        quads.retain(|quad| {
+            let triple = MemoryTriple::from_quad(quad);
+            seen.insert((triple.subject, triple.predicate, triple.object))
+        });
         quads
     }
 }
@@ -558,8 +605,7 @@ mod tests {
         let snap = snapshot();
         let unknown = format!("{}unknownSource", iri::MM);
         assert!(snap.to_quads().iter().any(|quad| {
-            quad.object
-                == Term::NamedNode(NamedNode::new_unchecked(unknown.clone()))
+            quad.object == Term::NamedNode(NamedNode::new_unchecked(unknown.clone()))
         }));
     }
 
@@ -572,6 +618,34 @@ mod tests {
             .iter()
             .any(|quad| quad.predicate.as_str() == rule));
         assert_eq!(snap.corrective_rules(), vec![id(21)]);
+    }
+
+    #[test]
+    fn a_triple_two_parts_agree_on_is_written_once() {
+        // A summary link and the summary node that records the same membership both
+        // say `mm:summarizes`. Writing it twice would make the snapshot's count
+        // disagree with the graph's, and the round-trip hash would then be a
+        // comparison of two different sets.
+        let snap = MemorySnapshot {
+            links: vec![(id(1), id(2), LinkKind::Summarizes, 1.0)],
+            summaries: vec![SummaryNode {
+                memory_id: id(1),
+                parent_id: None,
+                level: 1,
+                member_ids: vec![id(2), id(2)],
+            }],
+            ..MemorySnapshot::default()
+        };
+        let quads = snap.to_quads();
+        let summary_predicate = mm("summarizes").as_str().to_string();
+        assert_eq!(
+            quads
+                .iter()
+                .filter(|quad| quad.predicate.as_str() == summary_predicate)
+                .count(),
+            1
+        );
+        assert_eq!(snap.triple_count(), quads.len());
     }
 
     #[test]
@@ -626,10 +700,12 @@ mod tests {
 
         let rows = graph.triples(MEMORY_GRAPH).await.unwrap();
         let rebuilt = <Vec<MemoryTriple> as FromRdf>::from_rows(&rows);
-        let mut source: Vec<MemoryTriple> =
-            expected.iter().map(MemoryTriple::from_quad).collect();
+        let mut source: Vec<MemoryTriple> = expected.iter().map(MemoryTriple::from_quad).collect();
         source.sort();
-        assert_eq!(rebuilt, source, "the mirror must not lose or invent a triple");
+        assert_eq!(
+            rebuilt, source,
+            "the mirror must not lose or invent a triple"
+        );
         assert_eq!(triples_hash(&rebuilt), quads_hash(&expected));
         graph.shutdown().await.unwrap();
     }

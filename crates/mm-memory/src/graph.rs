@@ -98,10 +98,7 @@ impl EntityGraph {
             }
         };
         let args = match at {
-            Some(at) => vec![
-                mm_core::Param::Int(ns(at)),
-                mm_core::Param::Int(ns(at)),
-            ],
+            Some(at) => vec![mm_core::Param::Int(ns(at)), mm_core::Param::Int(ns(at))],
             None => Vec::new(),
         };
         let rows = mm_core::Tabular::query_json(store.sqlite(), sql, args).await?;
@@ -156,10 +153,7 @@ impl EntityGraph {
 
     /// The union of a node's in- and out-neighbours.
     pub fn connected(&self, entity: &Ulid) -> Vec<Ulid> {
-        let mut set: BTreeSet<Ulid> = self
-            .neighbours(entity)
-            .into_iter()
-            .collect();
+        let mut set: BTreeSet<Ulid> = self.neighbours(entity).into_iter().collect();
         if let Some(list) = self.reverse.get(entity) {
             set.extend(list.iter().map(|(node, _)| *node));
         }
@@ -255,11 +249,7 @@ impl EntityGraph {
     }
 
     /// Close an edge at `until` rather than deleting it.
-    pub async fn close_edge(
-        store: &SqliteMemoryStore,
-        id: &Ulid,
-        until: Timestamp,
-    ) -> Result<u64> {
+    pub async fn close_edge(store: &SqliteMemoryStore, id: &Ulid, until: Timestamp) -> Result<u64> {
         let affected = mm_core::Tabular::execute(
             store.sqlite(),
             "UPDATE entity_edges SET valid_until = ? WHERE id = ? AND valid_until IS NULL",
@@ -392,7 +382,10 @@ mod tests {
         let graph = graph();
         let one = graph.expand(&[id(1)], 1);
         assert!(one.contains(&id(2)));
-        assert!(!one.contains(&id(3)), "one hop must not reach two hops away");
+        assert!(
+            !one.contains(&id(3)),
+            "one hop must not reach two hops away"
+        );
         let two = graph.expand(&[id(1)], 2);
         assert!(two.contains(&id(3)));
         assert!(!two.contains(&id(4)), "two hops must not reach three away");
@@ -443,6 +436,9 @@ mod tests {
         let mut reversed = forward.edges().to_vec();
         reversed.reverse();
         let rebuilt = EntityGraph::from_edges(reversed);
-        assert_eq!(forward.ppr(&[id(1)], MAX_HOPS, DAMPING), rebuilt.ppr(&[id(1)], MAX_HOPS, DAMPING));
+        assert_eq!(
+            forward.ppr(&[id(1)], MAX_HOPS, DAMPING),
+            rebuilt.ppr(&[id(1)], MAX_HOPS, DAMPING)
+        );
     }
 }

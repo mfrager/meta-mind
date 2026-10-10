@@ -53,3 +53,38 @@ jobs:
           cargo run -p mm-cli -- graph validate --graph being
           cargo run -p mm-cli -- logs verify
           cargo run -p mm-cli -- replay --from 0
+
+      # Phase 12's scenario, which the `Tests` step above already asserts as an e2e test
+      # (`tests/e2e/phase12_autonomy.rs`): a novel goal drives the loop to a promoted,
+      # hot-loaded capability with no human edit, the run replays byte-identically from its
+      # own events, the debt sweep collects nothing protected, and the audit chain verifies
+      # over all of it. Running it here as well is what makes the gate readable as commands
+      # in the workflow, not only as a test name.
+      - name: Phase 12 gate
+        run: |
+          DATA=$(mktemp -d)
+          cargo run -p mm-cli -- --data-dir "$DATA" doctor
+          RUN=$(cargo run -p mm-cli -- --data-dir "$DATA" loop run \
+            --goal-file bench/qualification/goal_novel.json \
+            --budget-file bench/qualification/budget.toml --novel --json | jq -r .run_id)
+          cargo run -p mm-cli -- --data-dir "$DATA" loop status --run "$RUN"
+          cargo run -p mm-cli -- --data-dir "$DATA" loop artifacts --run "$RUN"
+          cargo run -p mm-cli -- --data-dir "$DATA" loop replay --run "$RUN"
+          cargo run -p mm-cli -- --data-dir "$DATA" self-model report --run "$RUN"
+          cargo run -p mm-cli -- --data-dir "$DATA" debt scan
+          cargo run -p mm-cli -- --data-dir "$DATA" gc --apply
+          cargo run -p mm-cli -- --data-dir "$DATA" module load \
+            --uri "https://metamind.dev/code/module/cognition/goal-attainment@0.1.0"
+          cargo run -p mm-cli -- --data-dir "$DATA" codex verify
+          cargo run -p mm-cli -- --data-dir "$DATA" being verify
+          cargo run -p mm-cli -- --data-dir "$DATA" logs verify
+
+      # The loop as a supervised process: readiness on stdout, a run to a completed
+      # promotion, and the clocks ticked without Identity ever firing during a run.
+      - name: Loop background process
+        run: |
+          DATA=$(mktemp -d)
+          cargo run -p mm-runtime --bin mm-loop -- --data-dir "$DATA" \
+            --goal-file bench/qualification/goal_novel.json \
+            --budget-file bench/qualification/budget.toml --assert-completed --ticks 3
+          cargo run -p mm-cli -- --data-dir "$DATA" logs verify

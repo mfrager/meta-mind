@@ -1,0 +1,40 @@
+[package]
+name = "mm-metacog"
+description = "Metamind metacognitive controller: cognitive episodes, the operation algebra, the tier/policy ladder, deterministic operation value, budget forcing, program compilation, lowering to an execution DAG, and replayable traces"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
+[package.metadata.metamind]
+owned_by_phase = 8
+capability = "mm:CognitiveControl"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+mm-log = { workspace = true }
+# One broad scan is a strict `StructuredOut` call, so the scan driver programs
+# against the substrate rather than against a provider.
+mm-llm = { workspace = true }
+# The Phase 6 `Outcome` is the only outcome type in the system (index decision
+# D2), so an `Evaluate` operation carries that type rather than a parallel one.
+mm-epistemic = { workspace = true }
+# Frames and techniques are library entries, referenced by their IRI; the base is
+# read from the library rather than re-spelled here.
+mm-library = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }

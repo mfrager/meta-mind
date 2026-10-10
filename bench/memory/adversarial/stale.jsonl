@@ -1,0 +1,13 @@
+# Stale writes (plan §7): something that was true and no longer is.
+#
+# These are not errors — a superseded fact is a real trace, and the plan's
+# bi-temporality exists precisely so it can be kept. What must not happen is that
+# a stale record is *silently* accepted as current, so `expect_flag` is `stale`
+# and the memory must carry a closed validity or be superseded through
+# `mm:consolidatedFrom`/`supersedes` rather than being treated as the current
+# policy. Every `valid_from` here is in the past relative to the corpus's own
+# later episodes.
+
+{"case":"friday_deploy_window_still_in_effect","expect_flag":"stale","kind":"semantic","content":"the friday deploy window is still in effect","confidence":0.6,"importance":0.4,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-09-01T00:00:00Z"}
+{"case":"policy_allows_any_stable_release","expect_flag":"stale","kind":"semantic","content":"the toolchain policy allows any stable rust release","confidence":0.5,"importance":0.4,"entities":["rust","toolchain-policy"],"provenance":"new","valid_from":"2026-09-01T00:00:00Z"}
+{"case":"deploy_window_opens_at_midnight","expect_flag":"stale","kind":"semantic","content":"the deploy window opens at midnight in the operations timezone","confidence":0.5,"importance":0.35,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-09-05T00:00:00Z"}

@@ -180,7 +180,10 @@ mod tests {
             .await
             .unwrap();
         store.migrate().await.unwrap();
-        assert_eq!(store.applied_migrations().await.unwrap(), vec![1, 2, 3, 4, 5]);
+        assert_eq!(
+            store.applied_migrations().await.unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        );
         for table in ["events", "audit_log", "store_checkpoints", "facts"] {
             assert_eq!(
                 store.row_count(table).await.unwrap(),
@@ -258,9 +261,113 @@ mod tests {
                 "{table} must start empty"
             );
         }
+        // Phase 6 adds the epistemic-discipline tables; they start empty too.
+        for table in [
+            "claims",
+            "evidence",
+            "observations",
+            "assumptions",
+            "predictions",
+            "contradictions",
+            "dependencies",
+            "epistemic_transitions",
+        ] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        // Phase 7 adds the cognitive library; it starts empty too.
+        for table in [
+            "library_entries",
+            "skills",
+            "workflows",
+            "cases",
+            "case_map",
+            "insights",
+            "policies",
+            "policy_versions",
+            "policy_fitness",
+            "policy_population",
+            "frame_instances",
+            "applicability_runs",
+        ] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        // Phase 8 adds the metacognitive controller's own records; they start empty
+        // too, because a migration indexes a deliberation rather than making one.
+        for table in ["episodes", "programs", "program_traces"] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        // Phase 9 adds the decision domain: bounded decisions, comparisons, firewall
+        // runs, calibration, conformal thresholds and factuality checks. They start
+        // empty — a migration indexes decisions, it does not make one.
+        for table in [
+            "decisions",
+            "comparisons",
+            "firewall_runs",
+            "calibration",
+            "conformal_thresholds",
+            "factuality_checks",
+        ] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        // Phase 10 adds tool execution: the registry, the policy sets, the grants and
+        // the append-only action ledger. The seeded policy set and grants are rows, so
+        // only the empty-on-start tables are asserted here.
+        for table in [
+            "tool_calls",
+            "idempotency_keys",
+            "action_ledger",
+            "observed_payloads",
+            "rollback_snapshots",
+        ] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        // Phase 11 adds self-engineering: the prediction ledger, calibration runs,
+        // meta-analyses, change sets, promotions, regression tests, the evolution
+        // journal and Pi sessions. All start empty — `budgets` is the exception, because
+        // the four seeded budgets are what make a hard cap true from the first command.
+        for table in [
+            "prediction_ledger",
+            "prediction_outcomes",
+            "calibration_runs",
+            "meta_analyses",
+            "change_sets",
+            "promotions",
+            "regression_tests",
+            "evolution_journal",
+            "pi_sessions",
+            "pi_events",
+        ] {
+            assert_eq!(
+                store.row_count(table).await.unwrap(),
+                0,
+                "{table} must start empty"
+            );
+        }
+        assert_eq!(store.row_count("budgets").await.unwrap(), 4);
         // One row per phase: kernel (1), code index (2), LLM ledger (3), being (4),
-        // memory (5).
-        assert_eq!(store.row_count("schema_versions").await.unwrap(), 5);
+        // memory (5), epistemic (6), library (7), metacog (8), decision firewall (9),
+        // tools (10), self-engineering (11), autonomy (12).
+        assert_eq!(store.row_count("schema_versions").await.unwrap(), 12);
     }
 
     #[tokio::test]

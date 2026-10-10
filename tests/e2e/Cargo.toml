@@ -34,12 +34,66 @@ path = "cli_doctor.rs"
 name = "cli_being"
 path = "cli_being.rs"
 
+[[test]]
+name = "cli_memory"
+path = "cli_memory.rs"
+
+[[test]]
+name = "epistemic_gate"
+path = "epistemic_gate.rs"
+
+[[test]]
+name = "library_gate"
+path = "library_gate.rs"
+
+[[test]]
+name = "episode_roundtrip"
+path = "episode_roundtrip.rs"
+
+[[test]]
+name = "phase09_firewall"
+path = "phase09_firewall.rs"
+
+[[test]]
+name = "phase10_tools"
+path = "phase10_tools.rs"
+
+[[test]]
+name = "selfeng_cycle"
+path = "selfeng_cycle.rs"
+
+[[test]]
+name = "pi_replay"
+path = "pi_replay.rs"
+
+# Phase 12's gate, and the two adversarial halves of it: a promoted capability is
+# hot-loaded without a restart, and neither a crafted prompt nor a crafted change set can
+# talk the gate or the ledger guard out of a decision.
+[[test]]
+name = "phase12_autonomy"
+path = "phase12_autonomy.rs"
+
+[[test]]
+name = "hot_load"
+path = "hot_load.rs"
+
+[[test]]
+name = "gate_bypass_adversarial"
+path = "gate_bypass_adversarial.rs"
+
 [dependencies]
 mm-core = { workspace = true }
 mm-log = { workspace = true }
 mm-store-sqlite = { workspace = true }
 mm-store-graph = { workspace = true }
 mm-eventlog = { workspace = true }
+# The gate drives the CLI, and the tests cross-check what the CLI recorded against the
+# crates that wrote it: `pi_replay` compares the CLI's session hash with a direct parse,
+# and `selfeng_cycle` re-reads the rows the commands claimed to have written.
+mm-metaanalysis = { workspace = true }
+mm-mistakes = { workspace = true }
+mm-selfeng = { workspace = true }
+mm-pi = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

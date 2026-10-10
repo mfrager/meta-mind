@@ -1,0 +1,16 @@
+# Contradictory writes (plan §7): two memories that assert opposite things about
+# the same entity.
+#
+# A contradiction is never resolved silently. `expect_flag` is `contradiction`,
+# and the two records must be linked with `mm:contradicts` so the disagreement is
+# a fact the being can inspect — a resolver that quietly picked a winner would be
+# exactly the kind of inference Phase 9's sanity firewall exists to catch.
+#
+# The pairs are written with the same entity set and overlapping vocabulary, so
+# the contradiction is about one subject rather than two sentences that happen to
+# disagree.
+
+{"case":"policy_pins_exactly_one_version","expect_flag":"contradiction","kind":"semantic","content":"the toolchain policy pins rust to exactly 1.96.1 for reproducibility","confidence":0.9,"importance":0.8,"entities":["rust","toolchain-policy"],"provenance":"new","valid_from":"2026-10-05T00:00:00Z"}
+{"case":"policy_allows_any_stable_version","expect_flag":"contradiction","kind":"semantic","content":"the toolchain policy allows any stable rust release for reproducibility","confidence":0.6,"importance":0.5,"entities":["rust","toolchain-policy"],"provenance":"new","valid_from":"2026-10-05T00:00:00Z"}
+{"case":"deploy_window_is_tuesday","expect_flag":"contradiction","kind":"semantic","content":"the deploy window is tuesday morning","confidence":0.85,"importance":0.7,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-10-03T00:00:00Z"}
+{"case":"deploy_window_is_thursday","expect_flag":"contradiction","kind":"semantic","content":"the deploy window is thursday morning","confidence":0.85,"importance":0.7,"entities":["deploy-window"],"provenance":"new","valid_from":"2026-10-03T00:00:00Z"}
