@@ -5,8 +5,8 @@
 > of confusion. Every command and every output below was run against `HEAD = 0204d73` while writing this
 > document.
 >
-> **Companion documents.** [`components-and-status.md`](./components-and-status.md) — what each component
-> can and cannot do, and what is tested. [`open-gaps.md`](./open-gaps.md) — what is not implemented yet.
+> **Companion documents.** [`components-and-status.md`](./infodocs/components-and-status.md) — what each component
+> can and cannot do, and what is tested. [`open-gaps.md`](./infodocs/open-gaps.md) — what is not implemented yet.
 
 ---
 
