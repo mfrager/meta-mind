@@ -29,7 +29,11 @@ pub struct SseFrame {
 
 impl SseFrame {
     /// Build a frame from any serializable payload.
-    pub fn json<T: Serialize>(id: u64, event: &str, payload: &T) -> Result<Self, serde_json::Error> {
+    pub fn json<T: Serialize>(
+        id: u64,
+        event: &str,
+        payload: &T,
+    ) -> Result<Self, serde_json::Error> {
         Ok(Self {
             id,
             event: event.to_string(),
@@ -90,7 +94,7 @@ mod tests {
         let frame = SseFrame::json(7, "run", &json!({"requestId": "01h8", "query": "hi"})).unwrap();
         assert_eq!(
             frame.encode(),
-            "id: 7\nevent: run\ndata: {\"requestId\":\"01h8\",\"query\":\"hi\"}\n\n"
+            "id: 7\nevent: run\ndata: {\"query\":\"hi\",\"requestId\":\"01h8\"}\n\n"
         );
     }
 
@@ -110,7 +114,11 @@ mod tests {
     #[test]
     fn json_payloads_are_always_single_line() {
         let frame = SseFrame::json(1, "x", &json!({"text": "a\nb"})).unwrap();
-        assert!(!frame.data.contains('\n'), "serde must escape newlines: {}", frame.data);
+        assert!(
+            !frame.data.contains('\n'),
+            "serde must escape newlines: {}",
+            frame.data
+        );
     }
 
     #[test]

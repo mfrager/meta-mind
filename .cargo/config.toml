@@ -2,3 +2,8 @@
 # Keep incremental artifacts and the pinned toolchain on the local filesystem.
 # (RocksDB must also be built against the system library: pkg-config finds librocksdb 9.11.)
 rustflags = []
+
+[env]
+# JSON numbers, not bigint. serde_json writes i64/u64 as numbers, and the
+# console's wire mirror has to agree (design/planning/ui/01 §7).
+TS_RS_LARGE_INT = "number"

@@ -50,7 +50,7 @@ pub struct ApiError {
     pub code: ApiErrorCode,
     pub message: String,
     /// The kernel's own explanation, verbatim. Present whenever one exists.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// Ties the error to the UI log entry (`data/logs/ui/`).
     #[serde(rename = "correlationId")]
@@ -78,7 +78,7 @@ pub struct ServiceStatus {
     pub name: String,
     pub state: ServiceState,
     /// Required unless `state` is `ok` — honest state is a UI invariant.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
 
@@ -86,7 +86,7 @@ pub struct ServiceStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct KernelStatus {
     pub state: ServiceState,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub services: Vec<ServiceStatus>,
 }
@@ -97,10 +97,10 @@ pub struct EventHead {
     /// Highest committed event sequence (`EventLog::head_seq`), 0 when empty.
     pub seq: i64,
     /// Audit-chain head sequence, when the audit log has records.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_seq: Option<i64>,
     /// Audit-chain head hash.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_hash: Option<String>,
 }
 

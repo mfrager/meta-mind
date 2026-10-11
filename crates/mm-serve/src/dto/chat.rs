@@ -55,9 +55,7 @@ pub enum ChatRunState {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatFrame {
     /// The run began.
-    Started {
-        query: String,
-    },
+    Started { query: String },
     /// The durable run is identified; reconnection uses these ids.
     Run {
         #[serde(rename = "requestId")]
@@ -67,9 +65,7 @@ pub enum ChatFrame {
         query: String,
     },
     /// The client lost the stream and is reconnecting (server- or client-emitted).
-    Reconnecting {
-        attempt: u32,
-    },
+    Reconnecting { attempt: u32 },
     /// Terminal: the run completed.
     Completed {
         /// Which kernel subsystems the run touched.
@@ -79,7 +75,7 @@ pub enum ChatFrame {
     Failed {
         error: String,
         /// The kernel's verbatim explanation, when one exists.
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
 }

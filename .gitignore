@@ -1,5 +1,7 @@
 /target
 /data
+node_modules/
+frontend/dist/
 /data/**
 !/data/.gitkeep
 **/*.rs.bk

@@ -35,7 +35,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["env"] }
 ulid = { workspace = true }
 axum = "0.8"
 ts-rs = "12"

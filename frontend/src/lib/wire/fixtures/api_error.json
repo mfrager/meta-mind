@@ -1,0 +1,1 @@
+{"code":"unavailable","message":"graph store is not open","reason":"the RDF store is opened on demand and no route needs it yet","correlationId":"01arz3ndektsv4rrffq69g5fav","retryable":false}

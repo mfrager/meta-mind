@@ -88,3 +88,63 @@ jobs:
             --goal-file bench/qualification/goal_novel.json \
             --budget-file bench/qualification/budget.toml --assert-completed --ticks 3
           cargo run -p mm-cli -- --data-dir "$DATA" logs verify
+
+  # Milestone 0 of the console (design/planning/ui/10). Playwright, parity, and
+  # replay jobs from §6.7 land with the milestones that add those tests.
+  mm-serve:
+    name: mm-serve
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config clang libsqlite3-dev
+
+      - name: Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build -p mm-serve
+
+      - name: Test
+        run: cargo test -p mm-serve
+
+      - name: Wire types are generated
+        run: |
+          cargo test -p mm-serve export_types -- --ignored
+          git diff --exit-code frontend/src/lib/wire
+
+  console:
+    name: console
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

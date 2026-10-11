@@ -182,6 +182,7 @@ impl AppState {
 /// While any `mm-serve` holds this file the data directory is owned by the
 /// console; a second console (or a store-locking CLI command) gets a `locked`
 /// error naming the holder. A stale lock (dead pid) is reclaimed on boot.
+#[derive(Debug)]
 pub struct ConsoleLock {
     path: PathBuf,
 }
@@ -271,7 +272,7 @@ mod tests {
         // A lock naming a dead pid is reclaimed.
         std::fs::write(&lock_path, "999999999 0").unwrap();
         let _lock = ConsoleLock::acquire(dir.path()).unwrap();
-        assert!(!lock_path.exists() == false, "lock file exists while held");
+        assert!(lock_path.exists(), "lock file exists while held");
     }
 
     #[test]

@@ -121,7 +121,7 @@ pub enum EpistemicStatus {
 pub struct DocSource {
     pub kind: DocSourceKind,
     /// The chat message / run / link that opened it, when there is one.
-    #[serde(rename = "refId", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "refId", default, skip_serializing_if = "Option::is_none")]
     pub ref_id: Option<String>,
 }
 
@@ -154,18 +154,19 @@ pub struct FocusDoc {
     pub kind: DocKind,
     pub title: String,
     /// Mono value line: ids, paths, counts (plan `05` §1).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
     pub status: DocStatus,
     /// Mandatory for `unavailable`, `degraded`, `blocked`, and `failed`.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epistemic: Option<EpistemicStatus>,
     /// Monotonic snapshot version (the focus channel's `?from=` cursor).
     pub version: u64,
     pub source: DocSource,
     pub capabilities: Vec<DocCapability>,
-    /// Kind-specific payload.
+    /// Kind-specific payload. Typed per-kind snapshots replace this in M3.
+    #[ts(type = "unknown")]
     pub snapshot: Value,
 }

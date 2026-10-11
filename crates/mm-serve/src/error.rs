@@ -40,14 +40,16 @@ impl AppError {
             AppError::BadRequest(_) => (ApiErrorCode::InvalidArgument, None, false),
             AppError::NotFound(_) => (ApiErrorCode::NotFound, None, false),
             AppError::Locked(_) => (ApiErrorCode::Locked, Some(self.to_string()), true),
-            AppError::Kernel(e) => (ApiErrorCode::Internal, Some(e.to_string()), false),
+            // `message` keeps the `MmError` Display (layer prefix included).
+            // `reason` is the kernel string itself, which the UI quotes verbatim.
+            AppError::Kernel(e) => (ApiErrorCode::Internal, Some(kernel_reason(e)), false),
             AppError::Internal(_) => (ApiErrorCode::Internal, None, true),
         };
         ApiError {
             code,
             message: self.to_string(),
             reason,
-            correlation_id: UlidRef::new(),
+            correlation_id: fresh_correlation_id(),
             retryable,
         }
     }
@@ -64,14 +66,25 @@ impl AppError {
     }
 }
 
-/// Fresh lowercase ULIDs for correlation ids (never kernel event ids — those
-/// come from the kernel's own `UlidFactory` watermark).
-struct UlidRef;
-
-impl UlidRef {
-    fn new() -> String {
-        ulid::Ulid::new().to_string().to_lowercase()
+/// The kernel's own explanation, without the `MmError` layer prefix
+/// (`config error: …`). The UI shows this string verbatim.
+fn kernel_reason(err: &MmError) -> String {
+    match err {
+        MmError::Store(reason)
+        | MmError::Graph(reason)
+        | MmError::Event(reason)
+        | MmError::Config(reason)
+        | MmError::Codec(reason)
+        | MmError::Internal(reason) => reason.clone(),
     }
+}
+
+/// A fresh lowercase ULID for a correlation id.
+///
+/// These are not kernel event ids — those come from the kernel's own
+/// `UlidFactory` watermark.
+fn fresh_correlation_id() -> String {
+    ulid::Ulid::gen().to_string().to_lowercase()
 }
 
 impl IntoResponse for AppError {
