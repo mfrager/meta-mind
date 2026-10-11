@@ -22,6 +22,7 @@ members = [
     "crates/mm-pi",
     "crates/mm-runtime",
     "crates/mm-cli",
+    "crates/mm-serve",
     "modules/system/kernel-bootstrap",
     "modules/cognition/being",
     "modules/cognition/memory-recall",
