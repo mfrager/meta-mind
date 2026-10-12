@@ -34,12 +34,16 @@ struct Cli {
     bind: IpAddr,
 
     /// Listen port (`MM_UI_PORT` when the flag is omitted).
-    #[arg(long, env = "MM_UI_PORT", default_value_t = 8787)]
+    #[arg(long, env = "MM_UI_PORT", default_value_t = 8899)]
     port: u16,
 }
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if let Err(err) = mm_core::load_project_env() {
+        eprintln!("mm-serve: {err} ({})", err.code());
+        return ExitCode::from(1);
+    }
     let cli = Cli::parse();
     if let Err(err) = serve(cli).await {
         eprintln!("mm-serve: {err}");

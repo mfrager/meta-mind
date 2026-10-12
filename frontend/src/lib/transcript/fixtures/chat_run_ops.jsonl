@@ -1,0 +1,14 @@
+{"seq":1,"frame":{"type":"run","requestId":"req-ops","sessionId":"ses-ops","query":"fixture ops"}}
+{"seq":2,"frame":{"type":"llm_request_started","turn_id":"req-ops-turn","phase":"act","turn_number":1,"visible":true}}
+{"seq":3,"frame":{"type":"tool_call","id":"op-decide","turn_id":"req-ops-turn","phase":"act","name":"decide","input":{}}}
+{"seq":4,"frame":{"type":"tool_result","id":"op-decide","turn_id":"req-ops-turn","name":"decide","success":false,"output":{"reason":"no decision core is bound on this route"},"durationMs":0}}
+{"seq":5,"frame":{"type":"tool_call","id":"op-firewall","turn_id":"req-ops-turn","phase":"act","name":"firewall eval","input":{}}}
+{"seq":6,"frame":{"type":"tool_result","id":"op-firewall","turn_id":"req-ops-turn","name":"firewall eval","success":false,"output":{"reason":"no firewall evaluation was recorded for this request"},"durationMs":0}}
+{"seq":7,"frame":{"type":"tool_call","id":"op-budget","turn_id":"req-ops-turn","phase":"act","name":"budget show","input":{}}}
+{"seq":8,"frame":{"type":"tool_result","id":"op-budget","turn_id":"req-ops-turn","name":"budget show","success":true,"output":{"rows":[{"kind":"meta_analysis","period":"day","limit":100,"spent":0}]},"durationMs":0}}
+{"seq":9,"frame":{"type":"tool_call","id":"op-verify","turn_id":"req-ops-turn","phase":"act","name":"verify run","input":{}}}
+{"seq":10,"frame":{"type":"tool_result","id":"op-verify","turn_id":"req-ops-turn","name":"verify run","success":false,"output":{"reason":"no proof was recorded for this request"},"durationMs":0}}
+{"seq":11,"frame":{"type":"tool_call","id":"op-sandbox","turn_id":"req-ops-turn","phase":"act","name":"sandbox run","input":{}}}
+{"seq":12,"frame":{"type":"tool_result","id":"op-sandbox","turn_id":"req-ops-turn","name":"sandbox run","success":false,"output":{"reason":"no sandbox run was recorded for this request"},"durationMs":0}}
+{"seq":13,"frame":{"type":"final_response","response_id":"req-ops","text":"Ran the fixture ops.","suggestions":["Open the budgets tree"]}}
+{"seq":14,"frame":{"type":"completed","subsystems":["kernel"]}}

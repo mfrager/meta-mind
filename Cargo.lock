@@ -1462,6 +1462,7 @@ name = "mm-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dotenvy",
  "oxrdf",
  "proptest",
  "serde",
@@ -1794,7 +1795,10 @@ dependencies = [
  "http-body-util",
  "mm-core",
  "mm-eventlog",
+ "mm-llm",
  "mm-log",
+ "mm-selfeng",
+ "mm-store-graph",
  "mm-store-sqlite",
  "serde",
  "serde_json",

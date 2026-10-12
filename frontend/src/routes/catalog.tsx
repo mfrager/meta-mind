@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { PageFrame } from "@/routes/frame.tsx";
+import { ComponentCatalog } from "@/catalog/view.tsx";
+
 import {
   WIRE_VERSION,
   type HealthEnvelope,
@@ -48,11 +49,15 @@ type HealthView =
 
 export function TokenGallery() {
   return (
-    <PageFrame
-      eyebrow="Metamind Console · Milestone 0"
-      title="Structured Color"
-      lede="Token gallery for the console. Each hue has one meaning. Corner radii stay small."
-    >
+    <div className="pane-scroll h-full overflow-auto">
+      <div className="flex flex-col gap-8 px-6 py-6">
+      <div>
+        <p className="micro-label text-muted-foreground">Structured Color</p>
+        <h1 className="text-h1 mt-1">Token gallery</h1>
+        <p className="text-small text-muted-foreground mt-1 max-w-xl">
+          Each hue has one meaning. Corner radii stay small.
+        </p>
+      </div>
       <Section title="Neutrals" hint="Structure is drawn with borders and tints.">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           {NEUTRALS.map((item) => (
@@ -122,7 +127,9 @@ export function TokenGallery() {
       <Section title="Kernel" hint={`Wire version ${WIRE_VERSION}. Unavailable is shown with its reason.`}>
         <HealthPanel />
       </Section>
-    </PageFrame>
+      <ComponentCatalog />
+      </div>
+    </div>
   );
 }
 

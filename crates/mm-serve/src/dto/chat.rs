@@ -8,6 +8,7 @@
 //! `wireVersion: 1`; nothing here is renamed once shipped.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use ts_rs::TS;
 
 /// The turn lifecycle phases (plan `08` §3.1). The UI draws one rail segment
@@ -51,7 +52,7 @@ pub enum ChatRunState {
 /// The `type` tag is the frame discriminator; `id: <seq>` on the wire is the
 /// monotonic sequence the client dedups by and resumes from
 /// (`GET /api/chat/{requestId}/stream?from=<seq>`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatFrame {
     /// The run began.
@@ -77,5 +78,93 @@ pub enum ChatFrame {
         /// The kernel's verbatim explanation, when one exists.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+    },
+    /// A working turn began.
+    LlmRequestStarted {
+        turn_id: String,
+        phase: Phase,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subsystem: Option<String>,
+        turn_number: u32,
+        visible: bool,
+    },
+    /// Narration text for a turn.
+    LlmResponse {
+        turn_id: String,
+        phase: Phase,
+        text: String,
+        visible: bool,
+        is_final: bool,
+    },
+    /// A working turn ended.
+    LlmRequestFinished {
+        turn_id: String,
+        outcome: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// An operation was invoked.
+    ToolCall {
+        id: String,
+        turn_id: String,
+        phase: Phase,
+        name: String,
+        #[ts(type = "unknown")]
+        input: Value,
+    },
+    /// An operation returned.
+    ToolResult {
+        id: String,
+        turn_id: String,
+        name: String,
+        success: bool,
+        #[ts(type = "unknown")]
+        output: Value,
+        #[serde(rename = "durationMs")]
+        duration_ms: u64,
+    },
+    /// A rich block appended to a turn.
+    Block {
+        turn_id: String,
+        #[ts(type = "unknown")]
+        block: Value,
+    },
+    /// The kernel is waiting for a structured answer.
+    InputRequest {
+        id: String,
+        #[ts(type = "unknown")]
+        request: Value,
+    },
+    /// The operator answered an input request.
+    InputAnswer {
+        id: String,
+        #[ts(type = "unknown")]
+        answer: Value,
+        at: i64,
+    },
+    /// Open or refresh a document in the left pane.
+    Focus {
+        #[ts(type = "unknown")]
+        doc: Value,
+    },
+    /// A document status change.
+    Status {
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "docId")]
+        doc_id: Option<String>,
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// A progress update.
+    Progress { label: String, value: u32, max: u32 },
+    /// The assistant's final text.
+    FinalResponse {
+        response_id: String,
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(type = "unknown[]")]
+        blocks: Option<Vec<Value>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestions: Option<Vec<String>>,
     },
 }

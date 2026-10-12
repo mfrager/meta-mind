@@ -16,7 +16,7 @@ pub mod store;
 pub mod time;
 
 pub use activation::ActivationCondition;
-pub use config::Config;
+pub use config::{load_project_env, Config};
 pub use error::{MmError, Result};
 pub use hash::{content_hash, hash_fields};
 pub use id::{serde_ulid, UlidFactory, ULID_LEN};

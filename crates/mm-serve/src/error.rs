@@ -24,6 +24,9 @@ pub enum AppError {
     /// Another process holds the data-directory write lock (plan `01` §5.1).
     #[error("{0}")]
     Locked(String),
+    /// A production write that did not come through a change set (plan `09` §2.4).
+    #[error("{0}")]
+    Conflict(String),
     /// A kernel operation failed; `MmError`'s Display is carried as `reason`.
     #[error(transparent)]
     Kernel(#[from] MmError),
@@ -40,6 +43,7 @@ impl AppError {
             AppError::BadRequest(_) => (ApiErrorCode::InvalidArgument, None, false),
             AppError::NotFound(_) => (ApiErrorCode::NotFound, None, false),
             AppError::Locked(_) => (ApiErrorCode::Locked, Some(self.to_string()), true),
+            AppError::Conflict(_) => (ApiErrorCode::Conflict, Some(self.to_string()), false),
             // `message` keeps the `MmError` Display (layer prefix included).
             // `reason` is the kernel string itself, which the UI quotes verbatim.
             AppError::Kernel(e) => (ApiErrorCode::Internal, Some(kernel_reason(e)), false),
@@ -60,6 +64,7 @@ impl AppError {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Locked(_) => StatusCode::LOCKED,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Kernel(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }

@@ -9,7 +9,7 @@
 [defaults]
 # Preferred decoder when the backend exposes logits:
 # llguidance | xgrammar | provider_native | none.
-decoder = "llguidance"
+decoder = "provider_native"
 # The semantic cache is opt-in per purpose. Consequential structured work
 # (extract, plan, critique) stays exact-hash only.
 semantic_cache_purposes = ["summarize"]
@@ -20,14 +20,14 @@ timeout_ms = 30000
 max_tokens = 1024
 
 [[model]]
-name = "small"
+name = "nvidia/nemotron-3-super-120b-a12b"
 input_cost_micros_per_1k = 150
 output_cost_micros_per_1k = 600
 typical_latency_ms = 400
 complexity_ceiling = "medium"
 
 [[model]]
-name = "frontier"
+name = "auto/remote"
 input_cost_micros_per_1k = 2500
 output_cost_micros_per_1k = 10000
 typical_latency_ms = 2500

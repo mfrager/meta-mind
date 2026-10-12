@@ -18,7 +18,7 @@
   --card-foreground: oklch(0.21 0.012 255);
   --popover: oklch(1 0 0 / 92%);
   --popover-foreground: oklch(0.21 0.012 255);
-  --primary: oklch(0.58 0.16 258);
+  --primary: oklch(0.52 0.155 258);
   --primary-foreground: oklch(0.985 0.004 255);
   --secondary: oklch(0.955 0.005 255);
   --secondary-foreground: oklch(0.21 0.012 255);
@@ -475,8 +475,188 @@
   animation: mm-pulse 1.6s var(--ease-in-out) infinite;
 }
 
+.nav-row {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+:root[data-density="compact"] .nav-row {
+  height: 28px;
+}
+
+.sidebar-width {
+  transition: width var(--t-base) var(--ease-out);
+}
+
+.vertical-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.pane-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;
+}
+
+.pane-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.pane-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.pane-separator {
+  position: relative;
+  background: transparent !important;
+}
+
+.pane-separator::before {
+  content: "";
+  position: absolute;
+  background: var(--border);
+  transition:
+    background-color var(--t-fast) var(--ease-out),
+    width var(--t-fast) var(--ease-out),
+    height var(--t-fast) var(--ease-out);
+}
+
+[data-split="horizontal"] .pane-separator::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+[data-split="horizontal"] .pane-separator:hover::before,
+[data-split="horizontal"] .pane-separator:focus-visible::before {
+  width: 3px;
+  background: var(--color-azure-500);
+}
+
+[data-split="vertical"] .pane-separator::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+[data-split="vertical"] .pane-separator:hover::before,
+[data-split="vertical"] .pane-separator:focus-visible::before {
+  height: 3px;
+  background: var(--color-azure-500);
+}
+
+[data-resizing="true"] [data-pane-body] {
+  overflow: hidden;
+}
+
+.mm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: oklch(0.2 0.01 255 / 0.4);
+}
+
+.mm-palette {
+  position: fixed;
+  z-index: 50;
+  top: 12vh;
+  left: 50%;
+  width: min(40rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--elevation-2);
+}
+
+dialog.mm-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--elevation-2);
+}
+
+dialog.mm-dialog::backdrop {
+  background: oklch(0.2 0.01 255 / 0.4);
+}
+
+[cmdk-input] {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 0 12px;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+[cmdk-list] {
+  max-height: min(24rem, 60vh);
+  overflow: auto;
+  padding: 8px;
+}
+
+[cmdk-group-heading] {
+  padding: 8px 8px 4px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+[cmdk-item][data-selected="true"],
+[cmdk-item][aria-selected="true"] {
+  background: var(--accent);
+}
+
+[cmdk-empty] {
+  color: var(--muted-foreground);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mm-pulse {
     animation: none;
+  }
+}
+
+@media print {
+  [data-sidebar-panel],
+  [data-sidebar-sheet],
+  [data-topbar],
+  [data-statusbar],
+  [data-chat-pane] {
+    display: none !important;
+  }
+
+  [data-doc-shell] {
+    height: auto !important;
+    overflow: visible !important;
   }
 }

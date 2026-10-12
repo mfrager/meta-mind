@@ -3,6 +3,7 @@
 //! Paths in `config/metamind.toml` are written relative to the repository root
 //! and are resolved against it, so the same file works from any working
 //! directory. `MM_CONFIG` and `MM_DATA_DIR` override discovery for tests and CI.
+//! `mm-cli` and `mm-serve` load `<repo>/.env` into the process environment first.
 
 use std::path::{Path, PathBuf};
 
@@ -431,6 +432,23 @@ fn resolve_root(config_path: &Path) -> PathBuf {
     }
 }
 
+/// Load `<repo>/.env` into the process environment.
+///
+/// A missing file is success. A variable already set in the environment is left
+/// alone. A file that exists but cannot be parsed is a config error.
+pub fn load_project_env() -> Result<(), MmError> {
+    load_env_file(&Config::repo_root().join(".env"))
+}
+
+/// Load one env file. Missing is success; a parse or read failure is not.
+pub fn load_env_file(path: &Path) -> Result<(), MmError> {
+    match dotenvy::from_path(path) {
+        Ok(_) => Ok(()),
+        Err(dotenvy::Error::Io(err)) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(MmError::Config(format!("{}: {err}", path.display()))),
+    }
+}
+
 fn absolutize(root: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
@@ -442,6 +460,39 @@ fn absolutize(root: &Path, path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_env_file_is_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        load_env_file(&dir.path().join(".env")).unwrap();
+    }
+
+    #[test]
+    fn an_env_file_fills_unset_variables_and_leaves_the_process_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(
+            &path,
+            "MM_DOTENV_PROBE_NEW=from-file\nMM_DOTENV_PROBE_OLD=from-file\n",
+        )
+        .unwrap();
+        std::env::set_var("MM_DOTENV_PROBE_OLD", "from-env");
+        std::env::remove_var("MM_DOTENV_PROBE_NEW");
+        load_env_file(&path).unwrap();
+        assert_eq!(std::env::var("MM_DOTENV_PROBE_NEW").unwrap(), "from-file");
+        assert_eq!(std::env::var("MM_DOTENV_PROBE_OLD").unwrap(), "from-env");
+        std::env::remove_var("MM_DOTENV_PROBE_NEW");
+        std::env::remove_var("MM_DOTENV_PROBE_OLD");
+    }
+
+    #[test]
+    fn a_broken_env_file_is_a_config_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "this is not an assignment\n").unwrap();
+        let err = load_env_file(&path).unwrap_err();
+        assert!(err.to_string().contains("config error"), "{err}");
+    }
 
     #[test]
     fn repo_config_resolves_paths_against_the_repo_root() {

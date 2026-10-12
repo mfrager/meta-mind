@@ -117,6 +117,9 @@ rdf-codec = { path = "vendor/rust_symbolic/rdf-codec" }
 rdf-shacl = { path = "vendor/rust_symbolic/rdf-shacl" }
 decision-ir = { path = "vendor/rust_symbolic/decision-ir" }
 
+# --- process environment ---
+dotenvy = "0.15"
+
 # --- dev ---
 proptest = "1"
 insta = { version = "1", features = ["json"] }

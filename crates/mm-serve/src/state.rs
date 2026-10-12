@@ -3,23 +3,28 @@
 //!
 //! The boot is deliberately the same ordered open `mm-cli`'s kernel performs
 //! (`crates/mm-cli/src/kernel.rs`): configuration, then the tabular store and
-//! its migrations, then the logger, then the event log — so a failure leaves
-//! nothing half-built and the console never holds a store the CLI cannot
-//! recognize. The graph store is opened on demand by later milestones (M3);
-//! until then health reports it `unavailable` *with a reason*.
+//! its migrations, then the logger, then the event log, then the RDF store.
+//! A graph that fails to open is reported on the health line; it does not
+//! abort the rest of the boot. The language-model line reads `OPENAI_BASE_URL`
+//! and `OPENAI_API_KEY` (already loaded from `<repo>/.env` by `main`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mm_core::{Config, MmError, UlidFactory};
 use mm_eventlog::EventLog;
+use mm_llm::{LlmConfig, ProviderEnv};
 use mm_log::Logger;
+use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
 
+use crate::chat::ChatCatalog;
+use crate::docs::FocusCatalog;
 use crate::dto::{
     EventHead, HealthEnvelope, KernelStatus, ServiceState, ServiceStatus, WIRE_VERSION,
 };
 use crate::error::AppError;
+use crate::trees::TreeCatalog;
 
 /// Everything the request handlers share.
 pub struct AppState {
@@ -31,12 +36,22 @@ pub struct AppState {
     pub sqlite: SqliteStore,
     /// The append-only event log.
     pub events: EventLog,
+    /// The RDF store, when it opened. `None` means `graph_error` says why.
+    pub graph: Option<Arc<GraphStore>>,
+    /// Why the RDF store is closed, when `graph` is `None`.
+    pub graph_error: Option<String>,
     /// The audit-chained logger.
     pub logger: Arc<Logger>,
     /// The monotonic identifier factory, shared with the event log.
     pub ids: Arc<UlidFactory>,
     /// Held for its `Drop`: releasing `data/console.lock` on shutdown.
     pub _lock: ConsoleLock,
+    /// Focus documents for the left pane (plan `05`).
+    pub focus: FocusCatalog,
+    /// Domain trees for the tree pane and mind map (plan `06`).
+    pub trees: TreeCatalog,
+    /// Chat sessions and resumable runs (plan `08`).
+    pub chat: ChatCatalog,
 }
 
 impl AppState {
@@ -72,6 +87,17 @@ impl AppState {
         let ids = Arc::new(UlidFactory::open(&cfg.ulid_watermark_path())?);
         let events = EventLog::new(sqlite.clone(), Arc::clone(&logger), Arc::clone(&ids));
 
+        let (graph, graph_error) =
+            match GraphStore::open(&cfg.store.graph_dir, &cfg.shapes_file()).await {
+                Ok(store) => (Some(Arc::new(store)), None),
+                Err(err) => (None, Some(err.to_string())),
+            };
+
+        let focus = FocusCatalog::seed();
+        let trees = TreeCatalog::seed();
+        let chat =
+            crate::chat::ChatCatalog::open(Some(cfg.store.data_dir.join("chat-sessions.json")));
+
         logger
             .emit(
                 mm_log::LogRecord::new(mm_log::Level::Info, mm_log::codes::LOG_INIT, "mm.serve")
@@ -86,9 +112,14 @@ impl AppState {
             cfg,
             sqlite,
             events,
+            graph,
+            graph_error,
             logger,
             ids,
             _lock: lock,
+            focus,
+            trees,
+            chat,
         })
     }
 
@@ -124,20 +155,23 @@ impl AppState {
                 reason: Some(reason),
             },
         });
-        services.push(ServiceStatus {
-            name: "graph".to_string(),
-            state: ServiceState::Unavailable,
-            reason: Some(
-                "the RDF store is opened on demand and no route needs it yet; \
-                 graph-backed documents arrive with the document pane (M3)"
-                    .to_string(),
-            ),
+        services.push(match &self.graph {
+            Some(_) => ServiceStatus {
+                name: "graph".to_string(),
+                state: ServiceState::Ok,
+                reason: None,
+            },
+            None => ServiceStatus {
+                name: "graph".to_string(),
+                state: ServiceState::Unavailable,
+                reason: Some(
+                    self.graph_error
+                        .clone()
+                        .unwrap_or_else(|| "the RDF store did not open".to_string()),
+                ),
+            },
         });
-        services.push(ServiceStatus {
-            name: "llm".to_string(),
-            state: ServiceState::Unavailable,
-            reason: Some("the chat orchestrator arrives with the chat pane (M5)".to_string()),
-        });
+        services.push(llm_status());
 
         if let Some(reason) = audit_err {
             services.push(ServiceStatus {
@@ -149,7 +183,7 @@ impl AppState {
 
         let all_ok = services
             .iter()
-            .all(|s| s.state == ServiceState::Ok || s.name == "graph" || s.name == "llm");
+            .all(|service| service.state == ServiceState::Ok || service.name == "llm");
 
         HealthEnvelope {
             ok: true,
@@ -245,6 +279,36 @@ fn lock_holder_alive(holder: &str) -> bool {
         Some(pid) if pid == std::process::id() => true,
         Some(pid) => Path::new(&format!("/proc/{pid}")).exists(),
         None => false,
+    }
+}
+
+/// The language-model line. Credentials come from the process environment
+/// (`OPENAI_BASE_URL` and `OPENAI_API_KEY`). Model names come from
+/// `config/llm.toml`. This does not call the endpoint.
+fn llm_status() -> ServiceStatus {
+    let Some(env) = ProviderEnv::from_env() else {
+        return ServiceStatus {
+            name: "llm".to_string(),
+            state: ServiceState::Unavailable,
+            reason: Some("no language-model provider is configured".to_string()),
+        };
+    };
+    let path = Config::repo_root().join("config/llm.toml");
+    let cfg = LlmConfig::load_or_default(&path).unwrap_or_default();
+    let model = match cfg.defaults.default_model {
+        Some(name) => name,
+        None if cfg.models.is_empty() => "unset".to_string(),
+        None => cfg
+            .models
+            .iter()
+            .map(|spec| spec.name.as_str())
+            .collect::<Vec<_>>()
+            .join(","),
+    };
+    ServiceStatus {
+        name: "llm".to_string(),
+        state: ServiceState::Ok,
+        reason: Some(format!("model={model}; {}", env.redacted())),
     }
 }
 

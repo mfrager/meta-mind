@@ -14,5 +14,5 @@ subsystems: Array<string>, } | { "type": "failed", error: string,
 /**
  * The kernel's verbatim explanation, when one exists.
  */
-reason?: string | null, };
+reason?: string | null, } | { "type": "llm_request_started", turn_id: string, phase: Phase, subsystem?: string | null, turn_number: number, visible: boolean, } | { "type": "llm_response", turn_id: string, phase: Phase, text: string, visible: boolean, is_final: boolean, } | { "type": "llm_request_finished", turn_id: string, outcome: string, error?: string | null, } | { "type": "tool_call", id: string, turn_id: string, phase: Phase, name: string, input: unknown, } | { "type": "tool_result", id: string, turn_id: string, name: string, success: boolean, output: unknown, durationMs: number, } | { "type": "block", turn_id: string, block: unknown, } | { "type": "input_request", id: string, request: unknown, } | { "type": "input_answer", id: string, answer: unknown, at: number, } | { "type": "focus", doc: unknown, } | { "type": "status", docId?: string | null, status: string, reason?: string | null, } | { "type": "progress", label: string, value: number, max: number, } | { "type": "final_response", response_id: string, text: string, blocks?: unknown[], suggestions?: Array<string> | null, };
 

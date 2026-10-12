@@ -28,7 +28,10 @@ path = "src/main.rs"
 [dependencies]
 mm-core = { workspace = true }
 mm-log = { workspace = true }
+mm-selfeng = { workspace = true }
 mm-store-sqlite = { workspace = true }
+mm-store-graph = { workspace = true }
+mm-llm = { workspace = true }
 mm-eventlog = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }

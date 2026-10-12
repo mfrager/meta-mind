@@ -89,8 +89,7 @@ jobs:
             --budget-file bench/qualification/budget.toml --assert-completed --ticks 3
           cargo run -p mm-cli -- --data-dir "$DATA" logs verify
 
-  # Milestone 0 of the console (design/planning/ui/10). Playwright, parity, and
-  # replay jobs from §6.7 land with the milestones that add those tests.
+  # Console gate (design/planning/ui/10 §12): mm-serve, parity, replay, and Playwright.
   mm-serve:
     name: mm-serve
     runs-on: ubuntu-24.04
@@ -113,6 +112,9 @@ jobs:
 
       - name: Test
         run: cargo test -p mm-serve
+
+      - name: Parity
+        run: cargo test -p mm-serve --test parity
 
       - name: Wire types are generated
         run: |
@@ -146,5 +148,46 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Replay
+        run: npm run test:replay
+
       - name: Build
         run: npm run build
+
+  console-e2e:
+    name: console-e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config clang libsqlite3-dev
+
+      - name: Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Offline flows
+        run: ./scripts/ui_flows.sh --offline
+
+      - name: End to end
+        working-directory: frontend
+        run: npm run test:e2e

@@ -479,6 +479,10 @@ enum LogsCommand {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if let Err(err) = mm_core::load_project_env() {
+        eprintln!("mm-cli: {err} ({})", err.code());
+        return ExitCode::from(2);
+    }
     let cli = Cli::parse();
     let cfg = match kernel::Kernel::resolve_config(cli.config, cli.data_dir) {
         Ok(cfg) => cfg,

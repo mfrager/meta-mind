@@ -1,0 +1,14 @@
+{"seq":1,"frame":{"type":"started","query":"decide whether to continue"}}
+{"seq":2,"frame":{"type":"run","requestId":"req-decide","sessionId":"ses-decide","query":"decide whether to continue"}}
+{"seq":3,"frame":{"type":"llm_request_started","turn_id":"req-decide-turn","phase":"plan","turn_number":1,"visible":true}}
+{"seq":4,"frame":{"type":"llm_response","turn_id":"req-decide-turn","phase":"plan","text":"Running decide.","visible":true,"is_final":false}}
+{"seq":5,"frame":{"type":"llm_request_finished","turn_id":"req-decide-turn","outcome":"response"}}
+{"seq":6,"frame":{"type":"llm_request_started","turn_id":"req-decide-turn","phase":"act","subsystem":"kernel","turn_number":2,"visible":true}}
+{"seq":7,"frame":{"type":"tool_call","id":"req-decide-op","turn_id":"req-decide-turn","phase":"act","name":"decide","input":{"query":"decide whether to continue"}}}
+{"seq":8,"frame":{"type":"tool_result","id":"req-decide-op","turn_id":"req-decide-turn","name":"decide","success":false,"output":{"status":"unavailable","reason":"no decision core is bound on this route"},"durationMs":0}}
+{"seq":9,"frame":{"type":"input_request","id":"req-decide-choice","request":{"kind":"buttons","prompt":"No decision was recorded. Record a choice anyway?","columns":2,"variant":"confirm","options":[{"label":"Accept","value":"accept"},{"label":"Challenge","value":"challenge"}]}}}
+{"seq":10,"frame":{"type":"llm_request_finished","turn_id":"req-decide-turn","outcome":"response"}}
+{"seq":11,"frame":{"type":"final_response","response_id":"req-decide","text":"no decision core is bound on this route"}}
+{"seq":12,"frame":{"type":"completed","subsystems":["kernel"]}}
+{"seq":13,"frame":{"type":"input_answer","id":"req-decide-choice","answer":"accept","at":1}}
+{"seq":14,"frame":{"type":"final_response","response_id":"req-decide-choice-answer","text":"✓ Accept"}}
