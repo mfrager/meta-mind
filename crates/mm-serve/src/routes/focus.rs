@@ -137,17 +137,29 @@ pub async fn stream(
         .map_err(|err| AppError::Internal(err.to_string()))?)
 }
 
-async fn resolve(state: &AppState, id: &str) -> Result<FocusDoc, AppError> {
+pub(crate) async fn resolve(state: &AppState, id: &str) -> Result<FocusDoc, AppError> {
     if id == "graph" || id == "llm" {
         return service_doc(state, id).await;
     }
     if id == "budget" {
         return budget_doc(state).await;
     }
+    if id == "goals" {
+        return goals_doc(state).await;
+    }
+    if id == "changesets" {
+        return changesets_doc(state).await;
+    }
     state
         .focus
         .get(id)
         .ok_or_else(|| AppError::NotFound(format!("no document {id}")))
+}
+
+pub(crate) fn install_memory(state: &AppState, rows: Value) {
+    state
+        .focus
+        .upsert(live_table("memory", "Recall", rows, None));
 }
 
 async fn service_doc(state: &AppState, name: &str) -> Result<FocusDoc, AppError> {
@@ -248,6 +260,103 @@ fn budget_status(status: DocStatus, reason: &str, snapshot: Value) -> FocusDoc {
         },
         capabilities: vec![DocCapability::Refresh],
         snapshot,
+    }
+}
+
+async fn goals_doc(state: &AppState) -> Result<FocusDoc, AppError> {
+    let Some(being) = &state.being else {
+        return Ok(live_table(
+            "goals",
+            "Goals",
+            json!([]),
+            Some(
+                state
+                    .being_error
+                    .clone()
+                    .unwrap_or_else(|| "the being store did not open".into()),
+            ),
+        ));
+    };
+    let guard = being.lock().await;
+    let rows: Vec<Value> = guard
+        .goals()
+        .values()
+        .map(|goal| {
+            json!({
+                "id": mm_core::ulid_string(&goal.id),
+                "name": goal.description,
+                "state": goal.status.as_str(),
+            })
+        })
+        .collect();
+    let empty = rows.is_empty();
+    let mut doc = live_table("goals", "Goals", Value::Array(rows), None);
+    if empty {
+        doc.status = DocStatus::Saved;
+        doc.reason = Some("No goals are recorded.".into());
+    }
+    Ok(doc)
+}
+
+async fn changesets_doc(state: &AppState) -> Result<FocusDoc, AppError> {
+    let store = mm_selfeng::ChangeSetStore::new(
+        state.sqlite.clone(),
+        Arc::clone(&state.logger),
+        Arc::clone(&state.ids),
+    );
+    match store.list().await {
+        Ok(rows) if rows.is_empty() => Ok(live_table(
+            "changesets",
+            "Change sets",
+            json!([]),
+            Some("No change sets are recorded.".into()),
+        )),
+        Ok(rows) => {
+            let table: Vec<Value> = rows
+                .iter()
+                .map(|(change_set, status)| {
+                    let id = mm_core::ulid_string(&change_set.id);
+                    json!({ "id": id, "name": id, "state": status.as_str() })
+                })
+                .collect();
+            Ok(live_table(
+                "changesets",
+                "Change sets",
+                Value::Array(table),
+                None,
+            ))
+        }
+        Err(err) => Ok(live_table(
+            "changesets",
+            "Change sets",
+            json!([]),
+            Some(err.to_string()),
+        )),
+    }
+}
+
+fn live_table(id: &str, title: &str, rows: Value, reason: Option<String>) -> FocusDoc {
+    let unavailable = reason.is_some();
+    FocusDoc {
+        v: 1,
+        id: id.into(),
+        kind: DocKind::Table,
+        title: title.into(),
+        subtitle: None,
+        status: if unavailable {
+            DocStatus::Unavailable
+        } else {
+            DocStatus::Saved
+        },
+        reason,
+        epistemic: None,
+        version: 1,
+        source: DocSource {
+            kind: DocSourceKind::Chat,
+            ref_id: None,
+        },
+        capabilities: vec![DocCapability::Refresh],
+        snapshot: json!({ "rows": rows }),
     }
 }
 

@@ -422,8 +422,23 @@ pub const MODULE_ROLLBACK: &str = "module.rollback";
 /// One identity invariant was checked during a run.
 pub const INVARIANT_CHECK: &str = "invariant.check";
 
+/// A controller chat session was created.
+pub const CONTROLLER_SESSION: &str = "controller.session";
+/// The session introduction was stored.
+pub const CONTROLLER_INTRO: &str = "controller.intro";
+/// A user turn started.
+pub const CONTROLLER_TURN: &str = "controller.turn";
+/// A controller tool finished.
+pub const CONTROLLER_TOOL: &str = "controller.tool";
+/// Admission or the firewall refused a tool call.
+pub const CONTROLLER_DENIED: &str = "controller.denied";
+/// The final text was not backed by a tool result.
+pub const CONTROLLER_UNBACKED: &str = "controller.unbacked";
+/// A confirmation was requested or answered.
+pub const CONTROLLER_CONFIRM: &str = "controller.confirm";
+
 /// Every code defined by the kernel, so `logs verify` can reject unknown codes.
-pub const KERNEL_CODES: [&str; 195] = [
+pub const KERNEL_CODES: [&str; 202] = [
     LOG_INIT,
     LOG_REDACT,
     LOG_SINK_ERROR,
@@ -619,6 +634,13 @@ pub const KERNEL_CODES: [&str; 195] = [
     MODULE_LOAD,
     MODULE_ROLLBACK,
     INVARIANT_CHECK,
+    CONTROLLER_SESSION,
+    CONTROLLER_INTRO,
+    CONTROLLER_TURN,
+    CONTROLLER_TOOL,
+    CONTROLLER_DENIED,
+    CONTROLLER_UNBACKED,
+    CONTROLLER_CONFIRM,
 ];
 
 /// True when `code` is a Phase 1 kernel code.

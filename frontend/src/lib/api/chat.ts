@@ -22,10 +22,10 @@ export function parseSse(raw: string): SequencedFrame[] {
   return frames;
 }
 
-export async function createSession(): Promise<{ id: string; title: string }> {
+export async function createSession(): Promise<{ id: string; title: string; requestId?: string }> {
   const res = await fetch("/api/chat/sessions", { method: "POST" });
   if (!res.ok) throw await readError(res);
-  return (await res.json()) as { id: string; title: string };
+  return (await res.json()) as { id: string; title: string; requestId?: string };
 }
 
 export async function openChat(body: {
@@ -33,6 +33,7 @@ export async function openChat(body: {
   query: string;
   refs?: string[];
   attachments?: { name: string; type: string; size: number; caption?: string }[];
+  pane?: { id: string; title?: string };
 }): Promise<SequencedFrame[]> {
   const res = await fetch("/api/chat", {
     method: "POST",

@@ -2,6 +2,10 @@
 # Offline Flows A–D against a fresh data directory (design/planning/ui/10 §8, §12).
 # No language-model provider is called. The script boots mm-serve, checks the
 # kernel's own sentences, and stops the process.
+#
+# Chat posts send "commandMode": true. That flag keeps the first-word classifier,
+# which is what these sentences belong to. The web client omits the flag and
+# talks to the controller.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -91,16 +95,16 @@ chat() {
     -d "$1"
 }
 
-need budget "$(chat '{"query":"budget show"}')" "meta_analysis"
-need budget "$(chat '{"query":"budget show"}')" "Open the budgets tree"
-need decide "$(chat '{"query":"decide whether to continue"}')" "no decision core is bound on this route"
-need being "$(chat '{"query":"being goal add"}')" "the being store is opened with the RDF graph, and this route does not open that store"
-need promote "$(chat '{"query":"promote"}')" "use the change-set flow"
-need sandbox "$(chat '{"query":"sandbox run"}')" "no sandbox run was recorded for this request"
-need audit "$(chat '{"query":"audit production-tree"}')" "no production audit was recorded for this data directory"
-need stage "$(chat '{"query":"why is stage 6 slow?"}')" "No stage timings are recorded for this run."
-need graph "$(chat '{"query":"graph"}')" "RDF"
-need changes "$(chat '{"query":"changeset show"}')" "No change sets are recorded."
+need budget "$(chat '{"query":"budget show","commandMode":true}')" "meta_analysis"
+need budget "$(chat '{"query":"budget show","commandMode":true}')" "Open the budgets tree"
+need decide "$(chat '{"query":"decide whether to continue","commandMode":true}')" "no decision core is bound on this route"
+need being "$(chat '{"query":"being goal add","commandMode":true}')" "the being store is opened with the RDF graph, and this route does not open that store"
+need promote "$(chat '{"query":"promote","commandMode":true}')" "use the change-set flow"
+need sandbox "$(chat '{"query":"sandbox run","commandMode":true}')" "no sandbox run was recorded for this request"
+need audit "$(chat '{"query":"audit production-tree","commandMode":true}')" "no production audit was recorded for this data directory"
+need stage "$(chat '{"query":"why is stage 6 slow?","commandMode":true}')" "No stage timings are recorded for this run."
+need graph "$(chat '{"query":"graph","commandMode":true}')" "RDF"
+need changes "$(chat '{"query":"changeset show","commandMode":true}')" "No change sets are recorded."
 
 load_code="$(curl -s -o /tmp/mm-ui-load.json -w '%{http_code}' -X POST "$BASE/api/modules/01jmodule0000000000000000/load")"
 if [[ "$load_code" != "409" ]]; then

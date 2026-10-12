@@ -12,6 +12,7 @@ function Harness() {
     <MemoryRouter>
       <KeyboardMap />
       <input aria-label="Note" />
+      <textarea id="composer" data-composer="true" aria-label="Composer" />
       <output data-palette={palette ? "open" : "closed"} data-pane={pane} />
     </MemoryRouter>
   );
@@ -21,22 +22,24 @@ beforeEach(() => {
   usePaneStore.setState({ paletteOpen: false, shortcutsOpen: false, sidebarSheet: false, activePane: "document" });
 });
 
-it("opens the palette with Ctrl+K and closes it with Escape", () => {
-  const { getByRole } = render(<Harness />);
+it("focuses the composer with Ctrl+K and does not send on Escape", () => {
+  const { getByRole, getByLabelText } = render(<Harness />);
   fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-  expect(getByRole("status").getAttribute("data-palette")).toBe("open");
-  fireEvent.keyDown(window, { key: "Escape" });
+  expect(document.activeElement).toBe(getByLabelText("Composer"));
+  expect(getByRole("status").getAttribute("data-palette")).toBe("closed");
+  fireEvent.keyDown(getByLabelText("Composer"), { key: "Escape" });
   expect(getByRole("status").getAttribute("data-palette")).toBe("closed");
 });
 
-it("still opens the palette from a text field, and ignores other shortcuts there", () => {
+it("focuses the composer from another text field", () => {
   usePaneStore.setState({ activePane: "chat" });
   const { getByRole, getByLabelText } = render(<Harness />);
   const field = getByLabelText("Note");
   fireEvent.keyDown(field, { key: "1", ctrlKey: true });
   expect(getByRole("status").getAttribute("data-pane")).toBe("chat");
   fireEvent.keyDown(field, { key: "k", ctrlKey: true });
-  expect(getByRole("status").getAttribute("data-palette")).toBe("open");
+  expect(document.activeElement).toBe(getByLabelText("Composer"));
+  expect(getByRole("status").getAttribute("data-palette")).toBe("closed");
 });
 
 it("does not treat Escape inside a dialog as a shell dismiss", () => {

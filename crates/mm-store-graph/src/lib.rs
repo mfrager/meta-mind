@@ -11,7 +11,9 @@ pub mod actor;
 pub mod graphs;
 pub mod shacl;
 
-pub use actor::{graph_iri, map_shacl_report, GraphHandle, GraphStore, MAILBOX_CAPACITY};
+pub use actor::{
+    ensure_read_query, graph_iri, map_shacl_report, GraphHandle, GraphStore, MAILBOX_CAPACITY,
+};
 
 /// The Oxigraph release this binary actually links against.
 ///

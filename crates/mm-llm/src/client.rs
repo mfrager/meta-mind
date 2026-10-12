@@ -33,11 +33,13 @@ pub enum Purpose {
     Classify,
     /// Explain a failure.
     Diagnose,
+    /// Talk with the operator as the being. Not a semantic-cache purpose.
+    Converse,
 }
 
 impl Purpose {
     /// Every purpose, in a stable order.
-    pub const ALL: [Purpose; 8] = [
+    pub const ALL: [Purpose; 9] = [
         Purpose::Interpret,
         Purpose::Plan,
         Purpose::Extract,
@@ -46,6 +48,7 @@ impl Purpose {
         Purpose::CodeReview,
         Purpose::Classify,
         Purpose::Diagnose,
+        Purpose::Converse,
     ];
 
     /// The stored form (`code_review`, not `codereview`).
@@ -59,6 +62,7 @@ impl Purpose {
             Purpose::CodeReview => "code_review",
             Purpose::Classify => "classify",
             Purpose::Diagnose => "diagnose",
+            Purpose::Converse => "converse",
         }
     }
 
@@ -93,6 +97,30 @@ pub enum Role {
     User,
     /// A previous model turn.
     Assistant,
+    /// A tool result fed back into the same turn.
+    Tool,
+}
+
+/// A function the provider may call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolSchema {
+    /// The tool name (`memory.recall`).
+    pub name: String,
+    /// One line the model sees.
+    pub description: String,
+    /// Draft 2020-12 parameters object.
+    pub parameters: serde_json::Value,
+}
+
+/// One tool call on an assistant message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderToolCall {
+    /// The provider's call id, echoed on the tool result.
+    pub id: String,
+    /// The tool name.
+    pub name: String,
+    /// Arguments as a JSON string, the shape OpenAI-compatible servers send.
+    pub arguments: String,
 }
 
 /// One message in a conversation.
@@ -102,6 +130,15 @@ pub struct Message {
     pub role: Role,
     /// The content.
     pub content: String,
+    /// Tool name, on a tool result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The call this result answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// Tool calls proposed by an assistant message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ProviderToolCall>,
 }
 
 impl Message {
@@ -110,6 +147,9 @@ impl Message {
         Message {
             role: Role::System,
             content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
         }
     }
 
@@ -118,6 +158,9 @@ impl Message {
         Message {
             role: Role::User,
             content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
         }
     }
 
@@ -126,6 +169,35 @@ impl Message {
         Message {
             role: Role::Assistant,
             content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+        }
+    }
+
+    /// An assistant message that proposes tool calls.
+    pub fn assistant_calls(content: impl Into<String>, calls: Vec<ProviderToolCall>) -> Self {
+        Message {
+            role: Role::Assistant,
+            content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: calls,
+        }
+    }
+
+    /// A tool result.
+    pub fn tool(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Message {
+            role: Role::Tool,
+            content: content.into(),
+            name: Some(name.into()),
+            tool_call_id: Some(id.into()),
+            tool_calls: Vec::new(),
         }
     }
 }
@@ -230,6 +302,9 @@ pub struct LlmRequest {
     pub cache: CacheMode,
     /// The trace this call belongs to.
     pub trace_id: Option<Ulid>,
+    /// Functions the provider may call. Empty on a schema request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolSchema>,
 }
 
 impl LlmRequest {
@@ -244,6 +319,7 @@ impl LlmRequest {
             temperature: 0.0,
             cache: CacheMode::Use,
             trace_id: None,
+            tools: Vec::new(),
         }
     }
 
@@ -268,6 +344,12 @@ impl LlmRequest {
     /// Attach a trace id.
     pub fn with_trace(mut self, trace_id: Ulid) -> Self {
         self.trace_id = Some(trace_id);
+        self
+    }
+
+    /// Offer these tools. A request cannot also carry a schema.
+    pub fn with_tools(mut self, tools: Vec<ToolSchema>) -> Self {
+        self.tools = tools;
         self
     }
 
@@ -301,6 +383,9 @@ pub struct LlmResponse {
     pub schema_valid: bool,
     /// Which decoder produced it.
     pub decoder: DecoderKind,
+    /// Tool calls on the assistant message. Empty when the answer is text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ProviderToolCall>,
 }
 
 /// A provider adapter.

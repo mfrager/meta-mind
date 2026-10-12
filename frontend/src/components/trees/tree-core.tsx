@@ -10,8 +10,14 @@ import { treeMapRef, visibleRows, type TreeAction } from "@/lib/trees/model.ts";
 
 type Lens = "outline" | "table" | "sunburst" | "treemap";
 
-export function TreeCore({ name }: { name: string }) {
+export function TreeCore({ name, readOnly = false }: { name: string; readOnly?: boolean }) {
   const { snapshot, state, error, eventId, dispatch, commit } = useTreeController(name);
+  const commitView = (action: TreeAction) => {
+    if (readOnly && action.type !== "focus" && action.type !== "toggle" && action.type !== "search") {
+      return;
+    }
+    commit(action);
+  };
   const [lens, setLens] = useState<Lens>("outline");
   const [chatRef, setChatRef] = useState("");
   const rows = visibleRows(state.nodes, new Set(state.expanded), state.query);
@@ -19,10 +25,10 @@ export function TreeCore({ name }: { name: string }) {
   const pending = state.nodes.find((node) => node.id === state.pendingDeleteId) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-tree-name={name} onKeyDown={(event) => onTreeKey(event, commit)}>
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-tree-name={name} onKeyDown={readOnly ? undefined : (event) => onTreeKey(event, commitView)}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-h2">{snapshot?.title ?? name}</h2>
-        <Link to={`/map/${name}`} className="text-small underline">Open as mind map</Link>
+        {readOnly ? null : <Link to={`/map/${name}`} className="text-small underline">Open as mind map</Link>}
         <button
           type="button"
           className="text-small underline"
@@ -32,8 +38,12 @@ export function TreeCore({ name }: { name: string }) {
         >
           Send to chat
         </button>
-        <button type="button" className="text-small" onClick={() => commit({ type: "undo" })}>Undo</button>
-        <button type="button" className="text-small" onClick={() => commit({ type: "redo" })}>Redo</button>
+        {readOnly ? null : (
+          <>
+            <button type="button" className="text-small" onClick={() => commitView({ type: "undo" })}>Undo</button>
+            <button type="button" className="text-small" onClick={() => commitView({ type: "redo" })}>Redo</button>
+          </>
+        )}
         {(["outline", "table", "sunburst", "treemap"] as const).map((item) => (
           <button key={item} type="button" aria-pressed={lens === item} className="text-small" onClick={() => setLens(item)}>
             {item}
@@ -56,7 +66,7 @@ export function TreeCore({ name }: { name: string }) {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             const label = String(data.get("label") ?? "");
-            if (state.editingId) commit({ type: "rename", id: state.editingId, label });
+            if (state.editingId) commitView({ type: "rename", id: state.editingId, label });
           }}
         >
           <input name="label" aria-label="Rename" defaultValue={focus?.label ?? ""} autoFocus className="border-border h-[var(--control-h)] rounded-xs border px-2" />
@@ -65,7 +75,7 @@ export function TreeCore({ name }: { name: string }) {
       {pending ? (
         <div role="alertdialog" aria-label={`Delete ${pending.label}`} className="border-border rounded-xs border p-3">
           <p className="text-body">Delete {pending.label}? Undo restores it.</p>
-          <button type="button" onClick={() => commit({ type: "remove", id: pending.id })}>Delete</button>
+          <button type="button" onClick={() => commitView({ type: "remove", id: pending.id })}>Delete</button>
           <button type="button" onClick={() => dispatch({ type: "cancel-remove" })}>Cancel</button>
         </div>
       ) : null}

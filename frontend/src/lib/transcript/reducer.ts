@@ -71,16 +71,19 @@ function apply(state: TranscriptState, frame: ChatFrame): TranscriptState {
   switch (frame.type) {
     case "started":
       return state;
-    case "run":
+    case "run": {
+      const content = frame.query.trim();
       return {
         ...state,
         run: "processing",
         requestId: frame.requestId,
         sessionId: frame.sessionId,
-        items: state.items.some((item) => item.kind === "user" && item.id === frame.requestId)
-          ? state.items
-          : [...state.items, { kind: "user", id: frame.requestId, content: frame.query }],
+        items:
+          content.length === 0 || state.items.some((item) => item.kind === "user" && item.id === frame.requestId)
+            ? state.items
+            : [...state.items, { kind: "user", id: frame.requestId, content: frame.query }],
       };
+    }
     case "reconnecting":
       return {
         ...state,

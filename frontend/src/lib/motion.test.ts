@@ -20,11 +20,12 @@ it("strengthens borders when the user prefers more contrast", () => {
   expect(css).toContain("--border: var(--border-strong)");
 });
 
-it("prints the document and leaves the shell chrome off the page", () => {
-  expect(css).toContain("@media print");
-  expect(css).toContain("[data-sidebar-panel]");
-  expect(css).toContain("[data-topbar]");
-  expect(css).toContain("[data-statusbar]");
-  expect(css).toContain("[data-chat-pane]");
-  expect(css).toContain("[data-doc-shell]");
+it("prints the transcript and the side pane, and leaves the shell chrome off the page", () => {
+  const print = css.slice(css.indexOf("@media print"));
+  expect(print).toContain("[data-sidebar-panel]");
+  expect(print).toContain("[data-topbar]");
+  expect(print).toContain("[data-statusbar]");
+  expect(print).toContain("[data-composer-form]");
+  expect(print).toContain("[data-chat-pane],\n  [data-side-pane]");
+  expect(print).not.toMatch(/\[data-chat-pane\][\s\S]*display:\s*none/);
 });

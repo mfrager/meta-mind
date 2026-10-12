@@ -575,6 +575,97 @@ expression: golden
     "target": "mm.kernel",
     "trace_id": "01h00000000000000000000001"
   },
+  "controller.confirm": {
+    "at": "2023-11-14T22:16:41.000000000Z",
+    "audit": false,
+    "event_code": "controller.confirm",
+    "fields": {
+      "code_index": 201
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.denied": {
+    "at": "2023-11-14T22:16:39.000000000Z",
+    "audit": false,
+    "event_code": "controller.denied",
+    "fields": {
+      "code_index": 199
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.intro": {
+    "at": "2023-11-14T22:16:36.000000000Z",
+    "audit": false,
+    "event_code": "controller.intro",
+    "fields": {
+      "code_index": 196
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.session": {
+    "at": "2023-11-14T22:16:35.000000000Z",
+    "audit": false,
+    "event_code": "controller.session",
+    "fields": {
+      "code_index": 195
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.tool": {
+    "at": "2023-11-14T22:16:38.000000000Z",
+    "audit": false,
+    "event_code": "controller.tool",
+    "fields": {
+      "code_index": 198
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.turn": {
+    "at": "2023-11-14T22:16:37.000000000Z",
+    "audit": false,
+    "event_code": "controller.turn",
+    "fields": {
+      "code_index": 197
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
+  "controller.unbacked": {
+    "at": "2023-11-14T22:16:40.000000000Z",
+    "audit": false,
+    "event_code": "controller.unbacked",
+    "fields": {
+      "code_index": 200
+    },
+    "level": "info",
+    "record_id": "01h00000000000000000000000",
+    "span": "kernel.boot",
+    "target": "mm.kernel",
+    "trace_id": "01h00000000000000000000001"
+  },
   "copy.integrate": {
     "at": "2023-11-14T22:16:16.000000000Z",
     "audit": false,

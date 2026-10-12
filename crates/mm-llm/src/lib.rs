@@ -36,8 +36,8 @@ pub mod service;
 pub use accounting::{CallAccount, CallStatus, LlmStats, PurposeStats, StatsWindow};
 pub use cached::{CacheKey, CachedResponse, ExactCache, FileExactCache};
 pub use client::{
-    CacheMode, DecoderKind, LlmClient, LlmRequest, LlmResponse, Message, Purpose, Role, SchemaId,
-    Usage,
+    CacheMode, DecoderKind, LlmClient, LlmRequest, LlmResponse, Message, ProviderToolCall, Purpose,
+    Role, SchemaId, ToolSchema, Usage,
 };
 pub use config::{Complexity, LlmConfig, LlmDefaults, ModelSpec, Precision, ProviderEnv, Stakes};
 pub use error::{LlmError, Result};

@@ -97,6 +97,40 @@ impl ChatCatalog {
         Ok((id, title))
     }
 
+    /// The first user message names the session, until the operator renames it.
+    pub fn retitle_from_query(&self, session_id: &str, query: &str) -> Result<(), AppError> {
+        let title: String = query.trim().chars().take(60).collect();
+        if title.is_empty() {
+            return Ok(());
+        }
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| AppError::NotFound(format!("no session {session_id}")))?;
+        if session.title == "Chat" {
+            session.title = title;
+        }
+        drop(sessions);
+        self.persist();
+        Ok(())
+    }
+
+    /// The operator's name for the session. It replaces a title taken from the first message.
+    pub fn rename(&self, id: &str, title: &str) -> Result<String, AppError> {
+        let title: String = title.trim().chars().take(60).collect();
+        if title.is_empty() {
+            return Err(AppError::BadRequest("a title is required".into()));
+        }
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| AppError::NotFound(format!("no session {id}")))?;
+        session.title = title.clone();
+        drop(sessions);
+        self.persist();
+        Ok(title)
+    }
+
     pub fn session_exists(&self, id: &str) -> Result<bool, AppError> {
         Ok(self.lock_sessions()?.contains_key(id))
     }
@@ -346,61 +380,9 @@ pub fn validate_attachments(attachments: &[Value]) -> Result<(), AppError> {
 
 pub async fn execute(app: &AppState, name: &str, query: &str) -> (bool, Value) {
     match name {
-        "budget show" => match budget_output(app).await {
-            Ok(value) => (true, value),
-            Err(err) => (false, json!({ "status": "unavailable", "reason": err })),
-        },
-        "doctor" => {
-            let health = app.health().await;
-            (
-                true,
-                json!({
-                    "kernel": health.kernel.state,
-                    "services": health.kernel.services,
-                }),
-            )
+        "budget show" | "doctor" | "logs" | "graph" | "changeset show" => {
+            crate::controller::exec::command_output(app, name).await
         }
-        "logs" => match app.events.head_seq().await {
-            Ok(seq) => (true, json!({ "seq": seq })),
-            Err(err) => (
-                false,
-                json!({ "status": "unavailable", "reason": err.to_string() }),
-            ),
-        },
-        "graph" => {
-            let health = app.health().await;
-            let service = health
-                .kernel
-                .services
-                .into_iter()
-                .find(|service| service.name == "graph");
-            match service {
-                Some(service) if service.state == crate::dto::ServiceState::Ok => (
-                    true,
-                    json!({ "status": "ok", "reason": "the RDF store is open" }),
-                ),
-                Some(service) => (
-                    false,
-                    json!({
-                        "status": "unavailable",
-                        "reason": service
-                            .reason
-                            .unwrap_or_else(|| "the RDF store did not open".into()),
-                    }),
-                ),
-                None => (
-                    false,
-                    json!({ "status": "unavailable", "reason": "the RDF store did not open" }),
-                ),
-            }
-        }
-        "changeset show" => match changeset_output(app).await {
-            Ok(value) => {
-                let empty = value.get("reason").and_then(Value::as_str).is_some();
-                (!empty, value)
-            }
-            Err(err) => (false, json!({ "status": "unavailable", "reason": err })),
-        },
         "meta analyze" => (
             false,
             json!({ "status": "unavailable", "reason": STAGE_REASON }),
@@ -477,6 +459,7 @@ pub fn plan_frames(
             subsystem: None,
             turn_number: 1,
             visible: true,
+            voice: None,
         },
         ChatFrame::LlmResponse {
             turn_id: turn_id.clone(),
@@ -496,6 +479,7 @@ pub fn plan_frames(
             subsystem: Some("kernel".into()),
             turn_number: 2,
             visible: true,
+            voice: None,
         },
         ChatFrame::ToolCall {
             id: call_id.clone(),
@@ -597,48 +581,6 @@ fn unavailable(name: &str) -> Value {
         _ => "this operation is not bound on the chat route yet",
     };
     json!({ "status": "unavailable", "reason": reason })
-}
-
-async fn changeset_output(app: &AppState) -> Result<Value, String> {
-    let store = mm_selfeng::ChangeSetStore::new(
-        app.sqlite.clone(),
-        std::sync::Arc::clone(&app.logger),
-        std::sync::Arc::clone(&app.ids),
-    );
-    let rows = store.list().await.map_err(|err| err.to_string())?;
-    if rows.is_empty() {
-        return Ok(json!({
-            "status": "unavailable",
-            "reason": "No change sets are recorded."
-        }));
-    }
-    Ok(json!({
-        "rows": rows.iter().map(|(change_set, status)| json!({
-            "id": mm_core::ulid_string(&change_set.id),
-            "status": status.as_str(),
-        })).collect::<Vec<_>>()
-    }))
-}
-
-async fn budget_output(app: &AppState) -> Result<Value, String> {
-    let ledger =
-        mm_selfeng::BudgetLedger::new(app.sqlite.clone(), std::sync::Arc::clone(&app.logger));
-    let rows = ledger.show().await.map_err(|err| err.to_string())?;
-    if rows.is_empty() {
-        return Ok(json!({
-            "status": "unavailable",
-            "reason": "no budget rows are recorded",
-            "rows": []
-        }));
-    }
-    Ok(json!({
-        "rows": rows.iter().map(|row| json!({
-            "kind": row.kind.as_str(),
-            "period": row.period,
-            "limit": row.limit,
-            "spent": row.spent,
-        })).collect::<Vec<_>>()
-    }))
 }
 
 fn numbered(frames: &[ChatFrame]) -> Vec<(u64, ChatFrame)> {

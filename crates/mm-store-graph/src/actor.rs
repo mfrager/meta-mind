@@ -565,6 +565,38 @@ fn scoped_query(store: &Store, graph: &str, query: &str) -> Result<Vec<Value>, M
     run_query(store, query)
 }
 
+/// Refuse a SPARQL update.
+///
+/// A query whose first keyword is an update verb, or that the SPARQL update
+/// parser accepts, is not a read. The reason is fixed so admission can show it
+/// on the tool card.
+pub fn ensure_read_query(query: &str) -> Result<(), MmError> {
+    let trimmed = query.trim();
+    let head = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    const UPDATE: &[&str] = &[
+        "INSERT", "DELETE", "LOAD", "CLEAR", "CREATE", "DROP", "MOVE", "COPY", "ADD",
+    ];
+    if UPDATE.contains(&head.as_str()) {
+        return Err(MmError::Graph(
+            "graph queries on this tool are read-only".into(),
+        ));
+    }
+    #[allow(deprecated)]
+    if oxigraph::sparql::Update::parse(trimmed, None).is_ok() {
+        return Err(MmError::Graph(
+            "graph queries on this tool are read-only".into(),
+        ));
+    }
+    SparqlEvaluator::new()
+        .parse_query(trimmed)
+        .map(|_| ())
+        .map_err(|err| MmError::Codec(format!("SPARQL syntax error: {err}")))
+}
+
 fn run_query(store: &Store, query: &str) -> Result<Vec<Value>, MmError> {
     let results = SparqlEvaluator::new()
         .parse_query(query)

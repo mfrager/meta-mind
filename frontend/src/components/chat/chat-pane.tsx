@@ -1,27 +1,41 @@
 import { useEffect, useState } from "react";
 
-import { useNavigate } from "react-router-dom";
-
 import { ChatHeader } from "@/components/chat/chat-header.tsx";
 import { Composer } from "@/components/chat/composer.tsx";
 import { SuggestionChips } from "@/components/chat/chat-form.tsx";
 import type { ImageAttachment } from "@/components/chat/image-chooser.tsx";
 import { TranscriptView } from "@/components/chat/transcript-view.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { answerInput, branchChat, createSession, openChat, regenerateChat, resumeChat, stopChat } from "@/lib/api/chat.ts";
-import { FOCUS_FRAME } from "@/lib/focus/fixture.ts";
-import { useDocuments } from "@/lib/store/documents.ts";
 import { useChatPending } from "@/lib/store/chat-pending.ts";
-import { usePaneStore } from "@/lib/store/pane.ts";
-import { initialTranscript, reduceFrames, type TranscriptState } from "@/lib/transcript/reducer.ts";
+import { useSessionStore } from "@/lib/store/session.ts";
+import { applyControllerFocus, useSideStore, type LastAction } from "@/lib/store/side.ts";
+import { initialTranscript, reduceFrames, type TranscriptItem, type TranscriptState } from "@/lib/transcript/reducer.ts";
 import { suggestionsOf, visibleItems } from "@/lib/transcript/selectors.ts";
-import type { FocusDoc } from "@/lib/wire/focus.ts";
+
+type FreshSession = { id: string; title: string; requestId?: string };
+
+// React Strict Mode runs the mount effect twice. Both passes share one POST so
+// the discarded pass does not spend a second model introduction.
+let opening: Promise<FreshSession> | null = null;
+let openingUsers = 0;
+
+function beginSession(): Promise<FreshSession> {
+  openingUsers += 1;
+  if (!opening) opening = createSession();
+  return opening;
+}
+
+function endSessionAttempt() {
+  openingUsers -= 1;
+  if (openingUsers === 0) {
+    queueMicrotask(() => {
+      if (openingUsers === 0) opening = null;
+    });
+  }
+}
 
 export function ChatPane() {
-  const applyFrame = useDocuments((state) => state.applyFrame);
-  const navigate = useNavigate();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [title, setTitle] = useState("Chat");
   const [state, setState] = useState<TranscriptState>(initialTranscript);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,15 +43,24 @@ export function ChatPane() {
 
   useEffect(() => {
     let cancelled = false;
-    void createSession()
-      .then((session) => {
+    const sessionPromise = beginSession();
+    void sessionPromise
+      .then(async (session) => {
         if (cancelled) return;
         setSessionId(session.id);
-        setTitle(session.title);
+        useSessionStore.getState().setSession(session.id, session.title);
+        if (!session.requestId) return;
+        const frames = await resumeChat(session.requestId, 1);
+        if (cancelled) return;
+        setState((current) => reduceFrames(current, frames));
       })
-      .catch((error: unknown) => setNotice(error instanceof Error ? error.message : "The chat session could not start."));
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setNotice(error instanceof Error ? error.message : "The chat session could not start.");
+      });
     return () => {
       cancelled = true;
+      endSessionAttempt();
     };
   }, []);
 
@@ -50,14 +73,22 @@ export function ChatPane() {
   }, [sessionId, pending]);
 
   const send = async (query: string, refs: string[], attachments: ImageAttachment[]) => {
+    if (useSessionStore.getState().title === "Chat") {
+      useSessionStore.getState().setTitle(query.trim().slice(0, 60));
+    }
     setBusy(true);
     setNotice(null);
     try {
+      const side = useSideStore.getState();
       const frames = await openChat({
         sessionId: sessionId ?? undefined,
         query,
         refs,
         attachments: attachments.map(({ name, type, size, caption }) => ({ name, type, size, caption })),
+        pane:
+          side.mode === "document" && side.doc
+            ? { id: side.doc.id, title: side.doc.title }
+            : { id: "state", title: "State" },
       });
       setState((current) => reduceFrames(current, frames));
     } catch (error) {
@@ -95,21 +126,18 @@ export function ChatPane() {
   };
 
   useEffect(() => {
-    const doc = state.focus;
-    if (!doc || typeof doc !== "object" || !("id" in doc)) return;
-    applyFrame({ type: "focus", doc: doc as FocusDoc });
-    usePaneStore.getState().setActivePane("document");
-  }, [applyFrame, state.focus]);
+    void applyControllerFocus(state.focus);
+  }, [state.focus]);
+
+  useEffect(() => {
+    const action = lastActionOf(state.items);
+    useSideStore.getState().setLastAction(action);
+    if (action?.ok && (action.name.startsWith("being.") || action.name === "budget.show")) {
+      useSideStore.getState().bump();
+    }
+  }, [state.items]);
 
   const followSuggestion = (text: string) => {
-    if (text === "Open the budgets tree") {
-      navigate("/?doc=budgets");
-      return;
-    }
-    if (text === "Open the being map") {
-      navigate("/map/being");
-      return;
-    }
     void send(text, [], []);
   };
 
@@ -117,13 +145,7 @@ export function ChatPane() {
 
   return (
     <section className="flex h-full min-h-0 flex-col" data-chat-pane>
-      <ChatHeader title={title} requestId={state.requestId} onStop={() => void stop()} onRegenerate={() => void regenerate()} onBranch={() => void branch()} />
-      <div className="flex items-center justify-between px-3 pt-2">
-        <p className="text-xs text-muted-foreground">Wire v1</p>
-        <Button type="button" variant="outline" data-focus-fixture onClick={() => applyFrame(FOCUS_FRAME)}>
-          Open focus fixture
-        </Button>
-      </div>
+      <ChatHeader requestId={state.requestId} onStop={() => void stop()} onRegenerate={() => void regenerate()} onBranch={() => void branch()} />
       {notice ? (
         <p role="status" className="px-3 text-sm text-muted-foreground">
           {notice}
@@ -136,4 +158,17 @@ export function ChatPane() {
       <Composer disabled={busy || !sessionId} onSend={(text, refs, attachments) => void send(text, refs, attachments)} />
     </section>
   );
+}
+
+function lastActionOf(items: TranscriptItem[]): LastAction | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item || item.kind !== "turn") continue;
+    const op = [...item.ops].reverse().find((call) => call.output !== undefined);
+    if (!op) continue;
+    const output = op.output as { summary?: unknown; ok?: unknown } | null;
+    const summary = output && typeof output.summary === "string" ? output.summary : "";
+    return { name: op.name, ok: op.success ?? output?.ok === true, summary };
+  }
+  return null;
 }

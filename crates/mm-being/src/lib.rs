@@ -163,11 +163,22 @@ impl BeingFacade {
         logger: Arc<Logger>,
         ids: Arc<UlidFactory>,
     ) -> Result<Self> {
+        Self::open_with_description(store, graph, logger, ids, DEFAULT_SELF_DESCRIPTION).await
+    }
+
+    /// Open the being, using `description` only when the identity row does not
+    /// exist yet. An existing identity is loaded as stored.
+    pub async fn open_with_description(
+        store: &SqliteStore,
+        graph: &GraphHandle,
+        logger: Arc<Logger>,
+        ids: Arc<UlidFactory>,
+        description: &str,
+    ) -> Result<Self> {
         let identity = match load_identity(store).await? {
             Some(identity) => identity,
             None => {
-                let identity =
-                    Identity::new(ids.next(), Timestamp::now(), DEFAULT_SELF_DESCRIPTION);
+                let identity = Identity::new(ids.next(), Timestamp::now(), description);
                 persist_identity(store, &identity).await?;
                 logger
                     .audit(

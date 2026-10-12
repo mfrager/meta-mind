@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
+use mm_serve::controller::{load_controller_script, ControllerModel};
 use mm_serve::routes::router;
 use mm_serve::state::{AppState, ConsoleLock};
 
@@ -36,6 +37,11 @@ struct Cli {
     /// Listen port (`MM_UI_PORT` when the flag is omitted).
     #[arg(long, env = "MM_UI_PORT", default_value_t = 8899)]
     port: u16,
+
+    /// Path to a MockClient script. Refuses to start when `OPENAI_API_KEY` is set.
+    /// Playwright is the caller. `MM_CONTROLLER_SCRIPT` is the same path.
+    #[arg(long, value_name = "PATH")]
+    controller_script: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -57,6 +63,7 @@ async fn serve(cli: Cli) -> Result<(), String> {
     let cfg = AppState::resolve_config(cli.config, cli.data_dir).map_err(|e| e.to_string())?;
     let lock = ConsoleLock::acquire(&cfg.store.data_dir).map_err(|e| e.to_string())?;
     let state = Arc::new(AppState::boot(cfg, lock).await.map_err(|e| e.to_string())?);
+    install_controller_script(&state, cli.controller_script)?;
     let addr = SocketAddr::from((cli.bind, cli.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -69,6 +76,31 @@ async fn serve(cli: Cli) -> Result<(), String> {
     axum::serve(listener, router(state))
         .await
         .map_err(|e| e.to_string())
+}
+
+fn install_controller_script(state: &AppState, flag: Option<PathBuf>) -> Result<(), String> {
+    let path = flag.or_else(|| {
+        std::env::var("MM_CONTROLLER_SCRIPT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from)
+    });
+    let Some(path) = path else {
+        return Ok(());
+    };
+    let key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    if !key.trim().is_empty() {
+        return Err(
+            "refusing to start: OPENAI_API_KEY is set, so a controller script cannot replace the live provider"
+                .into(),
+        );
+    }
+    let client = load_controller_script(&path)?;
+    *state
+        .controller_model
+        .lock()
+        .map_err(|err| err.to_string())? = ControllerModel::Scripted(client);
+    Ok(())
 }
 
 /// The console is a local operator surface. Remote binding is a non-goal.

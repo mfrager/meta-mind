@@ -12,11 +12,12 @@ export function TranscriptView({
   items: TranscriptItem[];
   onAnswer: (id: string, value: string) => void;
 }) {
+  const liveKey = lastAssistantKey(items);
   if (items.length < 40) {
     return (
       <div role="log" aria-label="Transcript" data-transcript className="space-y-3 p-3">
         {items.map((item) => (
-          <Row key={`${item.kind}:${item.id}`} item={item} onAnswer={onAnswer} />
+          <Row key={`${item.kind}:${item.id}`} item={item} live={liveKey === `${item.kind}:${item.id}`} onAnswer={onAnswer} />
         ))}
       </div>
     );
@@ -61,7 +62,15 @@ function VirtualTranscript({
   );
 }
 
-function Row({ item, onAnswer }: { item: TranscriptItem; onAnswer: (id: string, value: string) => void }) {
+function lastAssistantKey(items: TranscriptItem[]): string | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item && (item.kind === "final" || item.kind === "turn")) return `${item.kind}:${item.id}`;
+  }
+  return null;
+}
+
+function Row({ item, live, onAnswer }: { item: TranscriptItem; live?: boolean; onAnswer: (id: string, value: string) => void }) {
   if (item.kind === "user") {
     return (
       <p data-item={`user:${item.content}`} className="text-sm">
@@ -72,7 +81,7 @@ function Row({ item, onAnswer }: { item: TranscriptItem; onAnswer: (id: string, 
   if (item.kind === "turn") {
     const op = item.ops.map((call) => `${call.name}:${reasonText(call.output)}`).join("|");
     return (
-      <div data-item={`turn:${item.phase}:${item.text}${op ? `|${op}` : ""}`}>
+      <div data-item={`turn:${item.phase}:${item.text}${op ? `|${op}` : ""}`} aria-live={live ? "polite" : undefined}>
         <Turn item={item} />
       </div>
     );
@@ -86,7 +95,7 @@ function Row({ item, onAnswer }: { item: TranscriptItem; onAnswer: (id: string, 
   }
   if (item.kind === "final") {
     return (
-      <p data-item={`final:${item.text}`} className="text-sm">
+      <p data-item={`final:${item.text}`} className="text-sm" aria-live={live ? "polite" : undefined}>
         {item.text}
       </p>
     );

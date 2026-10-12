@@ -73,6 +73,20 @@ impl FocusCatalog {
             .map(|entry| entry.doc.clone())
     }
 
+    /// Replace a process-local document, such as the latest memory recall.
+    pub fn upsert(&self, doc: FocusDoc) {
+        let Ok(mut map) = self.inner.lock() else {
+            return;
+        };
+        map.insert(
+            doc.id.clone(),
+            Entry {
+                doc,
+                history: Vec::new(),
+            },
+        );
+    }
+
     pub fn list(&self) -> Vec<FocusDoc> {
         self.inner
             .lock()

@@ -42,7 +42,13 @@ pub fn prompt_hash(provider: &str, model: &str, req: &LlmRequest) -> String {
     for message in &req.messages {
         fields.push(format!("{:?}", message.role));
         fields.push(message.content.clone());
+        if let Some(id) = &message.tool_call_id {
+            fields.push(id.clone());
+        }
     }
+    // The tool list is part of the question. A turn with a different catalog
+    // must miss, even when the prose is identical.
+    fields.push(serde_json::to_string(&req.tools).unwrap_or_default());
     let borrowed: Vec<&str> = fields.iter().map(String::as_str).collect();
     hash_fields(&borrowed)
 }
@@ -85,7 +91,12 @@ pub struct CachedResponse {
     /// The original call's latency.
     pub latency_ms: u32,
     /// sha256 of `text`, so a corrupted body is detected rather than served.
+    /// An empty tool-call list keeps the historical hash of `text` alone, so
+    /// bodies written before tool calls still verify.
     pub response_sha: String,
+    /// Tool calls that belonged to the answer. Empty for a text completion.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<crate::client::ProviderToolCall>,
 }
 
 impl CachedResponse {
@@ -107,12 +118,31 @@ impl CachedResponse {
             tokens_in,
             tokens_out,
             latency_ms,
+            tool_calls: Vec::new(),
         }
+    }
+
+    /// Remember tool calls and reseal the body. Empty calls keep the text hash.
+    pub fn with_tool_calls(mut self, calls: Vec<crate::client::ProviderToolCall>) -> Self {
+        self.tool_calls = calls;
+        self.response_sha = if self.tool_calls.is_empty() {
+            content_hash(self.text.as_bytes())
+        } else {
+            let extra = serde_json::to_string(&self.tool_calls).unwrap_or_default();
+            content_hash(format!("{}\n{extra}", self.text).as_bytes())
+        };
+        self
     }
 
     /// True when the body still hashes to what was recorded.
     pub fn is_intact(&self) -> bool {
-        self.response_sha == content_hash(self.text.as_bytes())
+        let expected = if self.tool_calls.is_empty() {
+            content_hash(self.text.as_bytes())
+        } else {
+            let extra = serde_json::to_string(&self.tool_calls).unwrap_or_default();
+            content_hash(format!("{}\n{extra}", self.text).as_bytes())
+        };
+        self.response_sha == expected
     }
 }
 

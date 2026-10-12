@@ -37,6 +37,8 @@ pub struct ScriptedResponse {
     pub schema_valid: bool,
     /// When set, the call fails with a transport error carrying this message.
     pub error: Option<String>,
+    /// Tool calls to return with the text.
+    pub tool_calls: Vec<crate::client::ProviderToolCall>,
 }
 
 impl ScriptedResponse {
@@ -52,7 +54,14 @@ impl ScriptedResponse {
             latency_ms: 12,
             schema_valid: true,
             error: None,
+            tool_calls: Vec::new(),
         }
+    }
+
+    /// Attach tool calls to a scripted answer.
+    pub fn with_tool_calls(mut self, calls: Vec<crate::client::ProviderToolCall>) -> Self {
+        self.tool_calls = calls;
+        self
     }
 
     /// A provider that cannot be reached.
@@ -65,6 +74,7 @@ impl ScriptedResponse {
             latency_ms: 0,
             schema_valid: false,
             error: Some(message.into()),
+            tool_calls: Vec::new(),
         }
     }
 
@@ -226,6 +236,7 @@ impl LlmClient for MockClient {
             cached: false,
             schema_valid: next.schema_valid,
             decoder: self.decoder,
+            tool_calls: next.tool_calls,
         })
     }
 

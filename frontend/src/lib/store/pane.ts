@@ -39,9 +39,9 @@ export const usePaneStore = create<PaneState>()(
       chatCollapsed: false,
       sidebarCollapsed: false,
       fullscreen: false,
-      activePane: "document",
-      documentSize: 55,
-      chatSize: 45,
+      activePane: "chat",
+      documentSize: 42,
+      chatSize: 58,
       layoutEpoch: 0,
       paletteOpen: false,
       shortcutsOpen: false,
@@ -51,11 +51,13 @@ export const usePaneStore = create<PaneState>()(
       toggleSheet: () => set((state) => ({ sidebarSheet: !state.sidebarSheet })),
       setSheet: (sidebarSheet) => set({ sidebarSheet }),
       toggleCollapsed: (pane) =>
-        set((state) =>
-          pane === "document"
-            ? { documentCollapsed: !state.documentCollapsed, activePane: state.documentCollapsed ? "document" : state.activePane }
-            : { chatCollapsed: !state.chatCollapsed, activePane: state.chatCollapsed ? "chat" : state.activePane },
-        ),
+        set((state) => {
+          if (pane === "chat") return {};
+          return {
+            documentCollapsed: !state.documentCollapsed,
+            activePane: state.documentCollapsed ? "document" : state.activePane,
+          };
+        }),
       expand: (pane) =>
         set(
           pane === "document"
@@ -82,8 +84,8 @@ export const usePaneStore = create<PaneState>()(
           documentCollapsed: false,
           chatCollapsed: false,
           fullscreen: false,
-          documentSize: 55,
-          chatSize: 45,
+          documentSize: 42,
+          chatSize: 58,
           layoutEpoch: state.layoutEpoch + 1,
         })),
       setPaletteOpen: (paletteOpen) =>
@@ -92,7 +94,7 @@ export const usePaneStore = create<PaneState>()(
         set({ shortcutsOpen, paletteOpen: shortcutsOpen ? false : get().paletteOpen }),
     }),
     {
-      name: "mm-pane",
+      name: "mm-pane-chat",
       partialize: (state) => ({
         swapped: state.swapped,
         documentCollapsed: state.documentCollapsed,

@@ -19,7 +19,7 @@ export function ShortcutDialog() {
 
   const rows = useMemo<Row[]>(
     () => [
-      { id: "palette", keys: `${mod}+K`, action: "Command palette" },
+      { id: "palette", keys: `${mod}+K`, action: "Focus the composer" },
       { id: "composer", keys: `${mod}+L`, action: "Focus the composer" },
       { id: "document", keys: `${mod}+1`, action: "Focus the document pane" },
       { id: "chat", keys: `${mod}+2`, action: "Focus the chat pane" },

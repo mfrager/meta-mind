@@ -11,6 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use mm_being::BeingFacade;
 use mm_core::{Config, MmError, UlidFactory};
 use mm_eventlog::EventLog;
 use mm_llm::{LlmConfig, ProviderEnv};
@@ -19,6 +20,7 @@ use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
 
 use crate::chat::ChatCatalog;
+use crate::controller::{ControllerModel, SELF_DESCRIPTION};
 use crate::docs::FocusCatalog;
 use crate::dto::{
     EventHead, HealthEnvelope, KernelStatus, ServiceState, ServiceStatus, WIRE_VERSION,
@@ -40,6 +42,12 @@ pub struct AppState {
     pub graph: Option<Arc<GraphStore>>,
     /// Why the RDF store is closed, when `graph` is `None`.
     pub graph_error: Option<String>,
+    /// The being, when it opened. Mutations take the mutex.
+    pub being: Option<Arc<tokio::sync::Mutex<BeingFacade>>>,
+    /// Why the being store is closed, when `being` is `None`.
+    pub being_error: Option<String>,
+    /// How the controller reaches a model. Tests replace the default.
+    pub controller_model: std::sync::Mutex<ControllerModel>,
     /// The audit-chained logger.
     pub logger: Arc<Logger>,
     /// The monotonic identifier factory, shared with the event log.
@@ -93,6 +101,29 @@ impl AppState {
                 Err(err) => (None, Some(err.to_string())),
             };
 
+        let (being, being_error) = match &graph {
+            Some(store) => match BeingFacade::open_with_description(
+                &sqlite,
+                store.handle(),
+                Arc::clone(&logger),
+                Arc::clone(&ids),
+                SELF_DESCRIPTION,
+            )
+            .await
+            {
+                Ok(facade) => (Some(Arc::new(tokio::sync::Mutex::new(facade))), None),
+                Err(err) => (None, Some(err.to_string())),
+            },
+            None => (
+                None,
+                Some(
+                    graph_error
+                        .clone()
+                        .unwrap_or_else(|| "the RDF store did not open".to_string()),
+                ),
+            ),
+        };
+
         let focus = FocusCatalog::seed();
         let trees = TreeCatalog::seed();
         let chat =
@@ -114,6 +145,9 @@ impl AppState {
             events,
             graph,
             graph_error,
+            being,
+            being_error,
+            controller_model: std::sync::Mutex::new(ControllerModel::FromEnv),
             logger,
             ids,
             _lock: lock,
@@ -172,6 +206,22 @@ impl AppState {
             },
         });
         services.push(llm_status());
+        services.push(match &self.being {
+            Some(_) => ServiceStatus {
+                name: "being".to_string(),
+                state: ServiceState::Ok,
+                reason: None,
+            },
+            None => ServiceStatus {
+                name: "being".to_string(),
+                state: ServiceState::Unavailable,
+                reason: Some(
+                    self.being_error
+                        .clone()
+                        .unwrap_or_else(|| "the being store did not open".to_string()),
+                ),
+            },
+        });
 
         if let Some(reason) = audit_err {
             services.push(ServiceStatus {

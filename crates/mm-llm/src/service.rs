@@ -624,7 +624,8 @@ impl LlmService {
             response.usage.tokens_in,
             response.usage.tokens_out,
             response.usage.latency_ms,
-        );
+        )
+        .with_tool_calls(response.tool_calls.clone());
         let path = self.cache.path_for(key);
         self.cache.put(key.clone(), body.clone())?;
         cached::put_index(&self.store, key, &path, &body.response_sha).await?;
@@ -687,6 +688,7 @@ impl LlmService {
             cached: true,
             schema_valid: true,
             decoder: hit.decoder,
+            tool_calls: hit.tool_calls.clone(),
         })
     }
 

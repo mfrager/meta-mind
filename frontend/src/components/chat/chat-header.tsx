@@ -1,22 +1,25 @@
 import { Button } from "@/components/ui/button.tsx";
+import { useSessionStore } from "@/lib/store/session.ts";
 
 export function ChatHeader({
-  title,
   requestId,
   onStop,
   onRegenerate,
   onBranch,
 }: {
-  title: string;
   requestId: string | null;
   onStop: () => void;
   onRegenerate: () => void;
   onBranch: () => void;
 }) {
+  const title = useSessionStore((state) => state.title);
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <h2 className="text-sm font-medium">{title}</h2>
-      <span className="font-mono text-xs text-muted-foreground">{requestId ?? "no run"}</span>
+    <header className="border-border flex flex-wrap items-center gap-2 border-b px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-sm font-medium">{title}</h1>
+        <p className="text-muted-foreground text-xs">Metamind</p>
+      </div>
+      <span className="text-muted-foreground font-mono text-xs">{requestId ?? "no run"}</span>
       <Button type="button" variant="outline" onClick={onStop} disabled={!requestId}>
         Stop
       </Button>

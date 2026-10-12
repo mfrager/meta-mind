@@ -151,7 +151,9 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
                 .method("POST")
                 .uri("/api/chat")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"why is stage 6 slow?"}"#))
+                .body(Body::from(
+                    r#"{"query":"why is stage 6 slow?","commandMode":true}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -177,7 +179,9 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
                 .method("POST")
                 .uri("/api/chat")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"/being goal add a quieter loop"}"#))
+                .body(Body::from(
+                    r#"{"query":"/being goal add a quieter loop","commandMode":true}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -201,7 +205,7 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
                 .method("POST")
                 .uri("/api/chat")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"promote"}"#))
+                .body(Body::from(r#"{"query":"promote","commandMode":true}"#))
                 .unwrap(),
         )
         .await
@@ -226,7 +230,9 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
                 .method("POST")
                 .uri("/api/chat")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"changeset show"}"#))
+                .body(Body::from(
+                    r#"{"query":"changeset show","commandMode":true}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -250,7 +256,9 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
                 .method("POST")
                 .uri("/api/chat")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"audit production-tree"}"#))
+                .body(Body::from(
+                    r#"{"query":"audit production-tree","commandMode":true}"#,
+                ))
                 .unwrap(),
         )
         .await

@@ -1,0 +1,25 @@
+[
+  {
+    "text": "{\"text\":\"The kernel is ok. Ask me what you want done.\"}",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-open",
+        "name": "catalog.open",
+        "arguments": "{\"group\":\"change\"}"
+      },
+      {
+        "id": "c-budget",
+        "name": "budget.show",
+        "arguments": "{}"
+      }
+    ]
+  },
+  {
+    "text": "Those are the four budget rows.",
+    "tool_calls": []
+  }
+]

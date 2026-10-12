@@ -201,6 +201,7 @@ impl LlmClient for ReplayLlmClient {
             cached: false,
             schema_valid: true,
             decoder: DecoderKind::None,
+            tool_calls: Vec::new(),
         })
     }
 

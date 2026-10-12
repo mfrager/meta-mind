@@ -87,6 +87,10 @@ pub enum ChatFrame {
         subsystem: Option<String>,
         turn_number: u32,
         visible: bool,
+        /// Projected voice for this round, when the controller produced it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(type = "unknown")]
+        voice: Option<Value>,
     },
     /// Narration text for a turn.
     LlmResponse {

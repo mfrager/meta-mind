@@ -98,7 +98,7 @@ function KindBody({ doc, editing, draft, onDraft }: { doc: FocusDoc; editing: bo
     case "budget":
       return <BudgetBody rows={(snapshot.rows as { kind: string; period: string; limit: number; spent: number }[]) ?? []} />;
     case "tree":
-      return typeof snapshot.tree === "string" ? <TreeCore name={snapshot.tree} /> : null;
+      return typeof snapshot.tree === "string" ? <TreeCore name={snapshot.tree} readOnly={!editing} /> : null;
     case "mindmap":
       return typeof snapshot.map === "string" ? (
         <Suspense fallback={<PiecePending />}>
@@ -165,7 +165,7 @@ function Timeline({ events }: { events: { at: string; label: string; kind: "run"
   );
 }
 
-function BudgetBody({ rows }: { rows: { kind: string; period: string; limit: number; spent: number }[] }) {
+export function BudgetBody({ rows }: { rows: { kind: string; period: string; limit: number; spent: number }[] }) {
   if (rows.length === 0) return null;
   return (
     <div className="grid gap-3 sm:grid-cols-2">

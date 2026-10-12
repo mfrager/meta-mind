@@ -210,6 +210,14 @@ proptest! {
         other_text.messages.push(Message::assistant("appended"));
         prop_assert_ne!(baseline.clone(), prompt_hash("mock", "small", &other_text));
 
+        let mut other_tools = request.clone();
+        other_tools.tools.push(mm_llm::ToolSchema {
+            name: "guide.read".into(),
+            description: "Read a chapter.".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        });
+        prop_assert_ne!(baseline.clone(), prompt_hash("mock", "small", &other_tools));
+
         prop_assert_ne!(baseline, prompt_hash("other", "small", &request));
     }
 }

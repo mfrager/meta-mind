@@ -25,6 +25,19 @@ pub struct OpenChat {
     pub refs: Vec<String>,
     #[serde(default)]
     pub attachments: Vec<Value>,
+    /// When true, keep the first-word classifier. The web client leaves this false.
+    #[serde(default, rename = "commandMode")]
+    pub command_mode: bool,
+    /// Which pane is on screen. Absent means the state board.
+    #[serde(default)]
+    pub pane: Option<PaneHint>,
+}
+
+#[derive(Deserialize)]
+pub struct PaneHint {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +49,16 @@ pub struct AnswerBody {
 #[derive(Deserialize)]
 pub struct FromQuery {
     pub from: Option<u64>,
+}
+
+fn pane_line(pane: Option<&PaneHint>) -> String {
+    match pane {
+        Some(pane) if !pane.id.is_empty() && pane.id != "state" => {
+            let title = pane.title.clone().unwrap_or_else(|| pane.id.clone());
+            format!("The side pane is showing {title} ({}).", pane.id)
+        }
+        _ => "The side pane is showing the state board.".into(),
+    }
 }
 
 fn focus_for(state: &AppState, op: &str) -> Option<Value> {
@@ -55,7 +78,20 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Result<Json<Va
 pub async fn create_session(State(state): State<Arc<AppState>>) -> Result<Json<Value>, AppError> {
     let id = state.ids.next_string();
     let (id, title) = state.chat.create_session(id)?;
-    Ok(Json(json!({ "id": id, "title": title })))
+    let request_id = state.ids.next_string();
+    let text = crate::controller::compose(&state).await;
+    state
+        .chat
+        .begin(request_id.clone(), id.clone(), String::new())?;
+    let stored = state.chat.finish(
+        &request_id,
+        crate::controller::frames(&request_id, &id, &text),
+        "completed",
+    )?;
+    let _ = stored;
+    Ok(Json(
+        json!({ "id": id, "title": title, "requestId": request_id }),
+    ))
 }
 
 pub async fn open(
@@ -79,6 +115,18 @@ pub async fn open(
     state
         .chat
         .begin(request_id.clone(), session_id.clone(), body.query.clone())?;
+    if !body.command_mode {
+        let frames = crate::controller::reply(
+            &state,
+            &request_id,
+            &session_id,
+            &body.query,
+            &pane_line(body.pane.as_ref()),
+        )
+        .await;
+        let stored = state.chat.finish(&request_id, frames, "completed")?;
+        return Ok(sse_response(&stored)?.into_response());
+    }
     let op = chat::classify(&body.query);
     let (success, output) = chat::execute(&state, op, &body.query).await;
     let cancelled = state.chat.is_cancelled(&request_id)?;
@@ -131,6 +179,8 @@ pub async fn regenerate(
             query,
             refs: Vec::new(),
             attachments: Vec::new(),
+            command_mode: false,
+            pane: None,
         }),
     )
     .await
@@ -152,6 +202,20 @@ pub async fn answer(
         .rev()
         .collect();
     Ok(Json(json!({ "frames": new_frames })))
+}
+
+#[derive(Deserialize)]
+pub struct TitleBody {
+    pub title: String,
+}
+
+pub async fn rename(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Json(body): Json<TitleBody>,
+) -> Result<Json<Value>, AppError> {
+    let title = state.chat.rename(&session_id, &body.title)?;
+    Ok(Json(json!({ "title": title })))
 }
 
 pub async fn branch(

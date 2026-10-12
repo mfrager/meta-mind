@@ -143,8 +143,8 @@ pub struct Personality {
 impl Personality {
     /// The constitution every new being starts from.
     ///
-    /// Small on purpose: five dispositions, three constraints, and one context
-    /// modifier. Anything larger is a behaviour matrix wearing a constitution's
+    /// Small on purpose: five dispositions, three constraints, and two context
+    /// modifiers. Anything larger is a behaviour matrix wearing a constitution's
     /// clothes.
     pub fn baseline() -> Self {
         let dispositions = BTreeMap::from([
@@ -172,11 +172,22 @@ impl Personality {
             ("formality".to_string(), 0.3),
             ("directness".to_string(), 0.1),
         ]);
+        // Operator chat is friendlier and more direct than the raw constitution.
+        // An empty context does not apply it; the controller passes the tag.
+        let chat = BTreeMap::from([
+            ("warmth".to_string(), 0.15_f32),
+            ("directness".to_string(), 0.20),
+            ("playfulness".to_string(), -0.10),
+            ("formality".to_string(), -0.10),
+        ]);
         Personality {
             values,
             dispositions,
             constraints,
-            context_modifiers: BTreeMap::from([("high_stakes".to_string(), high_stakes)]),
+            context_modifiers: BTreeMap::from([
+                ("high_stakes".to_string(), high_stakes),
+                ("chat".to_string(), chat),
+            ]),
         }
     }
 

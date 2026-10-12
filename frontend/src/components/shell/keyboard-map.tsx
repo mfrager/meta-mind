@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { focusComposer } from "@/components/chat/composer.tsx";
 import { hrefFor } from "@/lib/nav.ts";
 import { isTextEntry, shortcutFromEvent } from "@/lib/shortcuts.ts";
 import { useFocusStore } from "@/lib/store/focus.ts";
@@ -70,15 +71,14 @@ export function KeyboardMap() {
 
       switch (shortcut) {
         case "palette":
-          pane.setPaletteOpen(!pane.paletteOpen);
-          break;
         case "composer":
+          pane.setPaletteOpen(false);
           pane.setActivePane("chat");
           if (location.pathname === "/dev/catalog") {
-            navigate("/chat");
-            focusLater("[data-composer]");
+            navigate("/");
+            focusLater("#composer");
           } else {
-            document.querySelector<HTMLElement>("[data-composer]")?.focus();
+            focusComposer();
           }
           break;
         case "document":

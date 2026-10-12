@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Group, Panel, Separator, type Layout } from "react-resizable-panels";
 
 import { usePaneStore } from "@/lib/store/pane.ts";
+import { useSideStore } from "@/lib/store/side.ts";
 import { useViewportTier } from "@/lib/use-tier.ts";
 import { cn } from "@/lib/utils.ts";
 
@@ -17,7 +18,8 @@ export function WorkspaceSplit({
   const tier = useViewportTier();
   const swapped = usePaneStore((state) => state.swapped);
   const documentCollapsed = usePaneStore((state) => state.documentCollapsed);
-  const chatCollapsed = usePaneStore((state) => state.chatCollapsed);
+  const chatCollapsed = false;
+  const sideLabel = useSideStore((state) => state.label);
   const fullscreen = usePaneStore((state) => state.fullscreen);
   const activePane = usePaneStore((state) => state.activePane);
   const documentSize = usePaneStore((state) => state.documentSize);
@@ -56,12 +58,12 @@ export function WorkspaceSplit({
           </p>
         ) : null}
         <div role="tablist" aria-label="Workspace pane" className="border-border flex shrink-0 gap-1 border-b p-1">
+          <PaneTab selected={activePane === "chat"} onSelect={() => setActivePane("chat")} label="Chat" />
           <PaneTab
             selected={activePane === "document"}
             onSelect={() => setActivePane("document")}
-            label="Docs"
+            label={sideLabel}
           />
-          <PaneTab selected={activePane === "chat"} onSelect={() => setActivePane("chat")} label="Chat" />
         </div>
         <div className={activePane === "document" ? "min-h-0 flex-1" : "hidden"}>{document}</div>
         <div className={activePane === "chat" ? "min-h-0 flex-1" : "hidden"}>{chat}</div>
@@ -151,8 +153,9 @@ function PaneStrip({
   collapsed: boolean;
   onRestore: () => void;
 }) {
+  const sideLabel = useSideStore((state) => state.label);
   if (!collapsed) return null;
-  const label = pane === "document" ? "Document" : "Chat";
+  const label = pane === "document" ? sideLabel : "Chat";
   const vertical = orientation === "horizontal";
   return (
     <button

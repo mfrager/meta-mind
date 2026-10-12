@@ -232,20 +232,12 @@ impl OpenAiClient {
 
     /// The request body for `req`, answered by `model`.
     pub fn request_body(&self, req: &LlmRequest, model: &str) -> Result<Value> {
-        let messages: Vec<Value> = req
-            .messages
-            .iter()
-            .map(|m| {
-                json!({
-                    "role": match m.role {
-                        crate::client::Role::System => "system",
-                        crate::client::Role::User => "user",
-                        crate::client::Role::Assistant => "assistant",
-                    },
-                    "content": m.content,
-                })
-            })
-            .collect();
+        if req.schema.is_some() && !req.tools.is_empty() {
+            return Err(LlmError::Config(
+                "a request cannot carry both a schema and tools".into(),
+            ));
+        }
+        let messages: Vec<Value> = req.messages.iter().map(message_json).collect();
 
         let mut body = json!({
             "model": model,
@@ -253,6 +245,25 @@ impl OpenAiClient {
             "max_tokens": req.max_tokens,
             "temperature": req.temperature,
         });
+
+        if !req.tools.is_empty() {
+            body["tool_choice"] = json!("auto");
+            body["tools"] = Value::Array(
+                req.tools
+                    .iter()
+                    .map(|tool| {
+                        json!({
+                            "type": "function",
+                            "function": {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.parameters,
+                            }
+                        })
+                    })
+                    .collect(),
+            );
+        }
 
         if let Some(schema_id) = &req.schema {
             // The provider-native path of the invariant: ask for JSON Schema output
@@ -280,12 +291,20 @@ impl OpenAiClient {
             .get("choices")
             .and_then(|c| c.get(0))
             .ok_or_else(|| LlmError::Transport("the endpoint returned no choices".into()))?;
-        let text = choice
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| LlmError::Transport("the endpoint returned no message content".into()))?
-            .to_string();
+        let message = choice.get("message").ok_or_else(|| {
+            LlmError::Transport("the endpoint returned no message content".into())
+        })?;
+        let text = match message.get("content") {
+            Some(Value::String(text)) => text.clone(),
+            Some(Value::Null) | None => String::new(),
+            Some(other) => other.to_string(),
+        };
+        let tool_calls = parse_tool_calls(message);
+        if text.trim().is_empty() && tool_calls.is_empty() {
+            return Err(LlmError::Transport(
+                "the endpoint returned neither text nor tool calls".into(),
+            ));
+        }
         let model = value
             .get("model")
             .and_then(Value::as_str)
@@ -313,8 +332,77 @@ impl OpenAiClient {
             cached: false,
             schema_valid: false,
             decoder: DecoderKind::ProviderNative,
+            tool_calls,
         })
     }
+}
+
+fn message_json(message: &crate::client::Message) -> Value {
+    let mut body = json!({
+        "role": match message.role {
+            crate::client::Role::System => "system",
+            crate::client::Role::User => "user",
+            crate::client::Role::Assistant => "assistant",
+            crate::client::Role::Tool => "tool",
+        },
+        "content": message.content,
+    });
+    if let Some(name) = &message.name {
+        body["name"] = json!(name);
+    }
+    if let Some(id) = &message.tool_call_id {
+        body["tool_call_id"] = json!(id);
+    }
+    if !message.tool_calls.is_empty() {
+        body["tool_calls"] = Value::Array(
+            message
+                .tool_calls
+                .iter()
+                .map(|call| {
+                    json!({
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": call.arguments,
+                        }
+                    })
+                })
+                .collect(),
+        );
+    }
+    body
+}
+
+fn parse_tool_calls(message: &Value) -> Vec<crate::client::ProviderToolCall> {
+    message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .map(|calls| {
+            calls
+                .iter()
+                .filter_map(|call| {
+                    let function = call.get("function")?;
+                    let name = function.get("name")?.as_str()?.to_string();
+                    let arguments = match function.get("arguments") {
+                        Some(Value::String(text)) => text.clone(),
+                        Some(other) => other.to_string(),
+                        None => "{}".into(),
+                    };
+                    let id = call
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("call")
+                        .to_string();
+                    Some(crate::client::ProviderToolCall {
+                        id,
+                        name,
+                        arguments,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn usage_field(value: &Value, key: &str) -> u32 {
@@ -466,6 +554,51 @@ complexity_ceiling = "medium"
         assert_eq!(response.usage.cost_micros, 150 + 600);
 
         assert!(client.parse_response(&json!({}), "small").is_err());
+        assert!(response.tool_calls.is_empty());
+    }
+
+    pub(super) fn tools_body() {
+        let client = OpenAiClient::from_env(&config(), Some(env())).unwrap();
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("how do I use this?")])
+            .with_model("small")
+            .with_tools(vec![crate::client::ToolSchema {
+                name: "guide.read".into(),
+                description: "Read one guide chapter.".into(),
+                parameters: json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id"],
+                    "properties": { "id": { "type": "string" } }
+                }),
+            }]);
+        let body = client.request_body(&req, "small").unwrap();
+        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"][0]["function"]["name"], "guide.read");
+        assert_eq!(body["tool_choice"], "auto");
+        assert!(body.get("response_format").is_none());
+
+        let mixed = req.clone().with_schema(SchemaId::new("controller.intro"));
+        assert!(client.request_body(&mixed, "small").is_err());
+
+        let answer = json!({
+            "model": "small",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call-1",
+                        "type": "function",
+                        "function": { "name": "guide.read", "arguments": "{\"id\":\"start\"}" }
+                    }]
+                }
+            }]
+        });
+        let response = client.parse_response(&answer, "small").unwrap();
+        assert!(response.text.is_empty());
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].name, "guide.read");
+        assert_eq!(response.tool_calls[0].arguments, "{\"id\":\"start\"}");
     }
 
     #[tokio::test]
@@ -502,5 +635,13 @@ complexity_ceiling = "medium"
         );
         assert!(split_url("no-scheme").is_err());
         assert!(split_url("http://host:not-a-port/").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tools_body {
+    #[test]
+    fn tools_body() {
+        super::tests::tools_body();
     }
 }

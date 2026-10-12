@@ -15,7 +15,7 @@ use crate::record::EventRecord;
 /// `apply` must be deterministic and idempotent per event: replay calls it for
 /// each committed event exactly once, and the same event must always produce the
 /// same state.
-pub trait EventApplier {
+pub trait EventApplier: Send {
     /// Apply one committed event.
     fn apply(&mut self, record: &EventRecord) -> Result<(), MmError>;
 

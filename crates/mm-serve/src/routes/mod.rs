@@ -34,7 +34,7 @@ const LOCAL_ORIGINS: &[&str] = &[
 mod changesets;
 mod chat;
 mod exec;
-mod focus;
+pub(crate) mod focus;
 mod runs;
 mod trees;
 
@@ -42,6 +42,7 @@ mod trees;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/state", get(console_state))
         .route("/api/focus", get(focus::list))
         .route("/api/focus/{doc_id}/draft", put(focus::save_draft))
         .route("/api/focus/{doc_id}/history", get(focus::history))
@@ -61,6 +62,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/chat/sessions/{session_id}/input-answer",
             post(chat::answer),
         )
+        .route("/api/chat/sessions/{session_id}/title", post(chat::rename))
         .route("/api/chat/sessions/{session_id}/branch", post(chat::branch))
         .route("/api/chat/{request_id}/stream", get(chat::stream))
         .route("/api/chat/{request_id}/stop", post(chat::stop))
@@ -75,6 +77,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(Arc::clone(&state))
         .layer(from_fn_with_state(state, access_log))
         .layer(from_fn(security_headers))
+}
+
+async fn console_state(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(crate::controller::tools::state::snapshot(&state).await)
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<HealthEnvelope> {
@@ -252,8 +258,7 @@ mod tests {
         assert_eq!(graph.status(), StatusCode::OK);
         let graph_body: serde_json::Value =
             serde_json::from_slice(&graph.into_body().collect().await.unwrap().to_bytes()).unwrap();
-        assert_eq!(graph_body["status"], "unavailable");
-        assert!(graph_body["reason"].as_str().unwrap().contains("RDF"));
+        assert_eq!(graph_body["status"], "saved");
 
         let created = app
             .oneshot(
@@ -492,7 +497,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/chat")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"query":"decide whether to continue"}"#))
+                    .body(Body::from(
+                        r#"{"query":"decide whether to continue","commandMode":true}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -614,7 +621,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/chat")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"query":"budget show"}"#))
+                    .body(Body::from(r#"{"query":"budget show","commandMode":true}"#))
                     .unwrap(),
             )
             .await

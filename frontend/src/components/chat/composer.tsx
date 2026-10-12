@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ImageChooser, type ImageAttachment } from "@/components/chat/image-chooser.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { COMMANDS } from "@/lib/commands.ts";
 import { useChatRefs } from "@/lib/store/chat-refs.ts";
 
 export function Composer({
@@ -19,11 +18,6 @@ export function Composer({
   const shownRefs = [...storedRefs, ...refs.filter((ref) => !storedRefs.includes(ref))];
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [imagesOpen, setImagesOpen] = useState(false);
-  const slash = draft.startsWith("/") ? draft.slice(1).toLowerCase() : null;
-  const matches = useMemo(
-    () => (slash === null ? [] : COMMANDS.filter((command) => command.id.includes(slash) || command.title.toLowerCase().includes(slash)).slice(0, 8)),
-    [slash],
-  );
 
   const send = () => {
     const text = draft.trim();
@@ -43,31 +37,17 @@ export function Composer({
 
   return (
     <form
-      className="space-y-2 border-t border-border p-3"
+      data-composer-form
+      className="border-border space-y-2 border-t p-3"
       onSubmit={(event) => {
         event.preventDefault();
         send();
       }}
     >
-      {matches.length ? (
-        <ul data-slash-menu role="listbox" className="rounded-md border border-border bg-background">
-          {matches.map((command) => (
-            <li key={command.id}>
-              <button
-                type="button"
-                className="w-full px-2 py-1 text-left text-sm hover:bg-muted"
-                onClick={() => setDraft(`${command.argv} `)}
-              >
-                {command.title}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
       {shownRefs.length ? (
         <ul className="flex flex-wrap gap-1">
           {shownRefs.map((ref) => (
-            <li key={ref} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+            <li key={ref} className="bg-muted rounded-md px-1.5 py-0.5 font-mono text-xs">
               {ref}
             </li>
           ))}
@@ -78,8 +58,8 @@ export function Composer({
         data-composer="true"
         rows={3}
         value={draft}
-        placeholder="Ask MetaMind. ⌘↵ sends."
-        className="w-full resize-none rounded-md border border-border bg-background px-2 py-1 text-sm"
+        placeholder="Ask Metamind…"
+        className="border-border w-full resize-none rounded-md border bg-background px-2 py-1 text-sm"
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -109,4 +89,8 @@ export function Composer({
       {imagesOpen ? <ImageChooser images={images} onChange={setImages} /> : null}
     </form>
   );
+}
+
+export function focusComposer() {
+  document.querySelector<HTMLElement>("#composer")?.focus();
 }

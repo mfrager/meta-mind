@@ -651,10 +651,12 @@ dialog.mm-dialog::backdrop {
   [data-sidebar-sheet],
   [data-topbar],
   [data-statusbar],
-  [data-chat-pane] {
+  [data-composer-form] {
     display: none !important;
   }
 
+  [data-chat-pane],
+  [data-side-pane],
   [data-doc-shell] {
     height: auto !important;
     overflow: visible !important;
