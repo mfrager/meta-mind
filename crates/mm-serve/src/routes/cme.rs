@@ -98,7 +98,7 @@ async fn frames_for(
     ];
     if outcome.is_success() {
         for chunk in &outcome.chunks {
-            if chunk.kind == ChunkKind::Text {
+            if matches!(chunk.kind, ChunkKind::Text | ChunkKind::ToolCall) {
                 continue;
             }
             frames.push(ChatFrame::Block {
