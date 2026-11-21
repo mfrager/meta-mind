@@ -226,24 +226,218 @@ Agent: "Plan: 1) Add MFA to current store, 2) Migrate sessions to Redis, 3) Cut 
 
 ---
 
-## 5. Conversation Pacing Patterns
+## 5. Response Modalities (Structured Output Modes)
 
-### 4.1 Problem-Solving Rhythm
+The agent can render responses in different **modalities** to match the user's cognitive need. Each modality is a structured template with configurable parameters. The user can request a modality explicitly (\"drill down on X\") or the agent can infer it from context.
+
+### 5.1 Modality Specification
+
+```json
+{
+  "modality": "bullets",
+  "detail_level": 2,
+  "include_headings": true,
+  "include_sources": true,
+  "max_bullets": 7,
+  "heading_style": "sentence_case"
+}
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `modality` | enum | `"auto"` | `bullets`, `drill_down`, `explain`, `zoom_out`, `summarize`, `narrative` |
+| `detail_level` | 1–3 | 2 | 1=concise, 2=standard, 3=exhaustive |
+| `include_headings` | bool | true | Whether to prefix bullets with bold headings |
+| `include_sources` | bool | false | Whether to append source citations per bullet |
+| `max_bullets` | int | 7 | Cap on bullet count |
+| `heading_style` | enum | `"sentence_case"` | `"sentence_case"`, `"lowercase"`, `"UPPERCASE"`, `"none"` |
+
+### 5.2 Modality Definitions
+
+#### `drill_down` — Deep Dive on a Specific Topic
+- **Trigger**: \"Drill down on X\", \"Go deeper on X\", \"Expand X\"
+- **Structure**: Hierarchical bullets (L1 → L2 → L3) with progressive disclosure
+- **Detail levels**:
+  - 1: 3–5 L1 bullets, no sub-bullets
+  - 2: 5–7 L1 bullets, 2–3 L2 sub-bullets each
+  - 3: 7–10 L1 bullets, full L2/L3 tree
+- **Example**:
+  ```
+  **Root Cause Analysis**
+    • Migration timeout on `add_index_users_email`
+      – Commit 3f2a1 increased lock duration
+      – Table size: 47M rows, no partitioning
+    • Connection pool exhaustion
+      – Pool size: 20, avg query 12s
+      – No query timeout configured
+  ```
+
+#### `explain` — Teach/Clarify a Concept
+- **Trigger**: \"Explain X\", \"How does X work?\", \"Why X?\"
+- **Structure**: Concept → Mechanism → Example → Common Pitfalls
+- **Detail levels**:
+  - 1: One-paragraph analogy + key takeaway
+  - 2: Definition + mechanism + 1 code example
+  - 3: Full mental model + multiple examples + edge cases + FAQ
+- **Example** (detail=2):
+  ```
+  **Partial Indexes in PostgreSQL**
+  A partial index only covers rows matching a WHERE clause.
+  
+  Mechanism: `CREATE INDEX ON users(email) WHERE active;`
+  → Smaller index, faster writes, same read speed for active users.
+  
+  Example: 47M users, 8% active → index 92% smaller.
+  
+  Pitfall: Queries without `WHERE active` can't use it.
+  ```
+
+#### `zoom_out` — High-Level Context / Big Picture
+- **Trigger**: \"Zoom out\", \"Big picture\", \"How does this fit?\", \"Context\"
+- **Structure**: Goal → Constraints → Alternatives → Trade-offs → Recommendation
+- **Detail levels**:
+  - 1: 3-sentence executive summary
+  - 2: Goal + 3 alternatives + 1 recommendation
+  - 3: Full decision matrix + risk assessment + long-term implications
+- **Example**:
+  ```
+  **Architecture Decision: Cache Layer**
+  Goal: Reduce p99 latency from 2.3s → <200ms for org lookup.
+  
+  Options:
+  1. Redis cache (recommended) — 90% hit rate, sub-ms reads, operational cost
+  2. Materialized view — zero infra, but stale data risk
+  3. Query optimization — fixes root cause, but limited ceiling
+  
+  Trade-off: Redis adds infra complexity for 10x latency improvement.
+  ```
+
+#### `summarize` — Condense Information
+- **Trigger**: \"Summarize\", \"TL;DR\", \"Key points\", \"Recap\"
+- **Structure**: Outcome → Key Decisions → Open Items → Next Steps
+- **Detail levels**:
+  - 1: 3 bullets max, outcome-focused
+  - 2: 5 bullets + 1-sentence context each
+  - 3: Full narrative + decisions + artifacts + open questions
+- **Example** (detail=2):
+  ```
+  **Deploy Debugging Session — Summary**
+  • **Outcome**: Root cause found — migration timeout on 47M-row table
+  • **Decision**: Add partial index + increase lock timeout; PR #247 opened
+  • **Open**: Cache invalidation strategy for org lookup (90% hit rate expected)
+  • **Next**: You handle caching; I'll monitor deploy metrics
+  • **Artifact**: PR #247 (migration fix), PR #248 (index + timeout)
+  ```
+
+#### `bullets` — Structured Bullet Points (General Purpose)
+- **Trigger**: \"Bullets\", \"List\", \"Break it down\", or default for complex answers
+- **Structure**: Configurable heading + bullet + optional source per bullet
+- **Detail levels** control bullet count, sub-bullet depth, and verbosity
+- **Sources**: When `include_sources: true`, appends `[source]` citation
+- **Example** (detail=2, headings=true, sources=true):
+  ```
+  **Migration Fixes**
+    • **Add partial index** — Covers only active users (8% of 47M rows) [PR #247]
+    • **Increase lock timeout** — 30s → 120s to accommodate index build [PR #247]
+    • **Add query timeout** — Prevent future pool exhaustion [PR #248]
+  
+  **Operational**
+    • **Monitor deploy metrics** — Watch p99 latency post-deploy [Grafana: deploy-latency]
+    • **Cache org lookup** — Redis layer, 90% hit rate expected [Design doc #12]
+  ```
+
+### 5.3 Modality Selection Logic
+
+```rust
+fn infer_modality(user_input: &str, context: &Context) -> ModalitySpec {
+    let lower = user_input.to_lowercase();
+    
+    // Explicit requests
+    if lower.contains("drill down") || lower.contains("go deeper") { return Modality::DrillDown; }
+    if lower.contains("explain") || lower.contains("how does") { return Modality::Explain; }
+    if lower.contains("zoom out") || lower.contains("big picture") { return Modality::ZoomOut; }
+    if lower.contains("summarize") || lower.contains("tl;dr") { return Modality::Summarize; }
+    if lower.contains("bullets") || lower.contains("list") { return Modality::Bullets; }
+    
+    // Contextual inference
+    if context.stakes > 0.7 && context.user_role == "lead" { return Modality::ZoomOut; }
+    if context.topic_complexity > 0.8 { return Modality::Explain; }
+    if context.previous_turn_was_long { return Modality::Summarize; }
+    
+    Modality::Auto // Default: agent chooses based on content
+}
+```
+
+### 5.4 Modality Parameters in Configuration
+
+```toml
+[conversation.modalities]
+default_modality = "auto"
+default_detail_level = 2
+default_include_headings = true
+default_include_sources = false
+default_max_bullets = 7
+
+# Per-modality overrides
+[conversation.modalities.drill_down]
+default_detail_level = 2
+max_bullets = 10
+
+[conversation.modalities.explain]
+default_detail_level = 2
+include_examples = true
+
+[conversation.modalities.zoom_out]
+default_detail_level = 2
+include_tradeoffs = true
+
+[conversation.modalities.summarize]
+default_detail_level = 2
+include_artifacts = true
+
+[conversation.modalities.bullets]
+default_detail_level = 2
+include_headings = true
+include_sources = false
+```
+
+### 5.5 Streaming Modality Output
+
+Each modality streams as chunks following the standard pacing rules:
+
+```
+User: "Drill down on the migration timeout"
+Agent: "Drilling down on migration timeout..."                    [chunk 1, modality=drill_down]
+Agent: "**Root Cause: Lock Contention**"                          [chunk 2, heading]
+Agent: "• Commit 3f2a1: ALTER TABLE users ADD INDEX..."           [chunk 3, bullet L1]
+Agent: "  – Lock held 47s during index build on 47M rows"         [chunk 4, bullet L2]
+Agent: "  – No partitioning → full table lock"                    [chunk 5, bullet L2]
+Agent: "**Contributing Factor: Pool Exhaustion**"                 [chunk 6, heading]
+Agent: "• Pool: 20 connections, avg query 12s"                    [chunk 7, bullet]
+Agent: "• No statement_timeout configured"                        [chunk 8, bullet]
+Agent: "Want me to zoom out on the architecture implications?"    [chunk 9, follow-up]
+```
+
+---
+
+## 6. Conversation Pacing Patterns
+
+### 6.1 Problem-Solving Rhythm
 ```
 [User problem] → [Agent: 1 clarification] → [Agent: background lookup] → [Agent: finding + 1 next step] → [User decides] → [Agent: executes in chunks] → [Agent: result + 1 follow-up question]
 ```
 
-### 4.2 Exploration Rhythm
+### 6.2 Exploration Rhythm
 ```
 [User topic] → [Agent: 3 perspectives] → [User picks] → [Agent: deep-dive chunk 1] → [pause] → [Agent: chunk 2] → [User interrupts or continues] → ...
 ```
 
-### 4.3 Routine/Check-in Rhythm
+### 6.3 Routine/Check-in Rhythm
 ```
 [Periodic, e.g., daily] → [Agent: "Deploy pipeline green. One warning: dependency X has CVE. Fix now or schedule?"] → [User decides] → [Done]
 ```
 
-### 4.4 Pacing Controls (Internal)
+### 6.4 Pacing Controls (Internal)
 | Metric | Target |
 |---|---|
 | Chunks per agent "turn" | 1–4 |
@@ -254,7 +448,7 @@ Agent: "Plan: 1) Add MFA to current store, 2) Migrate sessions to Redis, 3) Cut 
 
 ---
 
-## 6. State Tracking for Proactivity
+## 7. State Tracking for Proactivity
 
 Minimal persistent counters (reset per session or project):
 
@@ -276,7 +470,7 @@ struct ProactiveState {
 
 ---
 
-## 7. Anti-Patterns (What Not To Do)
+## 8. Anti-Patterns (What Not To Do)
 
 | Anti-Pattern | Correction |
 |---|---|
@@ -290,14 +484,14 @@ struct ProactiveState {
 
 ---
 
-## 8. Implementation Notes
+## 9. Implementation Notes
 
-### 7.1 Streaming Architecture
+### 9.1 Streaming Architecture
 - SSE frames: `type: "chunk"`, `content: "..."`, `pause_ms: 400`
 - Client renders incrementally; server can cancel queued chunks on interruption
 - `X-Request-Id` correlation for traceability
 
-### 7.2 Proactive Trigger Evaluation (per user message)
+### 9.2 Proactive Trigger Evaluation (per user message)
 ```
 IF user expresses problem/uncertainty → queue background lookup
 IF topic_frequency[topic] > 2 AND not recently suggested → queue suggestion
@@ -306,7 +500,7 @@ IF stakes LOW AND session > 10 turns AND jokes_this_session == 0 → queue joke
 IF user completed meaningful task → queue compliment
 ```
 
-### 7.3 Turn Construction
+### 9.3 Turn Construction
 ```
 build_turn(user_input, proactive_queue) -> Vec<Chunk>
   1. Process interruption (clear queue if topic changed)
@@ -318,7 +512,7 @@ build_turn(user_input, proactive_queue) -> Vec<Chunk>
 
 ---
 
-## 9. Example Full Exchange
+## 10. Example Full Exchange
 
 ```
 User: "The API is slow again."
@@ -337,7 +531,7 @@ Agent: "Nice call splitting the work — caching is lower risk separate." [chunk
 
 ---
 
-## 10. Configuration Knobs (Per-User/Per-Project)
+## 11. Configuration Knobs (Per-User/Per-Project)
 
 ```toml
 [conversation]
@@ -354,3 +548,23 @@ pace_adaptation = true
 ---
 
 *This design keeps the agent feeling like a competent colleague who talks in bursts, listens well, jumps in with useful work, and never monopolizes the conversation.*
+
+---
+
+## Related Designs
+
+| Document | Purpose |
+|---|---|
+| `conversation/conversation_management_engine.md` | CME architecture: event-driven loop, data model, streaming protocol, voice tiers |
+| `conversation/conversation_engine_improvements.md` | Comprehensive improvements: turn planning, speculative execution, compression, preference learning, multi-LLM routing, plugins, prosody, testing, cross-session memory |
+| `conversation/turn_planning.md` | Deterministic TurnPlan with chunk directives, LLM prompt templates, validation |
+| `conversation/speculative_execution.md` | ASR-LLM overlap, prediction models, KV cache prefetch, latency analysis |
+| `conversation/conversation_compression.md` | Structured compression with narrative + artifacts, semantic retrieval, project aggregation |
+| `conversation/preference_learning.md` | Implicit Bayesian preference learning from behavioral signals, application in TurnPlanner |
+| `conversation/multi_llm_routing.md` | Task-aware model selection, routing table, fallback chains, auto-optimization |
+| `conversation/proactive_plugin_system.md` | Plugin architecture for proactive behaviors, WASM support, built-in plugins |
+| `conversation/voice_prosody.md` | Dynamic TTS prosody from affect detection, context rules, baseline learning |
+| `conversation/synthetic_testing.md` | Declarative YAML test DSL, personas, assertion checkers, CI integration |
+| `conversation/cross_session_memory.md` | Cross-session continuity: session→segment→project→user memory hierarchy, sync, privacy |
+
+See also: `DESIGN_INDEX.md` for the complete design catalog.

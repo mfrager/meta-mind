@@ -481,7 +481,121 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 | `state_structure1.md` | Minimal persistent state |
 | `companion_loop2.md` | Goal-directed agent architecture |
 | `personality_simulator3.md` | Contextual personality system |
+| `conversation/proactive_conversation.md` | Proactive conversation design, pacing, questionnaires |
+| `conversation/conversation_management_engine.md` | CME architecture, voice tiers, streaming, tool calling |
+| `conversation/conversation_engine_improvements.md` | Comprehensive CME improvements (turn planning, speculative execution, etc.) |
+| `conversation/turn_planning.md` | Deterministic turn planning, chunk structure, proactive injection |
+| `conversation/speculative_execution.md` | ASR-LLM overlap, prediction models, KV cache reuse |
+| `conversation/conversation_compression.md` | Structured conversation compression, semantic retrieval |
+| `conversation/preference_learning.md` | Implicit Bayesian preference learning from behavioral signals |
+| `conversation/multi_llm_routing.md` | Task-aware model selection, routing table, performance tracking |
+| `conversation/proactive_plugin_system.md` | Plugin architecture for proactive behaviors, WASM support |
+| `conversation/voice_prosody.md` | Dynamic TTS prosody from affect, context, learned baselines |
+| `conversation/synthetic_testing.md` | Declarative conversation testing, personas, CI integration |
+| `conversation/cross_session_memory.md` | Cross-session continuity, project/user memory, sync |
 
 ---
 
-*Generated from design directory analysis. This index reflects the actual ideas and architectural decisions as documented; it is not a planned or aspirational summary.*
+## XIV. Conversation & Voice Architecture (New Designs)
+
+### A. Proactive Conversation Design (`conversation/proactive_conversation.md`)
+1. **Core Principles** — brevity, proactivity, pacing, interruptibility
+2. **Agent Introduction & Onboarding** — in-character intros, questionnaires (full + name-only)
+3. **Message Segmentation & Streaming** — micro-turns, pauses, interruption handling
+4. **Proactive Behaviors** — search/lookup, suggestions, corrections, compliments, jokes, brainstorming, Q/A, goal narrowing
+5. **Pacing Patterns** — problem-solving, exploration, routine rhythms
+6. **State Tracking** — topic frequency, pace adaptation
+7. **Configuration** — TOML knobs for all behaviors
+
+### B. Conversation Management Engine (`conversation/conversation_management_engine.md`)
+1. **Architecture** — CME between UIs and LLM backends, event-driven loop
+2. **Data Model** — Session, Turn, Chunk, StructuredCard, ProactiveQueue
+3. **Runtime Loop** — User messages, proactive timers, tool results, LLM chunks, interrupts
+4. **Prompt Assembly** — Structured prompts with CME directives
+5. **Streaming Protocol** — SSE frames: text, structured_card, system, control
+6. **Questionnaire Engine** — State machine with persistence, interrupt/resume
+7. **Voice Interface Support** (3 tiers):
+   - Tier 1: ASR → LLM → TTS (request/response)
+   - Tier 2: Streaming ASR → Streaming LLM → Streaming TTS (overlapped)
+   - Tier 3: Full-duplex realtime (GPT-4o Realtime, Gemini Live) with inline tool calling
+6. **Unified Session** — Single session across text + all voice tiers, tier negotiation/failover
+7. **Audio I/O Abstractions** — ASR/TTS/Realtime traits for provider flexibility
+
+### C. Engine Improvements (`conversation/conversation_engine_improvements.md`)
+1. **Deterministic Turn Planning** — TurnPlan with chunk directives, validation
+2. **Speculative Execution** — ASR-LLM overlap, prediction models, KV cache reuse
+3. **Structured Conversation Compression** — Narrative + artifacts, semantic retrieval
+4. **Implicit Preference Learning** — Bayesian inference from behavioral signals
+5. **Multi-LLM Routing** — Task classification, routing table, auto-optimization
+6. **Proactive Plugin System** — WASM plugins, built-ins (deploy, code health, security, conventions)
+7. **Voice Prosody Adaptation** — Affect detection, prosody profiles, baseline learning
+8. **Synthetic Testing Framework** — Declarative YAML tests, personas, CI integration
+9. **Cross-Session Continuity** — Project/user memory, sync, privacy controls
+
+### D. Turn Planning (`conversation/turn_planning.md`)
+- TurnPlan specification with chunk roles, directives, validation
+- LLM prompt template with structured chunk directives
+- Proactive injection at plan time
+- Synthetic test cases
+
+### E. Speculative Execution (`conversation/speculative_execution.md`)
+- Completion predictors (n-gram, lightweight LM, domain heuristics)
+- Prefetch manager with KV cache
+- Latency analysis: 450ms improvement at 85% hit rate
+- Fallback for unsupported backends
+
+### F. Conversation Compression (`conversation/conversation_compression.md`)
+- CompressedSegment with narrative + structured artifacts
+- Two-stage extraction (JSON + narrative)
+- Semantic retrieval via vector index + structured queries
+- Project-level aggregation with continuation suggestions
+- Incremental streaming compression
+
+### G. Preference Learning (`conversation/preference_learning.md`)
+- 6 preference dimensions (verbosity, technical_depth, initiative, formality, code_verbosity, explanation_style)
+- Bayesian update from behavioral signals
+- Evidence decay and forgetting
+- Application in TurnPlanner (adapts chunk structure, detail level, proactive frequency)
+- Questionnaire seeding for cold start
+
+### H. Multi-LLM Routing (`conversation/multi_llm_routing.md`)
+- 12 task types across 7 categories
+- Default catalog: Claude 3.5 Sonnet, GPT-4o, o1, Haiku, 4o-mini, local models, GPT-4o Realtime
+- Task classifier with fast LLM
+- Fallback chains per task
+- Performance tracking with auto-optimization
+- Session-level preferences (cost/latency/privacy sensitivity)
+
+### I. Proactive Plugin System (`conversation/proactive_plugin_system.md`)
+- ProactivePlugin trait with triggers, config schema, evaluation
+- Built-in plugins: Deploy Monitor, Code Health, Security Scanner, Team Conventions
+- PluginRegistry with config, WASM dynamic loading
+- Evaluation loop integration with cooldown/confidence filtering
+- Per-user/project TOML configuration
+
+### J. Voice Prosody (`conversation/voice_prosody.md`)
+- 8 affect states with dedicated prosody profiles
+- Multi-modal affect detection (text, audio, behavioral, explicit)
+- ProsodyController with baseline adaptation and context rules
+- SSML generation (Tier 1/2) + Realtime instructions (Tier 3)
+- Baseline learning from audio + text preferences
+
+### K. Synthetic Testing (`conversation/synthetic_testing.md`)
+- Declarative YAML test DSL with personas, turn expectations, success criteria
+- 8 assertion checkers (chunk count, content, pauses, prosody, proactive items, actions)
+- 5 built-in personas (impatient_engineer, interruptive_user, frustrated_user, curious_learner, casual_user)
+- CI integration with regression detection
+- Test organization by category
+
+### L. Cross-Session Memory (`conversation/cross_session_memory.md`)
+- 4-tier hierarchy: Session → Compressed Segments → Project Memory → User Memory
+- Compression pipeline with structured extraction + narrative + embedding
+- Project memory aggregation with continuation suggestions
+- Session resume with personalized greetings and context
+- Multi-device sync with presence, handoff (voice↔text)
+- Cross-project learning (expertise, conventions, communication patterns)
+- Privacy controller with granular policies, ephemeral mode
+
+---
+
+*This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*
