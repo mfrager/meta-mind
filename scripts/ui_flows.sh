@@ -3,9 +3,8 @@
 # No language-model provider is called. The script boots mm-serve, checks the
 # kernel's own sentences, and stops the process.
 #
-# Chat posts send "commandMode": true. That flag keeps the first-word classifier,
-# which is what these sentences belong to. The web client omits the flag and
-# talks to the controller.
+# Chat posts talk to the scripted controller. The kernel sentences below are
+# the ones the console still owes without a model.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,7 +34,12 @@ if ss -ltn | grep -Eq ":${PORT}([^0-9]|$)"; then
   exit 1
 fi
 
-cargo run -q -p mm-serve -- --data-dir "$DATA" --port "$PORT" >/tmp/mm-ui-flows.log 2>&1 &
+OPENAI_BASE_URL= OPENAI_API_KEY= \
+  TMPDIR="${TMPDIR:-$HOME/tmp}" \
+  CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}" \
+  cargo run -q -p mm-serve -- --data-dir "$DATA" --port "$PORT" \
+  --controller-script "$ROOT/crates/mm-serve/tests/fixtures/ui_flows_script.json" \
+  >/tmp/mm-ui-flows.log 2>&1 &
 PID=$!
 
 ready=""
@@ -95,16 +99,8 @@ chat() {
     -d "$1"
 }
 
-need budget "$(chat '{"query":"budget show","commandMode":true}')" "meta_analysis"
-need budget "$(chat '{"query":"budget show","commandMode":true}')" "Open the budgets tree"
-need decide "$(chat '{"query":"decide whether to continue","commandMode":true}')" "no decision core is bound on this route"
-need being "$(chat '{"query":"being goal add","commandMode":true}')" "the being store is opened with the RDF graph, and this route does not open that store"
-need promote "$(chat '{"query":"promote","commandMode":true}')" "use the change-set flow"
-need sandbox "$(chat '{"query":"sandbox run","commandMode":true}')" "no sandbox run was recorded for this request"
-need audit "$(chat '{"query":"audit production-tree","commandMode":true}')" "no production audit was recorded for this data directory"
-need stage "$(chat '{"query":"why is stage 6 slow?","commandMode":true}')" "No stage timings are recorded for this run."
-need graph "$(chat '{"query":"graph","commandMode":true}')" "RDF"
-need changes "$(chat '{"query":"changeset show","commandMode":true}')" "No change sets are recorded."
+need budget "$(chat '{"query":"show the budgets"}')" "meta_analysis"
+need changes "$(chat '{"query":"promote a change set"}')" "No change sets are recorded."
 
 load_code="$(curl -s -o /tmp/mm-ui-load.json -w '%{http_code}' -X POST "$BASE/api/modules/01jmodule0000000000000000/load")"
 if [[ "$load_code" != "409" ]]; then

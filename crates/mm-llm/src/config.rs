@@ -86,6 +86,12 @@ pub struct ModelSpec {
     pub typical_latency_ms: u32,
     /// The hardest complexity this model is allowed to take.
     pub complexity_ceiling: Complexity,
+    /// True when this spec names a deterministic test double rather than a model a
+    /// provider serves. Such a spec may be pinned (the mock client and a recorded
+    /// replay both need its name) but is never chosen automatically: its name is
+    /// not a request a real endpoint can answer.
+    #[serde(default)]
+    pub mock: bool,
 }
 
 impl ModelSpec {
@@ -338,6 +344,7 @@ complexity_ceiling = "very_high"
             output_cost_micros_per_1k: 600,
             typical_latency_ms: 1,
             complexity_ceiling: Complexity::Low,
+            mock: false,
         };
         assert_eq!(spec.cost_micros(0, 0), 0);
         assert_eq!(spec.cost_micros(1000, 1000), 150 + 600);

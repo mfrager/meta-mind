@@ -1,10 +1,7 @@
 //! Chat sessions and runs (plan `08`, `09` §3).
 //!
-//! There is no language-model provider on this route. A query that names a
-//! kernel operation runs that operation; anything else is a passthrough the
-//! transcript shows as unregistered. Budget, doctor, logs, and the graph
-//! service read the kernel. Other named operations return their own reason
-//! instead of an invented result.
+//! The controller is the executor. This module stores sessions, frames, and
+//! the confirmation a parked tool is waiting on.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -14,16 +11,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::dto::chat::{ChatFrame, Phase};
+use crate::dto::chat::ChatFrame;
 use crate::error::AppError;
-use crate::parity::{self, COMMANDS};
-use crate::state::AppState;
+use crate::parity::COMMANDS;
 
 pub const STAGE_REASON: &str = "No stage timings are recorded for this run.";
 pub const BEING_REASON: &str =
     "the being store is opened with the RDF graph, and this route does not open that store";
 pub const PROMOTE_REASON: &str = "use the change-set flow";
-pub const AUDIT_REASON: &str = "no production audit was recorded for this data directory";
 pub const RUN_REASON: &str = "no run is recorded";
 
 const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
@@ -34,12 +29,22 @@ struct Session {
     run_ids: Vec<String>,
 }
 
+/// A tool call parked until the operator presses a button.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingCall {
+    pub name: String,
+    pub input: Value,
+    pub call_id: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct Run {
     session_id: String,
     query: String,
     state: String,
     frames: Vec<ChatFrame>,
+    #[serde(default)]
+    pending: Option<PendingCall>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -148,6 +153,7 @@ impl ChatCatalog {
                 query,
                 state: "processing".into(),
                 frames: Vec::new(),
+                pending: None,
             },
         );
         self.lock_sessions()?
@@ -170,6 +176,79 @@ impl ChatCatalog {
             .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
         run.state = state.into();
         run.frames = frames;
+        let numbered = numbered(&run.frames);
+        drop(runs);
+        self.persist();
+        Ok(numbered)
+    }
+
+    /// Park a controller turn. The button still works after a restart.
+    pub fn finish_waiting(
+        &self,
+        request_id: &str,
+        frames: Vec<ChatFrame>,
+        pending: PendingCall,
+    ) -> Result<Vec<(u64, ChatFrame)>, AppError> {
+        let mut runs = self.lock_runs()?;
+        let run = runs
+            .get_mut(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        run.state = "waiting".into();
+        run.frames = frames;
+        run.pending = Some(pending);
+        let numbered = numbered(&run.frames);
+        drop(runs);
+        self.persist();
+        Ok(numbered)
+    }
+
+    pub fn run_state(&self, request_id: &str) -> Result<String, AppError> {
+        let runs = self.lock_runs()?;
+        let run = runs
+            .get(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        Ok(run.state.clone())
+    }
+
+    /// Take the parked call. A run that is not waiting is rejected.
+    pub fn take_pending(&self, request_id: &str) -> Result<PendingCall, AppError> {
+        let mut runs = self.lock_runs()?;
+        let run = runs
+            .get_mut(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        if run.state != "waiting" {
+            return Err(AppError::BadRequest("this run is not waiting".into()));
+        }
+        let pending = run
+            .pending
+            .take()
+            .ok_or_else(|| AppError::BadRequest("this run is not waiting".into()))?;
+        run.state = "processing".into();
+        drop(runs);
+        self.persist();
+        Ok(pending)
+    }
+
+    pub fn session_waiting(&self, session_id: &str) -> Result<bool, AppError> {
+        Ok(self
+            .lock_runs()?
+            .values()
+            .any(|run| run.session_id == session_id && run.state == "waiting"))
+    }
+
+    pub fn append_frames(
+        &self,
+        request_id: &str,
+        frames: Vec<ChatFrame>,
+        state: &str,
+    ) -> Result<Vec<(u64, ChatFrame)>, AppError> {
+        let mut runs = self.lock_runs()?;
+        let run = runs
+            .get_mut(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        run.frames.extend(frames);
+        run.state = state.into();
+        run.pending = None;
         let numbered = numbered(&run.frames);
         drop(runs);
         self.persist();
@@ -254,6 +333,7 @@ impl ChatCatalog {
             text,
             blocks: None,
             suggestions,
+            unbacked: None,
         });
         let numbered = numbered(&run.frames);
         drop(runs);
@@ -290,6 +370,7 @@ impl ChatCatalog {
             text: format!("Branched from {session_id}."),
             blocks: None,
             suggestions: None,
+            unbacked: None,
         });
         let query = source.query.clone();
         drop(runs);
@@ -355,10 +436,6 @@ pub fn wired_op_count() -> usize {
     COMMANDS.len()
 }
 
-pub fn classify(query: &str) -> &'static str {
-    parity::classify(query)
-}
-
 pub fn validate_attachments(attachments: &[Value]) -> Result<(), AppError> {
     if attachments.len() > 6 {
         return Err(AppError::BadRequest("at most 6 images".into()));
@@ -376,211 +453,6 @@ pub fn validate_attachments(attachments: &[Value]) -> Result<(), AppError> {
         }
     }
     Ok(())
-}
-
-pub async fn execute(app: &AppState, name: &str, query: &str) -> (bool, Value) {
-    match name {
-        "budget show" | "doctor" | "logs" | "graph" | "changeset show" => {
-            crate::controller::exec::command_output(app, name).await
-        }
-        "meta analyze" => (
-            false,
-            json!({ "status": "unavailable", "reason": STAGE_REASON }),
-        ),
-        "audit" => (
-            false,
-            json!({ "status": "unavailable", "reason": AUDIT_REASON }),
-        ),
-        "module" | "design" | "promote" => (
-            false,
-            json!({ "status": "conflict", "reason": PROMOTE_REASON }),
-        ),
-        "being" => (
-            false,
-            json!({ "status": "unavailable", "reason": BEING_REASON }),
-        ),
-        "passthrough" => (
-            false,
-            json!({
-                "status": "unavailable",
-                "reason": format!("no operation is registered for {query}"),
-            }),
-        ),
-        other => (false, unavailable(other)),
-    }
-}
-
-pub fn plan_frames(
-    request_id: &str,
-    session_id: &str,
-    query: &str,
-    op: &str,
-    success: bool,
-    output: Value,
-    cancelled: bool,
-    attachment_count: usize,
-    refs: &[String],
-    focus: Option<Value>,
-) -> Vec<ChatFrame> {
-    let turn_id = format!("{request_id}-turn");
-    let call_id = format!("{request_id}-op");
-    let mut text = if success {
-        format!("Ran {op}.")
-    } else {
-        output
-            .get("reason")
-            .and_then(Value::as_str)
-            .unwrap_or("The operation did not run.")
-            .to_string()
-    };
-    if attachment_count > 0 {
-        text.push_str(
-            " This route records images as attachments; the model will see captions only.",
-        );
-    }
-    if !refs.is_empty() {
-        text.push_str(" Attached ");
-        text.push_str(&refs.join(" "));
-        text.push('.');
-    }
-    let suggestions = (op == "budget show").then(|| vec!["Open the budgets tree".to_string()]);
-    let mut frames = vec![
-        ChatFrame::Started {
-            query: query.into(),
-        },
-        ChatFrame::Run {
-            request_id: request_id.into(),
-            session_id: session_id.into(),
-            query: query.into(),
-        },
-        ChatFrame::LlmRequestStarted {
-            turn_id: turn_id.clone(),
-            phase: Phase::Plan,
-            subsystem: None,
-            turn_number: 1,
-            visible: true,
-            voice: None,
-        },
-        ChatFrame::LlmResponse {
-            turn_id: turn_id.clone(),
-            phase: Phase::Plan,
-            text: format!("Running {op}."),
-            visible: true,
-            is_final: false,
-        },
-        ChatFrame::LlmRequestFinished {
-            turn_id: turn_id.clone(),
-            outcome: "response".into(),
-            error: None,
-        },
-        ChatFrame::LlmRequestStarted {
-            turn_id: turn_id.clone(),
-            phase: Phase::Act,
-            subsystem: Some("kernel".into()),
-            turn_number: 2,
-            visible: true,
-            voice: None,
-        },
-        ChatFrame::ToolCall {
-            id: call_id.clone(),
-            turn_id: turn_id.clone(),
-            phase: Phase::Act,
-            name: op.into(),
-            input: json!({ "query": query }),
-        },
-        ChatFrame::ToolResult {
-            id: call_id,
-            turn_id: turn_id.clone(),
-            name: op.into(),
-            success,
-            output,
-            duration_ms: 0,
-        },
-    ];
-    if op == "decide" {
-        frames.push(ChatFrame::InputRequest {
-            id: format!("{request_id}-choice"),
-            request: json!({
-                "kind": "buttons",
-                "prompt": "No decision was recorded. Record a choice anyway?",
-                "columns": 2,
-                "variant": "confirm",
-                "options": [
-                    { "label": "Accept", "value": "accept" },
-                    { "label": "Challenge", "value": "challenge" }
-                ]
-            }),
-        });
-    }
-    if op == "being" && query.to_ascii_lowercase().contains("goal add") {
-        frames.push(ChatFrame::InputRequest {
-            id: format!("{request_id}-goal"),
-            request: json!({
-                "kind": "form",
-                "purpose": "being-goal",
-                "prompt": "Add a goal. The being store stays closed on this route.",
-                "fields": [
-                    { "name": "title", "label": "Title" },
-                    { "name": "timescale", "label": "Timescale" },
-                    { "name": "criteria", "label": "Success criteria" }
-                ]
-            }),
-        });
-    }
-    if op == "promote" {
-        frames.push(ChatFrame::InputRequest {
-            id: format!("{request_id}-promote"),
-            request: json!({
-                "kind": "buttons",
-                "purpose": "promote",
-                "prompt": "Promote writes production only through a change set.",
-                "columns": 3,
-                "options": [
-                    { "label": "Approve", "value": "approve" },
-                    { "label": "Reject", "value": "reject" },
-                    { "label": "Defer", "value": "defer" }
-                ]
-            }),
-        });
-    }
-    if let Some(doc) = focus {
-        frames.push(ChatFrame::Focus { doc });
-    }
-    if cancelled {
-        frames.push(ChatFrame::Failed {
-            error: "cancelled".to_string(),
-            reason: Some("cancelled".into()),
-        });
-        return frames;
-    }
-    frames.push(ChatFrame::LlmRequestFinished {
-        turn_id,
-        outcome: "response".into(),
-        error: None,
-    });
-    frames.push(ChatFrame::FinalResponse {
-        response_id: request_id.into(),
-        text,
-        blocks: None,
-        suggestions,
-    });
-    frames.push(ChatFrame::Completed {
-        subsystems: vec!["kernel".into()],
-    });
-    frames
-}
-
-fn unavailable(name: &str) -> Value {
-    let reason = match name {
-        "decide" => "no decision core is bound on this route",
-        "firewall eval" => "no firewall evaluation was recorded for this request",
-        "verify run" => "no proof was recorded for this request",
-        "sandbox run" => "no sandbox run was recorded for this request",
-        "replay" => "no replay was recorded for this request",
-        "risk analyze" => "no risk analysis was recorded for this request",
-        _ => "this operation is not bound on the chat route yet",
-    };
-    json!({ "status": "unavailable", "reason": reason })
 }
 
 fn numbered(frames: &[ChatFrame]) -> Vec<(u64, ChatFrame)> {

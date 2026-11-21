@@ -64,6 +64,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/chat/sessions/{session_id}/title", post(chat::rename))
         .route("/api/chat/sessions/{session_id}/branch", post(chat::branch))
+        .route("/api/chat/{request_id}/answer", post(chat::answer_run))
         .route("/api/chat/{request_id}/stream", get(chat::stream))
         .route("/api/chat/{request_id}/stop", post(chat::stop))
         .route("/api/chat/{request_id}/regenerate", post(chat::regenerate))
@@ -487,9 +488,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chat_decide_answer_budget_and_resume() {
+    async fn chat_answer_budget_and_resume() {
         assert!(crate::chat::wired_op_count() >= 20);
-        let (_dir, app) = booted().await;
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = mm_core::Config::for_data_dir(dir.path());
+        let lock = crate::state::ConsoleLock::acquire(dir.path()).unwrap();
+        let state = Arc::new(crate::state::AppState::boot(cfg, lock).await.unwrap());
+        let script = vec![
+            mm_llm::ScriptedResponse::text("").with_tool_calls(vec![mm_llm::ProviderToolCall {
+                id: "mem".into(),
+                name: "memory.add".into(),
+                arguments: r#"{"kind":"semantic","content":"the migration order is fixed"}"#.into(),
+            }]),
+            mm_llm::ScriptedResponse::text("Stored."),
+            mm_llm::ScriptedResponse::text("").with_tool_calls(vec![
+                mm_llm::ProviderToolCall {
+                    id: "open".into(),
+                    name: "catalog.open".into(),
+                    arguments: r#"{"group":"change"}"#.into(),
+                },
+                mm_llm::ProviderToolCall {
+                    id: "budget".into(),
+                    name: "budget.show".into(),
+                    arguments: "{}".into(),
+                },
+            ]),
+            mm_llm::ScriptedResponse::text("Those are the four budget rows."),
+        ];
+        let client: Arc<dyn mm_llm::LlmClient> = Arc::new(mm_llm::MockClient::script(script));
+        *state.controller_model.lock().unwrap() =
+            crate::controller::ControllerModel::Scripted(client);
+        let app = router(state);
+
         let opened = app
             .clone()
             .oneshot(
@@ -497,9 +527,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/chat")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        r#"{"query":"decide whether to continue","commandMode":true}"#,
-                    ))
+                    .body(Body::from(r#"{"query":"remember this"}"#))
                     .unwrap(),
             )
             .await
@@ -515,7 +543,7 @@ mod tests {
                 .to_vec(),
         )
         .unwrap();
-        assert!(raw.contains("no decision core is bound on this route"));
+        assert!(raw.contains("\"type\":\"input_request\""));
         let request_id = raw
             .split("data: ")
             .filter_map(|chunk| {
@@ -526,37 +554,15 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        let session_id = raw
-            .split("data: ")
-            .filter_map(|chunk| {
-                serde_json::from_str::<serde_json::Value>(chunk.lines().next()?).ok()
-            })
-            .find(|frame| frame["type"] == "run")
-            .unwrap()["sessionId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let choice_id = raw
-            .split("data: ")
-            .filter_map(|chunk| {
-                serde_json::from_str::<serde_json::Value>(chunk.lines().next()?).ok()
-            })
-            .find(|frame| frame["type"] == "input_request")
-            .unwrap()["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
 
         let answered = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/chat/sessions/{session_id}/input-answer"))
+                    .uri(format!("/api/chat/{request_id}/answer"))
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(format!(
-                        r#"{{"id":"{choice_id}","answer":"accept"}}"#
-                    )))
+                    .body(Body::from(r#"{"answer":"Approve"}"#))
                     .unwrap(),
             )
             .await
@@ -573,7 +579,7 @@ mod tests {
             .unwrap()["frame"]["text"]
             .as_str()
             .unwrap();
-        assert_eq!(echo, "✓ Accept");
+        assert_eq!(echo, "Stored.");
 
         let resumed = app
             .clone()
@@ -621,7 +627,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/chat")
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"query":"budget show","commandMode":true}"#))
+                    .body(Body::from(r#"{"query":"show the budgets"}"#))
                     .unwrap(),
             )
             .await
@@ -637,6 +643,5 @@ mod tests {
         )
         .unwrap();
         assert!(budget_raw.contains("meta_analysis"));
-        assert!(budget_raw.contains("Open the budgets tree"));
     }
 }

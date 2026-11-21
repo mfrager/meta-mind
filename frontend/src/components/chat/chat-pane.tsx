@@ -5,8 +5,8 @@ import { Composer } from "@/components/chat/composer.tsx";
 import { SuggestionChips } from "@/components/chat/chat-form.tsx";
 import type { ImageAttachment } from "@/components/chat/image-chooser.tsx";
 import { TranscriptView } from "@/components/chat/transcript-view.tsx";
-import { answerInput, branchChat, createSession, openChat, regenerateChat, resumeChat, stopChat } from "@/lib/api/chat.ts";
-import { useChatPending } from "@/lib/store/chat-pending.ts";
+import { answerInput, answerRun, branchChat, createSession, openChat, regenerateChat, resumeChat, stopChat } from "@/lib/api/chat.ts";
+import { useChatPending, type PanePropose } from "@/lib/store/chat-pending.ts";
 import { useSessionStore } from "@/lib/store/session.ts";
 import { applyControllerFocus, useSideStore, type LastAction } from "@/lib/store/side.ts";
 import { initialTranscript, reduceFrames, type TranscriptItem, type TranscriptState } from "@/lib/transcript/reducer.ts";
@@ -67,12 +67,13 @@ export function ChatPane() {
   useEffect(() => {
     if (!sessionId || !pending) return;
     const text = useChatPending.getState().take();
-    if (text) void send(text, [], []);
+    const propose = useChatPending.getState().takePropose();
+    if (text) void send(text, [], [], propose ?? undefined);
     // send closes over sessionId; pending is the trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, pending]);
 
-  const send = async (query: string, refs: string[], attachments: ImageAttachment[]) => {
+  const send = async (query: string, refs: string[], attachments: ImageAttachment[], propose?: PanePropose) => {
     if (useSessionStore.getState().title === "Chat") {
       useSessionStore.getState().setTitle(query.trim().slice(0, 60));
     }
@@ -89,6 +90,7 @@ export function ChatPane() {
           side.mode === "document" && side.doc
             ? { id: side.doc.id, title: side.doc.title }
             : { id: "state", title: "State" },
+        propose,
       });
       setState((current) => reduceFrames(current, frames));
     } catch (error) {
@@ -99,8 +101,13 @@ export function ChatPane() {
   };
 
   const answer = async (id: string, value: string) => {
-    if (!sessionId) return;
-    const frames = await answerInput(sessionId, id, value);
+    if (!sessionId || !state.requestId) return;
+    const item = state.items.find((entry) => entry.kind === "input_request" && entry.id === id);
+    const purpose = item && item.kind === "input_request" ? item.request.purpose : undefined;
+    const frames =
+      purpose === "controller"
+        ? await answerRun(state.requestId, value)
+        : await answerInput(sessionId, id, value);
     setState((current) => reduceFrames(current, frames));
   };
 
@@ -132,7 +139,7 @@ export function ChatPane() {
   useEffect(() => {
     const action = lastActionOf(state.items);
     useSideStore.getState().setLastAction(action);
-    if (action?.ok && (action.name.startsWith("being.") || action.name === "budget.show")) {
+    if (action?.ok && (action.name.startsWith("being.") || action.name === "budget.show" || action.name === "focus.patch")) {
       useSideStore.getState().bump();
     }
   }, [state.items]);

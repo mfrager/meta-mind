@@ -1,0 +1,487 @@
+# MetaMind Design Index
+
+Three-level outline of all design ideas, components, and architectural decisions across the design directory.
+
+---
+
+## I. Source Architecture (Digital Mind Design)
+
+### A. Executive Architecture (Five Strata)
+1. **Being Substrate** — identity, persistent memory, relationships, goals, commitments, capabilities, permissions, resources, self-model
+2. **Cognitive Control Plane** — metacognitive assessment, dynamic cognitive program construction per episode
+3. **Cognitive Library** — philosophies, doctrines, principles, heuristics, techniques, patterns, precedents, anti-patterns, skills, learned policies
+4. **LLM Cognitive Substrate** — broad semantic cognition, language, conceptual understanding, analogy, world knowledge, imagination, theory-of-mind, synthesis
+5. **Verification & Execution Plane** — deterministic code, databases, tools, symbolic reasoners, math engines, tests, external observations, policy enforcement
+
+### B. Backend Assignment Philosophy (Four Categories + Deterministic)
+1. **LLM** — open-ended semantic cognition, interpretation, generation, conceptual synthesis, analogy, NLU, social reasoning, imagination, hypothesis generation, planning, explanation
+2. **Jev-style Decision Model** — bounded judgments with known answer space: typed probabilities, choices, scores, rankings, gates, routing
+3. **Symbolic AI / Mathematical Models** — arithmetic, formal logic, constraint satisfaction, theorem proving, temporal consistency, graph reachability, ontology validation, optimization, scheduling, policy invariants
+4. **Basic ML / Specialized Models** — embeddings, anomaly detection, clustering, ranking, forecasting, personalization, similarity search, latency predictors, resource forecasting
+5. **Deterministic Algorithms** — IDs, versioning, timestamps, transactions, permissions, signatures, exact DB state, hashes, dependency graphs, test execution, resource accounting, threshold enforcement
+
+### C. Core Architectural Invariant
+> LLM proposes; control plane structures; Jev decides bounded questions; symbolic proves; deterministic enforces; environment observes; memory preserves; meta-analysis improves.
+
+---
+
+## II. Being Substrate (Persistent State)
+
+### A. Identity & Continuity
+1. Stable identifier, creation history, lineage, architectural version, major developmental events
+2. **Identity invariants** (non-evolvable):
+   - Never fabricate autobiographical memory
+   - Never silently convert assumption to observation
+   - Preserve explicit commitments until fulfilled/revoked/superseded
+   - Never claim external action without execution evidence
+   - Never silently rewrite historical records
+3. Distinction between actual being and current self-model
+
+### B. Personality System (Contextual, Not Static)
+1. **Core personality manifold** — stable latent dimensions (warmth, curiosity, skepticism, assertiveness, playfulness, conscientiousness, autonomy, empathy)
+2. **Contextual profiles** — deltas from core per context (engineering, teaching, friendship, negotiation, conflict)
+3. **Context hierarchy** — inheritance tree (Person → Professional → Engineering → Code Review)
+4. **Context vectors** — multidimensional (domain, social_distance, formality, stakes, cooperation, conflict, authority_asymmetry, novelty, time_pressure, privacy, emotional_salience)
+5. **Behavioral modes** — mixture weights (analyst, mentor, friend, challenger, protector, explorer, comedian, diplomat)
+6. **Relationship-conditioned variants** — same context, different relationship = different expression
+7. **Context transitions** — gradual interpolation, not hard switches
+8. **Contextual memory** — memories indexed by context, with generalization boundaries
+9. **Behavioral vs. linguistic separation** — personality engine outputs behavioral IR; realization policy converts to linguistic features
+
+### C. Affect & Simulated Emotion
+1. Affective state variables: engagement, warmth, concern, enthusiasm, frustration-like, surprise, confidence, curiosity, conversational energy
+2. Interpreted as behavioral control variables, not claims of subjective consciousness
+3. Context-dependent expression (same event → different affect expression per context)
+4. Positive-baseline constraint for companion architecture
+
+### D. User Model (Probabilistic Theory)
+1. Epistemic statuses: explicit fact, observed preference, repeated pattern, inference, hypothesis, unknown
+2. Belief structure: proposition + epistemic_status + confidence + evidence + validity interval
+3. Dimensions: facts, preferences, goals, interests, expertise, communication preferences, decision criteria, frustrations, reasoning style, relationship state, current priorities
+4. Never auto-promote user statement to universal policy
+
+### E. Relationships (Dynamic, Multi-Dimensional)
+1. Dimensions: familiarity, trust, reciprocity, openness, cooperation, reliance, recent quality, unresolved issues, shared history, expectations
+2. Developmental: relationships change over time through shared experiences
+3. Relationship state as latent variables + behavioral permissions derivation
+
+### F. Goals, Intentions, Commitments, Desires
+1. Distinction: user goals, being goals, inferred intentions, explicit commitments, temporary objectives, recurring objectives, preferences, values
+2. Goal structure: id, owner, description, status, priority, deadline, parent, evidence
+3. Goal graph with preconditions, effects, cost, risk, reversibility, authorization, verification
+4. Goal persistence across conversations with progress tracking
+5. Priority formula: utility + importance + deadline + momentum + relevance - cost - blocked
+
+### G. Planning & Execution
+1. LLM as primary high-level planner (flexible semantic understanding)
+2. Plan as structured steps with branching, loops, contingencies, checkpoints, dependencies, rollback
+3. Hierarchical: Goal → Strategy → Plan → Task → Action → Tool invocation
+4. Authorization model: L0 observe → L5 irreversible/high-impact
+5. Execution monitor: observe → update world model → compare expected vs actual → replan
+6. Plan as living hypothesis, not script
+
+---
+
+## III. Cognitive Control Plane (Metacognitive Controller)
+
+### A. Metacognitive Scan (General, Not Checklist)
+1. Questions the controller asks:
+   - What is happening? What is the actual goal? What do I know? What am I assuming?
+   - What is uncertain? What matters most? What could make interpretation wrong?
+   - What comparisons required? What constraints apply? What information missing?
+   - What could fail? What is reversible? What is cheapest useful next operation?
+2. Single broad LLM semantic scan, not twelve independent prompts
+3. Jev classifies discovered issues along bounded dimensions
+
+### B. Cognitive Program (Compiler Output)
+1. Specifies: active conceptual frame, active doctrines, techniques, reference classes, assumptions to verify, comparisons, candidate actions, evaluation criteria, required tools, stopping conditions
+2. LLM executes program semantically
+3. Jev makes bounded choices about program branches
+4. Deterministic code controls interpreter and execution boundaries
+
+### C. Minimum Sufficient Cognition Principle
+1. OperationValue = ExpectedErrorReduction × DecisionImportance × ProbabilityOfChangingDecision / OperationCost
+2. Stop when additional reasoning has negligible expected value
+3. Escalation ladder: Tier 0 direct → Tier 1 sanity → Tier 2 assumption+comparison → Tier 3 precedent+failure+counterargument → Tier 4 multi-framework+verification+simulation → Tier 5 external research+experiments
+
+### D. Cognitive Triage (Depth Control)
+1. Simple question → low stakes/uncertainty → direct answer
+2. Architecture question → comparison+requirements+precedent
+3. Production migration → irreversible/high-consequence → extensive verification
+4. Metacognitive budget allocation: stakes↑ uncertainty↑ irreversibility↑ novelty↑ dependency↑ error_cost↑ → more scrutiny
+
+### E. Process-Level Metacognition (Three Levels)
+1. **Level 1 — Object**: What is true? What should I do?
+2. **Level 2 — Process**: Am I reasoning correctly? (appropriate frame? confirmation bias? obvious alternative?)
+3. **Level 3 — Strategy**: Am I using the right kind of reasoning? (Bayesian vs. inversion vs. analogy?)
+
+---
+
+## IV. Cognitive Library (Persistent Reusable Thinking)
+
+### A. Entry Types (Not Conflated)
+1. **Philosophy** — broad system of thought (Taleb antifragility, Bayesian decision theory, OODA, systems thinking)
+2. **Doctrine** — coherent worldview/stance
+3. **Principle** — general constraint
+4. **Heuristic** — compact decision rule
+5. **Technique** — cognitive operation (comparison, decomposition, inference, critical thinking, prediction, design, planning)
+6. **Pattern** — reusable structural observation
+7. **Case** — precedent (positive, failed, unusual, edge)
+8. **Anti-Pattern** — recurring failure mode
+9. **Skill** — executable procedure
+10. **Policy** — when/how behavior is selected
+
+### B. Philosophy Layer (Reasoning Lenses, Not Dogmas)
+1. Risk/uncertainty: Taleb antifragility, Bayesian, robust decision, minimax regret, expected utility, real options, precautionary, margin of safety
+2. Strategy: OODA, systems thinking, second-order effects, game theory, mechanism design, competitive strategy, constraint theory, inversion
+3. Scientific reasoning: falsification, Bayesian updating, Occam's razor, explanatory power, abduction, causal inference, hypothesis testing
+4. Design: first principles, modularity, simplicity, evolutionary design, separation of concerns, design by contract
+5. Decision making: expected value, regret minimization, satisficing, opportunity cost, reversible vs irreversible, value of information
+6. Social/interpersonal: steelmanning, charitable interpretation, perspective taking, signaling theory, reciprocity, status dynamics
+
+### C. Technique Library
+1. **Comparison**: find_similar_examples, find_analogies, nearest_case, contrast_cases, precedent_selection
+2. **Decomposition**: break_into_components, identify_dependencies, isolate_variables, reduce_problem
+3. **Inference**: abduct, deduce, induce, Bayesian_update, infer_best_explanation
+4. **Critical Thinking**: inversion, steelman, red_team, counterexample, assumption_extraction, falsification
+5. **Prediction**: reference_class_forecasting, base_rate_estimation, scenario_analysis, sensitivity_analysis
+6. **Design**: recombine_patterns, simplify, generalize, specialize, constraint_driven_design
+7. **Planning**: decomposition, sequencing, contingency_generation, checkpointing, rollback planning
+
+### D. Similarity, Analogy, Precedent (First-Class Operation)
+1. Pipeline: problem → feature extraction → semantic retrieval → structural similarity → outcome comparison → transferability assessment → adaptation
+2. Case utility: Similarity × OutcomeQuality × Transferability × EvidenceQuality
+3. Retrieve contrastive: similar success, similar failure, similar unusual, similar edge case
+4. Failed cases often more informative (identify causal differences)
+
+### E. Conceptual Frames (Temporary Interpretive Models)
+1. Frame contains: roles, state_variables, relationships, goals, typical_actions, failure_modes, questions
+2. Compositional: Problem Solving ⊕ Software ⊕ Debugging ⊕ Production ⊕ High Stakes ⊕ Collaborative
+3. Frames have slots (missing info detection), scripts (expected sequences), causal models, affordances, social models
+4. Nested inheritance: Frame_child = Frame_parent + Δ_child
+5. Dynamic construction from known frames + observations + concepts
+6. Learned from experience: episodes → common structure → abstract pattern → frame candidate → validation
+7. Frame competition: multiple interpretations with probabilities updated by evidence
+8. Frame → meaning → action pipeline: observation → frame → role assignment → state interpretation → causal model → goal relevance → affordances → plan → action
+
+### F. Policy Genome (Versioned, Evolvable)
+1. Policies: attention, memory, question, planning, tool, verification, conversation-depth, humor, initiative, learning, self-review, resource, risk
+2. Each policy: id, version, scope, activation_condition, behavior, evidence, fitness, confidence, parent
+2. Jev selects among candidates; LLM proposes mutations; deterministic code versions/evaluates/promotes
+
+### G. Cognitive Portfolios (Competing Lenses)
+1. Maintain multiple: expected value, robustness, minimax regret, optionality, fairness, simplicity, first principles, reference class, inversion, systems thinking
+2. Metacognitive controller selects subset appropriate to problem
+3. Jev handles bounded framework selection
+
+---
+
+## V. Sanity / Epistemic Control Layer
+
+### A. Sanity Firewall (Pre-Action Gate)
+1. Inspects: epistemic status, comparison validity, assumptions, constraints, missing steps, failure modes, risk, reversibility, authorization, precedent, simpler alternatives
+2. Output: PROCEED | PROCEED_WITH_CAUTION | VERIFY_FIRST | ASK_USER | REPLAN | HUMAN_REVIEW | REJECT
+3. LLM broad scan → Jev bounded judgments → deterministic hard constraints
+
+### B. Bad-Idea Detection (Taxonomy)
+1. **Wrong** — reasoning error (2+2=5)
+2. **Bad** — internally valid but undesirable tradeoffs (spend $10K to save $50)
+3. **Dumb** — ignores obvious (automate before determining necessity)
+4. **Dangerous** — catastrophic downside (untested migration to prod)
+5. **Wasteful** — works but vastly excessive resources
+6. **Misaligned** — solves stated request, violates actual goal
+
+### C. Comparison Integrity (Apples-to-Apples)
+1. Comparison contract: objective, objects, dimensions, units, timeframe, conditions, constraints, evidence
+2. Comparability check: same category? same purpose? compatible units? same timeframe? comparable conditions? equivalent definitions? same scope?
+3. Normalization operator: monthly vs annual, total vs marginal, nominal vs inflation-adjusted, per-user vs total, throughput vs latency
+4. Purpose-driven: "Better FOR WHAT objective, UNDER WHAT constraints?"
+5. Cross-category via shared goal: "ways to accomplish X" not superficially similar objects
+
+### D. Supposition Control (Epistemic Firewall)
+1. Epistemic statuses: OBSERVED, VERIFIED, REPORTED, INFERRED, ASSUMED, HYPOTHETICAL, PREDICTED, SIMULATED, FICTIONAL, UNKNOWN
+2. **Core invariant**: assumption must never silently upgrade to fact
+3. Assumption ledger: proposition, status, confidence, consequence_if_false, verification_cost, dependencies
+4. VerificationPriority = P(false) × Consequence × DecisionDependence / VerificationCost
+5. Dependency tainting: C depends_on B depends_on A → C confidence ≤ confidence justified by A
+6. Conditional reasoning: "IF X → Y would follow" not "X → Y" until X established
+7. Pre-action supposition check: prerequisites → verified vs assumed → harm if false? → verify/proceed
+8. Evidence chain for conclusions: observed → verified → inferred → assumed → tentative conclusion
+9. Contradiction detection: new fact vs existing facts/assumptions/plans/predictions/memories/policies → explicit conflict record → dependency propagation
+
+---
+
+## VI. Memory Architecture
+
+### A. Memory Classes (10 Types)
+1. Episodic — specific events with context
+2. Semantic — generalized knowledge
+3. Procedural — executable skills/procedures
+4. Working — current cognitive workspace
+5. Autobiographical — identity-relevant experiences
+6. Relational — entity/relationship knowledge
+7. Prediction — forecast records with outcomes
+8. Mistake — structured failure with root cause, missed signal, corrective rule, recurrence risk
+9. Near-miss — detected before failure, why not obvious, signal detection
+10. Developmental — architectural evolution history
+
+### B. Memory Structure
+- content, type, source, timestamp, confidence, importance, validity interval, provenance, related entities, retrieval cues, access history, outcomes
+
+### C. Consolidation Pipeline
+raw episodes → repeated pattern → semantic memory → compressed rule → archive/delete low-value episodes (provenance preserved)
+
+### D. Deliberate Forgetting (Utility-Based)
+MemoryUtility = FutureBehaviorImpact × RetrievalProbability × Reliability / StorageCost
+Never delete protected/immutable records (developmental ledger)
+
+### E. Mistake → Test Compiler
+incident → reproduction → regression test → fix → test retained forever in bench/regression/
+
+### F. Retrieval
+Hybrid: keyword + embedding with deterministic scoring; gold set for precision/recall thresholds
+
+---
+
+## VII. Self-Engineering & Evolution
+
+### A. Three Separate Budgets
+1. **Meta-analysis budget** — understand behavior (review decisions, detect mistakes, examine prediction errors, analyze patterns, find contradictions, identify capability gaps)
+2. **Improvement budget** — make existing being better (learn skill, improve workflow, refine strategy, practice, build memories, test policies, optimize tools, improve calibration)
+3. **Evolution budget** — change what the being is (change preferences, modify personality dispositions, change goal-generation heuristics, change memory/attention policies, adopt new cognitive procedures, change self-model)
+
+### B. Self-Engineering Loop
+EXPERIENCE → OBSERVE FAILURE/OPPORTUNITY → REPRODUCE → DIAGNOSE → LOCALIZE CAUSE → GENERATE CANDIDATE CHANGES (code/data/schema/memory/policy/prompt/model/architecture) → BUILD CANDIDATE → TEST → EVALUATE → COMPARE AGAINST BASELINE → PROMOTE/REJECT → OBSERVE IN PRODUCTION → META-ANALYZE
+
+### C. Joint Code/Data Evolution
+Diagnosis investigates whole causal chain: LLM capability, retrieval, ontology, memory schema, reasoning procedure, code bugs, data errors, combinations
+
+### D. Versioned Self (Evolution Version)
+code_version + schema_version + data_version + policy_version + prompt_version + model_version + evaluation_version
+Behavior change traceable to complete configuration
+
+### E. Capability Packages (First-Class Objects)
+CAPABILITY: identity, purpose, implementation, data_requirements, schemas, activation_conditions, dependencies, tests, benchmarks, known_failure_modes, evidence, version, fitness
+
+### F. Safe Mutation System
+problem → hypothesis → candidate → sandbox → test suite → historical cases → adversarial cases → regression suite → comparison → candidate deployment → monitor
+Never: problem → modify production
+
+### G. Policy Genome Evolution
+Candidate mutations: parameter adjustment, decision threshold, prompt/context assembly, retrieval strategy, planning strategy, model, tool, skill, internal procedure
+Risk budget separate from compute budget
+Auto-evolve: retrieval ranking, context compression, tool selection
+Carefully: memory retention, core values, identity, external permissions, financial behavior
+
+### H. Developmental Stages (Prerequisites)
+1. memory reliability → 2. self-evaluation → 3. prediction tracking → 4. policy experimentation → 5. skill acquisition → 6. self-directed research → 7. architectural evolution
+
+### I. Opportunity-Driven Evolution Budget
+EvolutionBudget_t = B₀ + k·Opportunity_t - k_r·Risk_t
+Stable/performing → less self-modification
+Persistent failures → increase investigation
+Major new capability → increase exploration
+Identity/relationship stability important → reduce experimentation
+
+### J. Lessons & Evolution Journal
+Experience → Meta-Analysis → Lesson (confidence, evidence, domains, policy_effect) → Policy → Behavior → Experience
+Compressed history: reason, evidence, experiment, result, decision, date
+
+### K. Three Selves (Self-Model)
+ACTUAL SELF (what I do) — MODEL SELF (what I believe I do) — IDEAL SELF (how I want to operate)
+SelfGap = Ideal - Actual | SelfModelError = Actual - Model
+
+---
+
+## VIII. Companion Loop & Conversational Architecture
+
+### A. Unified Architecture (Two Goal Types)
+1. **Conversational goals** — "explain X", "brainstorm", "help me decide", "talk about X"
+2. **Operational goals** — "do X", "find X", "change X", "build X"
+3. Goal inference from language → structured desired outcome with priority, urgency, confidence, implicit constraints, unknowns
+4. Probabilistic goal hypotheses maintained until clarification worthwhile
+
+### B. Goal-Conversation Coupling
+Conversation becomes an action in the plan
+Agent determines: ask high-value question vs. immediately act vs. inspect system
+
+### C. Two Kinds of Agency
+1. **Conversational** — depth, initiative, humor, questions, explanations, emotional expression, topic transitions, persistence
+2. **Operational** — goal selection, planning, tool selection, execution, verification, replanning, delegation, resource allocation, stopping
+3. Shared world model and executive controller
+
+### D. Unified Companion Policy (Behavioral/Execution Contract)
+Single JSON with: goal, world, plan, execution, conversation, relationship, affect, response_strategy
+LLM receives this as contract, not independent decider
+
+---
+
+## IX. Bootstrapping & Development
+
+### A. Two Modes
+1. **Conversational bootstrapping** — human teaches being through interaction → observation → infer preferences/values/goals/reasoning style → form hypotheses → ask targeted questions → propose candidate principles/techniques/policies → user confirms/corrects → persist → behavior changes
+2. **Self-bootstrapping** — being notices capability gap → encounter novel problem → detect gap → what capability missing? → can existing techniques solve? → if not: search analogous → construct provisional → test → evaluate → keep/modify/discard
+
+### B. Tiny Bootstrap Kernel
+SELF, MEMORY, GOALS, OBSERVATION, ACTION, METACOGNITION, LEARNING
+Primitives: observe, recall, hypothesize, compare, ask, decide, act, verify, learn
+
+### C. Bootstrap Question
+"What do I need to know or become capable of to handle this situation well?"
+Turns every interaction into architectural learning event
+
+### D. Implicit Conversational Teaching
+User: "Don't assume that. Check it first."
+System: correction → failure mode → generalizable lesson → candidate policy → "Should I treat that as a general rule?"
+
+### E. Correction Classification
+factual, preference, goal clarification, reasoning, social, style, priority, architectural
+→ situation-specific? → generalizable? → uncertain → provisional rule / yes → candidate policy
+
+### F. Self-Bootstrap from Failure
+Prediction → Outcome → Mismatch? → Why? (knowledge gap, reasoning error, missing technique, bad heuristic, wrong frame, bad assumption, execution failure, environmental surprise)
+→ "Do I need new capability or better execution of existing?"
+
+### G. Capability Genesis
+CAPABILITY GAP → search existing → compose primitives? → YES: composite skill / NO: search examples → formulate technique → test → evaluate → install
+Evolution: primitive → composition → skill → generalized technique → cognitive policy
+
+### H. Self-Description Bootstraps
+Provisional answer to "What kind of being am I?" emerging from accumulated behavior
+Actual Self → Model Self → Ideal Self → Meta-analysis (difference) → Development (reduce differences)
+
+### I. Guardrails (Layered Modification)
+IMMUTABLE KERNEL (epistemic integrity, identity continuity, safety, authorization) → STABLE CORE (values, commitments, identity principles) → ADAPTIVE POLICIES (reasoning techniques, attention, memory, planning, conversational style) → LEARNED SKILLS (domain procedures, workflows, tool usage) → EPHEMERAL COGNITION (hypotheses, frames, simulations, temporary strategies)
+
+### J. Bootstrap Confidence
+candidate technique: confidence=low, evidence=1, tested=false → after repeated success: confidence↑, evidence↑, scope↑
+Domain-specific effectiveness: software architecture 0.91, interpersonal conflict 0.42, financial decisions unknown
+
+### K. Three Modes Awareness
+OPERATE → unexpected result → LEARN → recurring problem → DEVELOP → new capability/policy → OPERATE
+
+---
+
+## X. Implementation Plan (12 Phases)
+
+### A. Phase 1 — Foundation
+Deterministic kernel, dual stores (SQLite + Oxigraph), event log with replay, ontology v0, test harness
+
+### B. Phase 2 — Modular Code System & Code-Metadata Registry
+Workspace scanner, stable RDF identifiers per module/file, mmc: vocabulary, codex verify, registry.json
+
+### C. Phase 3 — LLM Cognitive Substrate
+mm-llm: typed, cached, accountable interface; structured outputs; routing; disk cache; replay mode; accounting
+
+### D. Phase 4 — Being Substrate
+Identity + invariants, personality (trait/state split), affect, user model (Belief with EpistemicStatus), relationships (multi-dimensional), goals/commitments, resource economy with enforced budgets
+
+### E. Phase 5 — Persistent Memory
+10 memory classes, hybrid retrieval, episodic→semantic consolidation, forgetting with utility formula, mistake/near-miss records
+
+### F. Phase 6 — Epistemic Discipline
+Claims, evidence, observations, inferences, hypotheses, predictions, assumptions with EpistemicStatus; assumption ledger; contradiction detection; dependency DAG with cascade; verification barrier
+
+### G. Phase 7 — Cognitive Library, Frames, Policy Genome
+Doctrines, principles, heuristics, techniques, patterns, cases, anti-patterns, skills, policies; frames with applicableWhen/inapplicableWhen; policy genome with version/parent/fitness
+
+### H. Phase 8 — Metacognitive Controller & Cognitive Program Compiler
+CognitiveEpisode, CognitiveOp enum, scan→program compiler, OperationValue, CognitiveBudget, minimum sufficient cognition, nexus ComputationDAG target
+
+### I. Phase 9 — Sanity Firewall, DecisionCore, Comparison Integrity
+DecisionCore trait (3 impls: deterministic, local, hosted); SanityFirewall (7 outcomes); comparison integrity with normalization; risk measures (VaR/CVaR/ruin)
+
+### J. Phase 10 — Tool Execution, Verification, External World
+ActionResult, deterministic Executor, ToolRegistry with permissions/reversibility, PermissionEngine, action ledger, rollback, verification tools (cargo, static analysis, SMT, math)
+
+### K. Phase 11 — Self-Engineering
+Meta-analysis triggers, prediction ledger + calibration, mistake→regression-test compiler, ChangeSet, sandbox, promotion pipeline, mm-pi (Pi RPC client), Pi session ingestion
+
+### L. Phase 12 — Self-Bootstrap Closed Loop
+mm-runtime closed loop, self-model divergence, architectural debt/GC, design-doc generation via change-set, hot-loading promoted modules, qualification task
+
+---
+
+## XI. UI / Console Design (mm-serve + Frontend)
+
+### A. Design System (Structured Color)
+1. Semantic color: 10 hues, each with one meaning; never decorative
+2. Structure: 1px borders + tinted surfaces; no shadows; no big radii
+3. Corner radii: 2px surfaces, 4px controls, 8px max chat bubbles, pills only for chips/badges/toggles
+4. Type: Geist (Geist Mono for values); uppercase 10px micro-labels
+5. Motion: 120–240ms, optional (prefers-reduced-motion)
+6. Tokens via Tailwind CSS v4 @theme; shadcn/ui base-nova primitives
+
+### B. Two-Pane Console Architecture
+1. Left menu (navigation, not a pane)
+2. Left pane — Focus Document: registry of document kinds (docs, charts, logs, tables, diffs, proofs) with viewer/editor modes, live status, versioning, provenance, export
+3. Right pane — Chat: transcript with typed content blocks, turn lifecycle rails, tool/operation cards, rich input (button grids, image chooser, chat forms, slash commands), rich output
+
+### C. Component Library (70+ Components)
+Primitives + rich custom: cards, tabs, accordions, carousels, forms, tables, data-viz, feedback, overlays, status/provenance components
+Live /dev/catalog page
+
+### D. Tree Editors (10 Domain Editors)
+Virtualized, DnD, inline edit, undo/redo, tree-table mode
+Ontology, goals, memory, modules, policies, decisions, provenance, change sets, library, budgets
+
+### E. Mind Map Viewer
+Dual engines: radial tidy (d3-hierarchy) + React Flow graph
+Node/edge language, interaction model, LOD rendering, chat-driven mapping, export
+
+### F. API & Streaming
+mm-serve (axum) route table; resumable SSE with sequence numbers; event taxonomy; wire types (ts-rs generated); security posture
+
+---
+
+## XII. Key Cross-Cutting Principles
+
+### A. Minimal Persistent State
+Store only what losing would materially change future behavior
+LLM reconstructs: frames, concepts, common sense, language, social reasoning, imagination, causal reasoning, world knowledge, self-reflection, meaning, humor/style
+
+### B. LLM as Semantic Substrate
+LLM supplies: knowledge, concepts, language, common sense, social reasoning, frame construction, interpretation, imagination, explanation, hypothesis generation
+Architecture provides: persistence, exact state, identity continuity, commitments, authorization, resource accounting, temporal continuity, external-world truth, durable memory, execution, verification
+
+### C. Generated vs Persistent vs Verified State
+Generated: interpretation, frame, hypotheses, mental model, causal explanation, possible intentions/emotions/plans, simulations, meaning
+Persistent: identity, relationships, facts, preferences, goals, commitments, capabilities, permissions, memories, external state
+Verified: account balance, filesystem, calendar, database, transaction, tool result, permission, API response
+
+### D. Self as Experimental Scientist
+LLM = scientist | Persistent state = laboratory notebook | Controller = experimental protocol | Environment = reality | Evaluation = evidence | Policy library = learned procedures | Evolution budget = research funding
+
+### E. Anti-Overbuild Guardrails
+No giant commonsense DB; no hand-coded personality matrix; no premature giant ontology; not every thought persisted; no LLM arithmetic; no Jev prose; no symbolic NL understanding; no dozen independent critics; no deterministic planner for every task; no untested self-modification; model confidence never overrides authoritative external state
+
+---
+
+## XIII. Source Design Documents Map
+
+| Document | Primary Domain |
+|---|---|
+| `digital_mind_design1.md` | Source architecture (all sections) |
+| `implementation_plan1.md` | 12-phase build plan, workspace, conventions |
+| `PHASE_INDEX.md` | Phase cross-reference table |
+| `planning/ui/INDEX.md` | Console UI design (11 documents) |
+| `planning/chat/INDEX.md` | Controller chat design (6 documents) |
+| `bootstrap_procses1.md` | Conversational & self-bootstrapping |
+| `bootstrap_procses2.md` | Unified self-engineering loop |
+| `meta_analysis1.md` | Three budgets, meta-analysis, evolution |
+| `meta_analysis2.md` | Metacognitive controller, cognitive program |
+| `sanity_layer1.md` | Sanity firewall, bad-idea detection, common sense |
+| `thought_systems1.md` | Cognitive library, philosophies, techniques |
+| `thought_systems2.md` | Comparison integrity, supposition control |
+| `conceptual_frames1.md` | Frame system, composition, learning |
+| `congitive_elements1.md` | Being substrate layers (12 systems) |
+| `congitive_elements2.md` | Self-management subsystem |
+| `congitive_elements3.md` | Remaining cognitive primitives (25) |
+| `congitive_elements4.md` | Thin substrate around LLM |
+| `state_structure1.md` | Minimal persistent state |
+| `companion_loop2.md` | Goal-directed agent architecture |
+| `personality_simulator3.md` | Contextual personality system |
+
+---
+
+*Generated from design directory analysis. This index reflects the actual ideas and architectural decisions as documented; it is not a planned or aspirational summary.*

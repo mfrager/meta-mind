@@ -5,6 +5,8 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse};
+use mm_serve::controller::ControllerModel;
 use mm_serve::routes::router;
 use mm_serve::state::{AppState, ConsoleLock};
 use tower::ServiceExt;
@@ -105,7 +107,7 @@ async fn exec_allowlist_rejects_unknown_names_and_shell_meta() {
         )
         .await
         .unwrap();
-    assert_eq!(doctor.status(), StatusCode::OK);
+    assert_eq!(doctor.status(), StatusCode::CONFLICT);
     let doctor_body = String::from_utf8(
         doctor
             .into_body()
@@ -116,8 +118,7 @@ async fn exec_allowlist_rejects_unknown_names_and_shell_meta() {
             .to_vec(),
     )
     .unwrap();
-    assert!(doctor_body.contains("bespoke"));
-    assert!(doctor_body.contains("kernel"));
+    assert!(doctor_body.contains("the controller is the only way to run this"));
 }
 
 #[tokio::test]
@@ -144,23 +145,20 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
     .unwrap();
     assert!(runs_body.contains("no run is recorded"));
 
-    let stage = app
+    let load = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/chat")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query":"why is stage 6 slow?","commandMode":true}"#,
-                ))
+                .uri("/api/modules/01jmodule0000000000000000/load")
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    let stage_body = String::from_utf8(
-        stage
-            .into_body()
+    assert_eq!(load.status(), StatusCode::CONFLICT);
+    let load_body = String::from_utf8(
+        load.into_body()
             .collect()
             .await
             .unwrap()
@@ -168,112 +166,7 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
             .to_vec(),
     )
     .unwrap();
-    assert!(stage_body.contains("No stage timings are recorded for this run."));
-    assert!(stage_body.contains("01jdocrun00000000000000000"));
-    assert!(stage_body.contains("meta analyze"));
-
-    let goal = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/chat")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query":"/being goal add a quieter loop","commandMode":true}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let goal_body = String::from_utf8(
-        goal.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(goal_body.contains("does not open that store"));
-    assert!(goal_body.contains("\"kind\":\"form\""));
-
-    let promote = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/chat")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"promote","commandMode":true}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let promote_body = String::from_utf8(
-        promote
-            .into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(promote_body.contains("use the change-set flow"));
-    assert!(promote_body.contains("Approve"));
-
-    let changeset = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/chat")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query":"changeset show","commandMode":true}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let changeset_body = String::from_utf8(
-        changeset
-            .into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(changeset_body.contains("No change sets are recorded."));
-
-    let audit = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/chat")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query":"audit production-tree","commandMode":true}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let audit_body = String::from_utf8(
-        audit
-            .into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(audit_body.contains("no production audit was recorded"));
+    assert!(load_body.contains("use the change-set flow"));
 
     let tick = app
         .oneshot(
@@ -295,4 +188,84 @@ async fn flows_read_the_kernel_without_inventing_a_run() {
     .unwrap();
     assert!(tick_body.contains("stage_tick"));
     assert!(tick_body.contains("No stage timings are recorded for this run."));
+}
+
+#[tokio::test]
+async fn a_scripted_controller_reads_budgets_and_change_sets() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = mm_core::Config::for_data_dir(dir.path());
+    let lock = ConsoleLock::acquire(dir.path()).unwrap();
+    let state = Arc::new(AppState::boot(cfg, lock).await.unwrap());
+    let script = vec![
+        ScriptedResponse::text("").with_tool_calls(vec![
+            ProviderToolCall {
+                id: "open".into(),
+                name: "catalog.open".into(),
+                arguments: r#"{"group":"change"}"#.into(),
+            },
+            ProviderToolCall {
+                id: "budget".into(),
+                name: "budget.show".into(),
+                arguments: "{}".into(),
+            },
+        ]),
+        ScriptedResponse::text("Those are the four budget rows."),
+        ScriptedResponse::text("").with_tool_calls(vec![ProviderToolCall {
+            id: "changes".into(),
+            name: "changeset.show".into(),
+            arguments: "{}".into(),
+        }]),
+        ScriptedResponse::text("No change sets are recorded."),
+    ];
+    let client: Arc<dyn mm_llm::LlmClient> = Arc::new(MockClient::script(script));
+    *state.controller_model.lock().unwrap() = ControllerModel::Scripted(client);
+    let app = router(state);
+
+    let budget = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/chat")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query":"show the budgets"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(budget.status(), StatusCode::OK);
+    let budget_body = String::from_utf8(
+        budget
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(budget_body.contains("meta_analysis"));
+
+    let changes = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/chat")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query":"promote a change set"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let changes_body = String::from_utf8(
+        changes
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(changes_body.contains("No change sets are recorded."));
 }

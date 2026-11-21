@@ -170,5 +170,8 @@ pub enum ChatFrame {
         blocks: Option<Vec<Value>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestions: Option<Vec<String>>,
+        /// HonestyMw set this when the sentence claims a write no tool performed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unbacked: Option<bool>,
     },
 }

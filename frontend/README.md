@@ -2,6 +2,12 @@
 
 Local UI for the kernel. `mm-serve` binds loopback and the Vite app talks to it through `/api`. Nothing in this UI invents a run, a stage timing, a budget figure, or a provider reply. When a route has no data, it shows the kernel's own reason.
 
+## You are talking to Metamind
+
+The composer is a conversation with the being. Ask what you want done. A write, a gate, or a call outside the process waits for Approve. You do not need a command name.
+
+`mm-serve` holds the graph while it runs. A CLI pointed at the same data directory fails on the RocksDB lock. Use another `--data-dir`, or stop this process first.
+
 ## Run it
 
 From the repository root, in two terminals:

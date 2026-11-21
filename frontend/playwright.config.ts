@@ -14,6 +14,7 @@ export default defineConfig({
   projects: [
     { name: "kernel", testMatch: /console\.spec\.ts/ },
     { name: "scripted", testMatch: /controller\.spec\.ts/ },
+    { name: "conversation", testMatch: /conversation\.spec\.ts/ },
   ],
   use: {
     baseURL: "http://127.0.0.1:8902",
@@ -41,6 +42,13 @@ export default defineConfig({
       command: `mkdir -p /home/mfrager/tmp/mm-e2e-script && ${build} && OPENAI_BASE_URL= OPENAI_API_KEY= ${bin} --data-dir /home/mfrager/tmp/mm-e2e-script --port 8895 --controller-script crates/mm-serve/tests/fixtures/budget_focus.json`,
       cwd: "..",
       url: "http://127.0.0.1:8895/api/health",
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
+    {
+      command: `rm -rf /home/mfrager/tmp/mm-e2e-talk && mkdir -p /home/mfrager/tmp/mm-e2e-talk && ${build} && OPENAI_BASE_URL= OPENAI_API_KEY= ${bin} --data-dir /home/mfrager/tmp/mm-e2e-talk --port 8894 --controller-script crates/mm-serve/tests/fixtures/conversation.json`,
+      cwd: "..",
+      url: "http://127.0.0.1:8894/api/health",
       reuseExistingServer: false,
       timeout: 180_000,
     },

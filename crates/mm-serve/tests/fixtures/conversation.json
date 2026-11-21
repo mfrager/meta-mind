@@ -1,0 +1,76 @@
+[
+  {
+    "text": "{\"text\":\"The kernel is ok. Ask me what you want done.\"}",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-guide",
+        "name": "guide.read",
+        "arguments": "{\"id\":\"start\"}"
+      }
+    ]
+  },
+  {
+    "text": "Read the start of the guide.",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-state",
+        "name": "state.show",
+        "arguments": "{}"
+      }
+    ]
+  },
+  {
+    "text": "This is the state.",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-memory",
+        "name": "memory.add",
+        "arguments": "{\"kind\":\"semantic\",\"content\":\"the migration order is fixed\"}"
+      }
+    ]
+  },
+  {
+    "text": "Stored.",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-recall",
+        "name": "memory.recall",
+        "arguments": "{\"query\":\"the migration order is fixed\"}"
+      }
+    ]
+  },
+  {
+    "text": "You asked me to remember that the migration order is fixed.",
+    "tool_calls": []
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "id": "c-changes",
+        "name": "changeset.show",
+        "arguments": "{}"
+      }
+    ]
+  },
+  {
+    "text": "No change sets are recorded.",
+    "tool_calls": []
+  }
+]

@@ -80,6 +80,17 @@ describe("chat transcript", () => {
     expect(container.querySelector("[data-op-view='sandbox']")?.textContent).toContain("no sandbox run was recorded");
   });
 
+  it("marks an unbacked sentence", () => {
+    const state = reduceFrames(initialTranscript, [
+      {
+        seq: 1,
+        frame: { type: "final_response", response_id: "r1", text: "I stored that", suggestions: [], unbacked: true },
+      },
+    ]);
+    const { container } = render(<TranscriptView items={visibleItems(state)} onAnswer={() => undefined} />);
+    expect(container.querySelector("[data-token='status-chip degraded']")?.textContent).toBe("not backed by a tool");
+  });
+
   it("sends a button-grid answer", () => {
     const onAnswer = vi.fn();
     render(
@@ -111,6 +122,40 @@ describe("chat transcript", () => {
     fireEvent.change(box, { target: { value: "budget show" } });
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     expect(onSend).toHaveBeenCalledWith("budget show", [], []);
+  });
+
+  it("follows new rows, and leaves a reader who scrolled up where they are", () => {
+    const lines = (count: number) =>
+      visibleItems(
+        reduceFrames(
+          initialTranscript,
+          Array.from({ length: count }, (_, index) => ({
+            seq: index + 1,
+            frame: { type: "run", requestId: `r${index}`, sessionId: "s", query: `line ${index}` } as ChatFrame,
+          })),
+        ),
+      );
+
+    const view = render(<TranscriptView items={lines(3)} onAnswer={() => undefined} />);
+    const scroller = view.container.querySelector<HTMLElement>("[data-transcript-scroll]");
+    expect(scroller).toBeTruthy();
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 100 });
+
+    view.rerender(<TranscriptView items={lines(4)} onAnswer={() => undefined} />);
+    expect(scroller!.scrollTop).toBeGreaterThan(0);
+
+    // Reading history: a new row must not pull the viewport back down.
+    scroller!.scrollTop = 0;
+    fireEvent.scroll(scroller!);
+    view.rerender(<TranscriptView items={lines(5)} onAnswer={() => undefined} />);
+    expect(scroller!.scrollTop).toBe(0);
+
+    // Returning to the bottom re-arms the follow.
+    scroller!.scrollTop = 900;
+    fireEvent.scroll(scroller!);
+    view.rerender(<TranscriptView items={lines(6)} onAnswer={() => undefined} />);
+    expect(scroller!.scrollTop).toBeGreaterThan(0);
   });
 
   it("virtualizes a long transcript", () => {

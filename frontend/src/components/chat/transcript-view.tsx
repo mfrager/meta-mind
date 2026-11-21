@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { InputRequest } from "@/components/chat/input-request.tsx";
 import { Turn } from "@/components/chat/turn.tsx";
+import { StatusChip } from "@/components/kit/data.tsx";
 import type { TranscriptItem } from "@/lib/transcript/reducer.ts";
 
 export function TranscriptView({
@@ -13,16 +14,58 @@ export function TranscriptView({
   onAnswer: (id: string, value: string) => void;
 }) {
   const liveKey = lastAssistantKey(items);
+  const scroller = useRef<HTMLDivElement>(null);
+  useStickToBottom(scroller);
   if (items.length < 40) {
     return (
-      <div role="log" aria-label="Transcript" data-transcript className="space-y-3 p-3">
-        {items.map((item) => (
-          <Row key={`${item.kind}:${item.id}`} item={item} live={liveKey === `${item.kind}:${item.id}`} onAnswer={onAnswer} />
-        ))}
+      <div
+        ref={scroller}
+        role="log"
+        aria-label="Transcript"
+        data-transcript
+        data-transcript-scroll
+        className="h-full overflow-auto p-3"
+      >
+        <div className="space-y-3">
+          {items.map((item) => (
+            <Row key={`${item.kind}:${item.id}`} item={item} live={liveKey === `${item.kind}:${item.id}`} onAnswer={onAnswer} />
+          ))}
+        </div>
       </div>
     );
   }
   return <VirtualTranscript items={items} onAnswer={onAnswer} />;
+}
+
+const BOTTOM_SLACK = 32;
+
+/**
+ * Follows the newest row as frames arrive. Someone who scrolled up to read stays
+ * where they are; reaching the bottom again re-arms the follow.
+ *
+ * The scroll runs after every render of the transcript, which is what streaming
+ * needs: an assistant turn can grow without the item count changing, so watching
+ * `items.length` would stop following mid-turn.
+ */
+function useStickToBottom(ref: RefObject<HTMLDivElement | null>) {
+  const pinned = useRef(true);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const track = () => {
+      pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK;
+    };
+    track();
+    element.addEventListener("scroll", track, { passive: true });
+    return () => element.removeEventListener("scroll", track);
+  }, [ref]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !pinned.current) return;
+    element.scrollTop = element.scrollHeight;
+  });
 }
 
 function VirtualTranscript({
@@ -33,6 +76,7 @@ function VirtualTranscript({
   onAnswer: (id: string, value: string) => void;
 }) {
   const parent = useRef<HTMLDivElement>(null);
+  useStickToBottom(parent);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parent.current,
@@ -97,6 +141,11 @@ function Row({ item, live, onAnswer }: { item: TranscriptItem; live?: boolean; o
     return (
       <p data-item={`final:${item.text}`} className="text-sm" aria-live={live ? "polite" : undefined}>
         {item.text}
+        {item.unbacked ? (
+          <span className="ml-2 align-middle">
+            <StatusChip tone="degraded" label="not backed by a tool" />
+          </span>
+        ) : null}
       </p>
     );
   }

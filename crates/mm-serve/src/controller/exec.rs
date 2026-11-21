@@ -24,7 +24,7 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    fn done(summary: impl Into<String>, data: Value) -> Self {
+    pub(crate) fn done(summary: impl Into<String>, data: Value) -> Self {
         ToolResult {
             ok: true,
             summary: summary.into(),
@@ -34,7 +34,7 @@ impl ToolResult {
         }
     }
 
-    fn fail(reason: impl Into<String>) -> Self {
+    pub(crate) fn fail(reason: impl Into<String>) -> Self {
         let reason = reason.into();
         ToolResult {
             ok: false,
@@ -62,7 +62,15 @@ impl ToolResult {
 }
 
 pub async fn run(app: &AppState, name: &str, input: &Value) -> ToolResult {
-    match tokio::time::timeout(Duration::from_secs(30), dispatch(app, name, input)).await {
+    let limit = if matches!(
+        name,
+        "promote.run" | "sandbox.run" | "loop.run" | "gc.apply" | "gc.propose" | "debt.scan" | "codex.scan" | "codex.verify" | "regression.run"
+    ) {
+        Duration::from_secs(600)
+    } else {
+        Duration::from_secs(30)
+    };
+    match tokio::time::timeout(limit, dispatch(app, name, input)).await {
         Ok(result) => result,
         Err(_) => ToolResult::fail(format!("{name} timed out")),
     }
@@ -91,77 +99,54 @@ async fn dispatch(app: &AppState, name: &str, input: &Value) -> ToolResult {
         "memory.verify" => memory_verify(app).await,
         "budget.show" => budget_show(app).await,
         "changeset.show" => changeset_show(app).await,
+        "being.goal_add" => super::tools::mutate::goal_add(app, input).await,
+        "memory.add" => super::tools::mutate::memory_add(app, input).await,
+        "memory.forget" => super::tools::mutate::memory_forget(app, input).await,
+        "decide.ask" => super::tools::mutate::decide_ask(app, input).await,
+        "firewall.eval" => super::tools::mutate::firewall_eval(app, input).await,
+        "compare.check" => super::tools::mutate::compare_check(input),
+        "risk.analyze" => super::tools::mutate::risk_analyze(input),
+        "changeset.new" => super::tools::mutate::changeset_new(app, input).await,
+        "sandbox.run" => super::tools::mutate::sandbox_run(app, input).await,
+        "promote.run" => super::tools::mutate::promote_run(app, input).await,
+        "reject.run" => super::tools::mutate::reject_run(app, input).await,
+        "audit.production_tree" => super::tools::mutate::audit_production_tree(app).await,
+        "sandbox_tool.list" => super::tools::mutate::sandbox_tool_list(),
+        "sandbox_tool.describe" => super::tools::mutate::sandbox_tool_describe(input),
+        "sandbox_tool.run" => super::tools::mutate::sandbox_tool_run(app, input).await,
+        "action.ledger" => super::tools::mutate::action_ledger(app, input).await,
+        "action.rollback" => super::tools::mutate::action_rollback(app, input).await,
+        "focus.patch" => super::tools::mutate::focus_patch(app, input).await,
+        "epistemic.ingest" => super::tools::rest::epistemic_ingest(app, input).await,
+        "epistemic.show" => super::tools::rest::epistemic_show(app).await,
+        "library.applicable" => super::tools::rest::library_applicable(app, input).await,
+        "policy.history" => super::tools::rest::policy_history(app, input).await,
+        "skill.retrieve" => super::tools::rest::skill_retrieve(app, input).await,
+        "case.retrieve" => super::tools::rest::case_retrieve(app, input).await,
+        "frame.missing" => super::tools::rest::frame_missing(app, input).await,
+        "calibration.show" => super::tools::rest::calibration_show(app).await,
+        "conformance.run" => super::tools::rest::conformance_run(),
+        "calibrate.score" => super::tools::rest::calibrate_score(app).await,
+        "loop.run" => super::tools::rest::loop_run(app, input).await,
+        "loop.status" => super::tools::rest::loop_status(app, input).await,
+        "self_model.report" => super::tools::rest::self_model_report(app, input).await,
+        "debt.scan" => super::tools::rest::debt_scan(app).await,
+        "gc.propose" => super::tools::rest::gc_propose(app).await,
+        "gc.apply" => super::tools::rest::gc_apply(app).await,
+        "module.load" => super::tools::rest::module_load(app, input).await,
+        "module.rollback" => super::tools::rest::module_rollback(app, input).await,
+        "design.show" => super::tools::rest::design_show(app, input).await,
+        "pi.run" => super::tools::rest::pi_run(),
+        "pi.ingest" => super::tools::rest::pi_ingest(app, input).await,
+        "codex.scan" => super::tools::rest::codex_scan(app),
+        "codex.verify" => super::tools::rest::codex_verify(app),
+        "experience.compile" => super::tools::rest::experience_compile(app, input),
+        "llm.stats" => super::tools::rest::llm_stats(app).await,
+        "meta.analyze" => super::tools::rest::meta_analyze(app, input).await,
+        "regression.run" => super::tools::rest::regression_run(app).await,
+        "verify.run" => super::tools::rest::verify_run(input),
+        "mcp.list" => super::tools::rest::mcp_list(),
         other => ToolResult::fail(format!("unknown tool {other}")),
-    }
-}
-
-/// The classifier arms call these tools and keep the HTTP shapes those tests assert.
-pub async fn command_output(app: &AppState, op: &str) -> (bool, Value) {
-    match op {
-        "budget show" => {
-            let result = run(app, "budget.show", &json!({})).await;
-            (result.ok, result.data)
-        }
-        "doctor" => {
-            let result = run(app, "doctor.run", &json!({})).await;
-            (
-                result.ok,
-                json!({
-                    "kernel": result.data.get("kernel").cloned().unwrap_or(Value::Null),
-                    "services": result.data.get("services").cloned().unwrap_or(json!([])),
-                }),
-            )
-        }
-        "logs" => {
-            let result = run(app, "logs.head", &json!({})).await;
-            if result.ok {
-                (
-                    true,
-                    json!({ "seq": result.data.get("seq").cloned().unwrap_or(json!(0)) }),
-                )
-            } else {
-                (
-                    false,
-                    json!({
-                        "status": "unavailable",
-                        "reason": result.reason.unwrap_or(result.summary),
-                    }),
-                )
-            }
-        }
-        "graph" => {
-            let iri = mm_store_graph::graph_iri("ontology");
-            let query = format!("ASK {{ GRAPH <{iri}> {{ ?s ?p ?o }} }}");
-            let result = run(
-                app,
-                "graph.query",
-                &json!({ "query": query, "graph": "ontology" }),
-            )
-            .await;
-            if app.graph.is_some() {
-                (
-                    true,
-                    json!({ "status": "ok", "reason": "the RDF store is open" }),
-                )
-            } else {
-                (
-                    false,
-                    json!({
-                        "status": "unavailable",
-                        "reason": result.reason.unwrap_or_else(|| "the RDF store did not open".into()),
-                    }),
-                )
-            }
-        }
-        "changeset show" => {
-            let result = run(app, "changeset.show", &json!({})).await;
-            let empty = result.data.get("reason").and_then(Value::as_str).is_some();
-            (!empty && result.ok, result.data)
-        }
-        other => (
-            false,
-            json!({ "status": "unavailable", "reason": format!("no command body for {other}") }),
-        ),
     }
 }
 
@@ -307,6 +292,7 @@ async fn doctor(app: &AppState) -> ToolResult {
             "services": health.kernel.services,
             "quad_count": quads,
             "graph_reason": graph_reason,
+            "graph_holder": app.graph.as_ref().map(|_| "this process"),
         }),
     );
     result.focus = Some(json!({ "id": "state", "kind": "state", "title": "State" }));

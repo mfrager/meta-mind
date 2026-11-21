@@ -199,6 +199,7 @@ pub fn frames(request_id: &str, session_id: &str, text: &str) -> Vec<ChatFrame> 
             text: text.into(),
             blocks: None,
             suggestions: Some(SUGGESTIONS.map(str::to_string).to_vec()),
+            unbacked: None,
         },
         ChatFrame::Completed {
             subsystems: vec!["being".into()],

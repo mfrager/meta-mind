@@ -1,9 +1,11 @@
-//! The controller: the being speaks, calls read tools, and the console shows
-//! state or one document (plan phase 3).
+//! The controller: the being speaks, calls tools, and a mutation waits for
+//! Approve. The console has no other interactive executor.
 
 pub(crate) mod admit;
 pub(crate) mod catalog;
+pub(crate) mod confirm;
 pub(crate) mod exec;
+pub(crate) mod firewall;
 pub(crate) mod guide;
 pub(crate) mod intro;
 pub(crate) mod limits;

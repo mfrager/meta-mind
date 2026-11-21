@@ -73,17 +73,3 @@ const fn spec(name: &'static str, op: &'static str, tier: Tier) -> CommandSpec {
 pub fn command(name: &str) -> Option<&'static CommandSpec> {
     COMMANDS.iter().find(|command| command.name == name)
 }
-
-/// First token, or a fixed phrase the operator flows use.
-pub fn classify(query: &str) -> &'static str {
-    let trimmed = query.trim().trim_start_matches('/');
-    let lower = trimmed.to_lowercase();
-    if lower.contains("stage") && (lower.contains("slow") || lower.contains("why")) {
-        return "meta analyze";
-    }
-    if lower.contains("production-tree") {
-        return "audit";
-    }
-    let token = lower.split_whitespace().next().unwrap_or("");
-    command(token).map(|spec| spec.op).unwrap_or("passthrough")
-}

@@ -48,6 +48,8 @@ pub struct AppState {
     pub being_error: Option<String>,
     /// How the controller reaches a model. Tests replace the default.
     pub controller_model: std::sync::Mutex<ControllerModel>,
+    /// When set, the firewall denies the next write with this reason. Tests use it.
+    pub firewall_denial: std::sync::Mutex<Option<String>>,
     /// The audit-chained logger.
     pub logger: Arc<Logger>,
     /// The monotonic identifier factory, shared with the event log.
@@ -148,6 +150,7 @@ impl AppState {
             being,
             being_error,
             controller_model: std::sync::Mutex::new(ControllerModel::FromEnv),
+            firewall_denial: std::sync::Mutex::new(None),
             logger,
             ids,
             _lock: lock,
@@ -398,5 +401,16 @@ mod tests {
             assert!(lock_path.exists());
         }
         assert!(!lock_path.exists(), "Drop must remove console.lock");
+    }
+
+    #[tokio::test]
+    async fn a_second_graph_open_fails_while_this_process_holds_the_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = mm_core::Config::for_data_dir(dir.path());
+        let lock = ConsoleLock::acquire(dir.path()).unwrap();
+        let state = AppState::boot(cfg, lock).await.unwrap();
+        assert!(state.graph.is_some(), "the console holds the graph");
+        let opened = GraphStore::open(&state.cfg.store.graph_dir, &state.cfg.shapes_file()).await;
+        assert!(opened.is_err(), "a second open must fail while the first store is held");
     }
 }

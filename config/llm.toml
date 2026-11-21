@@ -20,7 +20,7 @@ timeout_ms = 30000
 max_tokens = 1024
 
 [[model]]
-name = "nvidia/nemotron-3-super-120b-a12b"
+name = "gemini/gemini-2.5-flash"
 input_cost_micros_per_1k = 150
 output_cost_micros_per_1k = 600
 typical_latency_ms = 400
@@ -35,9 +35,12 @@ complexity_ceiling = "very_high"
 
 # The deterministic client the tests and the recorded session replay use. It is
 # declared like any other model so routing and cost accounting exercise a real
-# spec rather than a special case.
+# spec rather than a special case. `mock = true` keeps it out of automatic
+# routing — only a pinned request (replay, the mock client) may select it, because
+# its name is not a model any provider serves.
 [[model]]
 name = "mock-small"
+mock = true
 input_cost_micros_per_1k = 100
 output_cost_micros_per_1k = 400
 typical_latency_ms = 5

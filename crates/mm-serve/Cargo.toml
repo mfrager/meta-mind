@@ -35,6 +35,17 @@ mm-store-graph = { workspace = true }
 mm-llm = { workspace = true }
 mm-memory = { workspace = true }
 mm-eventlog = { workspace = true }
+mm-firewall = { workspace = true }
+mm-decision = { workspace = true }
+mm-tools = { workspace = true }
+mm-mistakes = { workspace = true }
+mm-epistemic = { workspace = true }
+mm-library = { workspace = true }
+mm-codex = { workspace = true }
+mm-metaanalysis = { workspace = true }
+mm-pi = { workspace = true }
+mm-runtime = { workspace = true }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }

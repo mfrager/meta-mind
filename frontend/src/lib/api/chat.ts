@@ -34,6 +34,7 @@ export async function openChat(body: {
   refs?: string[];
   attachments?: { name: string; type: string; size: number; caption?: string }[];
   pane?: { id: string; title?: string };
+  propose?: { name: string; input: unknown };
 }): Promise<SequencedFrame[]> {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -66,6 +67,17 @@ export async function branchChat(sessionId: string): Promise<{ sessionId: string
   const res = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/branch`, { method: "POST" });
   if (!res.ok) throw await readError(res);
   return (await res.json()) as { sessionId: string; requestId: string };
+}
+
+export async function answerRun(requestId: string, answer: string): Promise<SequencedFrame[]> {
+  const res = await fetch(`/api/chat/${encodeURIComponent(requestId)}/answer`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answer }),
+  });
+  if (!res.ok) throw await readError(res);
+  const body = (await res.json()) as { frames: { seq: number; frame: ChatFrame }[] };
+  return body.frames;
 }
 
 export async function answerInput(sessionId: string, id: string, answer: string): Promise<SequencedFrame[]> {

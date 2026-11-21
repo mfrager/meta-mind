@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { SidePane } from "@/routes/workspace.tsx";
+import { useChatPending } from "@/lib/store/chat-pending.ts";
 import { applyControllerFocus, useSideStore } from "@/lib/store/side.ts";
 import type { FocusDoc } from "@/lib/wire/focus.ts";
 
@@ -28,6 +29,7 @@ const stateBody = {
 
 beforeEach(() => {
   useSideStore.setState({ mode: "state", doc: null, error: null, label: "State", revision: 0, lastAction: null });
+  useChatPending.setState({ text: null, propose: null });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -62,4 +64,74 @@ it("renders a budget focus, then the state board again", async () => {
   expect(await screen.findByText("kernel ok")).toBeTruthy();
   expect(document.querySelector("[data-doc-kind='budget']")).toBeNull();
   expect(screen.queryByText("meta_analysis")).toBeNull();
+});
+
+it("refreshes the state board in place instead of flashing its loading state", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <SidePane />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("kernel ok")).toBeTruthy();
+  expect(screen.queryByText("Checking the kernel…")).toBeNull();
+
+  // A tool asking the board to reload (or a health poll in production) refetches
+  // against the same cache entry, so what is on screen stays there.
+  await act(async () => {
+    useSideStore.setState({ revision: 1 });
+  });
+  expect(screen.queryByText("Checking the kernel…")).toBeNull();
+  expect(screen.getByText("kernel ok")).toBeTruthy();
+});
+
+const goals: FocusDoc = {
+  v: 1,
+  id: "goals",
+  kind: "tree",
+  title: "Goals",
+  status: "saved",
+  version: 1,
+  source: { kind: "chat" },
+  capabilities: ["edit"],
+  snapshot: {},
+};
+
+it("a goal document proposes focus.patch and a fixture stays disabled", () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  useSideStore.setState({ mode: "document", doc: goals, error: null, label: "Goals", revision: 0, lastAction: null });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <SidePane />
+    </QueryClientProvider>,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Goal description" }), { target: { value: "ship the console" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask Metamind to change this." }));
+  expect(useChatPending.getState().propose).toEqual({
+    name: "focus.patch",
+    input: { id: "goals", patch: { op: "set_field", field: "description", value: "ship the console" } },
+  });
+  expect(useChatPending.getState().text).toBe("add a goal");
+
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <SidePane />
+    </QueryClientProvider>,
+  );
+  useSideStore.setState({
+    mode: "document",
+    doc: { ...goals, reason: "This tree is a fixture." },
+    error: null,
+    label: "Goals",
+    revision: 0,
+    lastAction: null,
+  });
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <SidePane />
+    </QueryClientProvider>,
+  );
+  const locked = screen.getByRole("button", { name: "Ask Metamind to change this." });
+  expect(locked.hasAttribute("disabled")).toBe(true);
+  expect(locked.getAttribute("title")).toBe("This tree is a fixture.");
 });

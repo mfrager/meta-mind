@@ -41,15 +41,39 @@ pub trait Transport: Send + Sync {
 /// path for no benefit. An `https` endpoint is refused with a message that says
 /// what to do instead, which is better than failing at handshake time with a
 /// confusing error.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct TcpTransport {
     timeout_ms: u32,
+    // The bearer token, if the endpoint wants one. Hand-written Debug below so it
+    // never reaches a formatter.
+    api_key: Option<String>,
+}
+
+impl std::fmt::Debug for TcpTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TcpTransport")
+            .field("timeout_ms", &self.timeout_ms)
+            .field(
+                "api_key",
+                &self.api_key.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl TcpTransport {
     /// A transport that gives up after `timeout_ms`.
     pub fn new(timeout_ms: u32) -> Self {
-        TcpTransport { timeout_ms }
+        TcpTransport {
+            timeout_ms,
+            api_key: None,
+        }
+    }
+
+    /// Send `Authorization: Bearer <key>` with every request.
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
     }
 }
 
@@ -67,9 +91,20 @@ impl Transport for TcpTransport {
 
         let payload = serde_json::to_vec(body)
             .map_err(|e| LlmError::Config(format!("cannot encode the request body: {e}")))?;
+        // A key carrying CR/LF would smuggle its own headers, so it is refused
+        // rather than written into the request line block.
+        let auth = match &self.api_key {
+            Some(key) if key.contains(['\r', '\n']) => {
+                return Err(LlmError::Config(
+                    "OPENAI_API_KEY must not contain a newline".into(),
+                ))
+            }
+            Some(key) => format!("Authorization: Bearer {key}\r\n"),
+            None => String::new(),
+        };
         let head = format!(
             "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\n\
-             Content-Length: {}\r\nConnection: close\r\n\r\n",
+             {auth}Content-Length: {}\r\nConnection: close\r\n\r\n",
             payload.len()
         );
         let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
@@ -187,11 +222,13 @@ impl OpenAiClient {
                 "OPENAI_BASE_URL and OPENAI_API_KEY must both be set".into(),
             )
         })?;
+        let transport = TcpTransport::new(config.defaults.timeout_ms)
+            .with_api_key(env.api_key.clone());
         Ok(OpenAiClient {
             env,
             config: config.clone(),
             schemas: SchemaRegistry::new(),
-            transport: Arc::new(TcpTransport::new(config.defaults.timeout_ms)),
+            transport: Arc::new(transport),
         })
     }
 
@@ -621,6 +658,40 @@ complexity_ceiling = "medium"
             "the transport must not be reached while the guard is armed"
         );
         assert!(client.complete(&req).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn the_configured_key_is_sent_as_a_bearer_header() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap();
+            let body = r#"{"choices":[{"message":{"content":"ok"}}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            String::from_utf8_lossy(&buf[..n]).to_string()
+        });
+
+        let env = ProviderEnv::from_pairs(
+            Some(format!("http://{addr}/v1")),
+            Some("sk-test".into()),
+        )
+        .unwrap();
+        let client = OpenAiClient::from_env(&config(), Some(env)).unwrap();
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
+        assert_eq!(client.complete(&req).await.unwrap().text, "ok");
+
+        let seen = server.await.unwrap();
+        assert!(
+            seen.contains("Authorization: Bearer sk-test\r\n"),
+            "the key must go on the wire: {seen}"
+        );
     }
 
     #[test]

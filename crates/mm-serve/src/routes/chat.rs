@@ -9,8 +9,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::chat::{self, validate_attachments};
-use crate::docs::RUN_ID;
+use crate::chat::validate_attachments;
 use crate::dto::chat::ChatFrame;
 use crate::error::AppError;
 use crate::sse::{self, SseFrame};
@@ -25,12 +24,18 @@ pub struct OpenChat {
     pub refs: Vec<String>,
     #[serde(default)]
     pub attachments: Vec<Value>,
-    /// When true, keep the first-word classifier. The web client leaves this false.
-    #[serde(default, rename = "commandMode")]
-    pub command_mode: bool,
     /// Which pane is on screen. Absent means the state board.
     #[serde(default)]
     pub pane: Option<PaneHint>,
+    /// A focused-document edit. Only `focus.patch` is accepted.
+    #[serde(default)]
+    pub propose: Option<ProposeBody>,
+}
+
+#[derive(Deserialize)]
+pub struct ProposeBody {
+    pub name: String,
+    pub input: Value,
 }
 
 #[derive(Deserialize)]
@@ -59,16 +64,6 @@ fn pane_line(pane: Option<&PaneHint>) -> String {
         }
         _ => "The side pane is showing the state board.".into(),
     }
-}
-
-fn focus_for(state: &AppState, op: &str) -> Option<Value> {
-    if op != "meta analyze" {
-        return None;
-    }
-    state
-        .focus
-        .get(RUN_ID)
-        .and_then(|doc| serde_json::to_value(doc).ok())
 }
 
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Result<Json<Value>, AppError> {
@@ -111,42 +106,29 @@ pub async fn open(
             id
         }
     };
+    let _ = &body.refs;
     let request_id = state.ids.next_string();
     state
         .chat
         .begin(request_id.clone(), session_id.clone(), body.query.clone())?;
-    if !body.command_mode {
-        let frames = crate::controller::reply(
-            &state,
-            &request_id,
-            &session_id,
-            &body.query,
-            &pane_line(body.pane.as_ref()),
-        )
-        .await;
-        let stored = state.chat.finish(&request_id, frames, "completed")?;
-        return Ok(sse_response(&stored)?.into_response());
-    }
-    let op = chat::classify(&body.query);
-    let (success, output) = chat::execute(&state, op, &body.query).await;
-    let cancelled = state.chat.is_cancelled(&request_id)?;
-    let frames = chat::plan_frames(
+    let propose = body.propose.as_ref().map(|propose| crate::controller::turn::Propose {
+        name: propose.name.clone(),
+        input: propose.input.clone(),
+    });
+    let outcome = crate::controller::reply(
+        &state,
         &request_id,
         &session_id,
         &body.query,
-        op,
-        success,
-        output,
-        cancelled,
-        body.attachments.len(),
-        &body.refs,
-        focus_for(&state, op),
-    );
-    let stored = state.chat.finish(
-        &request_id,
-        frames,
-        if cancelled { "cancelled" } else { "completed" },
-    )?;
+        &pane_line(body.pane.as_ref()),
+        propose.as_ref(),
+    )
+    .await;
+    let stored = if let Some(pending) = outcome.pending {
+        state.chat.finish_waiting(&request_id, outcome.frames, pending)?
+    } else {
+        state.chat.finish(&request_id, outcome.frames, "completed")?
+    };
     Ok(sse_response(&stored)?.into_response())
 }
 
@@ -179,11 +161,44 @@ pub async fn regenerate(
             query,
             refs: Vec::new(),
             attachments: Vec::new(),
-            command_mode: false,
             pane: None,
+            propose: None,
         }),
     )
     .await
+}
+
+#[derive(Deserialize)]
+pub struct RunAnswer {
+    pub answer: Value,
+}
+
+pub async fn answer_run(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<String>,
+    Json(body): Json<RunAnswer>,
+) -> Result<Json<Value>, AppError> {
+    let answer = body
+        .answer
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("Approve, Reject, or Defer is required".into()))?;
+    if !matches!(answer, "Approve" | "Reject" | "Defer") {
+        return Err(AppError::BadRequest(
+            "Approve, Reject, or Defer is required".into(),
+        ));
+    }
+    if state.chat.run_state(&request_id)? != "waiting" {
+        return Err(AppError::BadRequest("this run is not waiting".into()));
+    }
+    let frames = crate::controller::turn::resume(&state, &request_id, answer)
+        .await
+        .map_err(AppError::BadRequest)?;
+    let stored = state.chat.append_frames(&request_id, frames, "completed")?;
+    let body: Vec<Value> = stored
+        .into_iter()
+        .map(|(seq, frame)| json!({ "seq": seq, "frame": frame }))
+        .collect();
+    Ok(Json(json!({ "frames": body })))
 }
 
 pub async fn answer(

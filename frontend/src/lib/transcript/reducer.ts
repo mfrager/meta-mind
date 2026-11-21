@@ -14,6 +14,7 @@ export type ButtonOption = { label: string; value: string; description?: string 
 
 export type ButtonRequest = {
   kind: "buttons" | "form";
+  purpose?: string;
   prompt?: string;
   columns?: number;
   variant?: string;
@@ -26,7 +27,7 @@ export type TranscriptItem =
   | { kind: "turn"; id: string; phase: Phase; text: string; state: "processing" | "complete" | "error"; visible: boolean; ops: OpCall[] }
   | { kind: "input_request"; id: string; request: ButtonRequest; answered?: string }
   | { kind: "system"; id: string; level: "info" | "error"; message: string; reason?: string }
-  | { kind: "final"; id: string; text: string; suggestions: string[] };
+  | { kind: "final"; id: string; text: string; suggestions: string[]; unbacked?: boolean };
 
 export type TranscriptState = {
   items: TranscriptItem[];
@@ -154,6 +155,7 @@ function apply(state: TranscriptState, frame: ChatFrame): TranscriptState {
             id: frame.response_id,
             text: frame.text,
             suggestions: frame.suggestions ?? [],
+            unbacked: frame.unbacked === true,
           },
         ],
       };
@@ -277,6 +279,7 @@ function asButtons(value: unknown): ButtonRequest {
     : [];
   return {
     kind: record.kind === "form" ? "form" : "buttons",
+    purpose: typeof record.purpose === "string" ? record.purpose : undefined,
     prompt: typeof record.prompt === "string" ? record.prompt : undefined,
     columns: typeof record.columns === "number" ? record.columns : 2,
     variant: typeof record.variant === "string" ? record.variant : "options",

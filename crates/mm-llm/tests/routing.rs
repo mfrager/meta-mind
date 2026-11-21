@@ -191,6 +191,7 @@ fn the_cost_estimate_rounds_up_per_started_thousand() {
         output_cost_micros_per_1k: 600,
         typical_latency_ms: 1,
         complexity_ceiling: Complexity::Low,
+        mock: false,
     };
     assert_eq!(spec.cost_micros(0, 0), 0);
     assert_eq!(spec.cost_micros(1000, 1000), 750);

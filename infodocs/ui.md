@@ -2,9 +2,15 @@
 
 Operator notes for the local UI (`mm-serve` + `frontend`). How to start it, and the checks behind Milestone 7, are in [`frontend/README.md`](../frontend/README.md).
 
-The console quotes the kernel. A healthy boot still reports graph and language-model services as unavailable:
+## You are talking to Metamind
 
-- graph: the RDF store is opened on demand
+The composer is a conversation with the being. Ask what you want done. A write, a gate, or a call outside the process waits for Approve. You do not need a command name.
+
+`mm-serve` holds the graph while it runs. A CLI pointed at the same data directory fails on the RocksDB lock. Use another `--data-dir`, or stop this process first.
+
+The console quotes the kernel. A healthy boot reports a language-model service as unavailable when no provider is configured:
+
+- graph: this process holds the RDF store
 - language model: `no language-model provider is configured`
 - runs: `no run is recorded`
 - stage timings: `No stage timings are recorded for this run.`

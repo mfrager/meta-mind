@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { useHealth } from "@/lib/api/health.ts";
 
@@ -39,11 +40,29 @@ export async function fetchState(): Promise<StateBoard> {
   return response.json() as Promise<StateBoard>;
 }
 
-/** Refetch when the health poll moves, and when a tool asks the board to reload. */
+/**
+ * Refetch when the health poll moves, and when a tool asks the board to reload.
+ *
+ * The query key is deliberately stable. Putting `health.dataUpdatedAt` in the key
+ * gave every poll a fresh cache entry, so the board had no data for a moment and
+ * the whole panel flashed through its loading state every five seconds. A refetch
+ * against one key updates the rendered board in place instead.
+ */
 export function useStateBoard(revision: number) {
   const health = useHealth();
-  return useQuery({
-    queryKey: ["console-state", health.dataUpdatedAt, revision],
+  const query = useQuery({
+    queryKey: ["console-state"],
     queryFn: fetchState,
+    // A revision change keeps the previous rows on screen while the new ones load.
+    placeholderData: keepPreviousData,
   });
+
+  const { refetch } = query;
+  const healthAt = health.dataUpdatedAt;
+  useEffect(() => {
+    // `0` means "no poll has answered yet": the first mount already fetched.
+    if (healthAt > 0 || revision > 0) void refetch();
+  }, [healthAt, revision, refetch]);
+
+  return query;
 }

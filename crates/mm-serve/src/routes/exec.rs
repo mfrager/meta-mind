@@ -1,7 +1,7 @@
 //! `/api/commands` and `/api/exec` (plan `09` §5).
 //!
 //! Exec is an allowlist, not a shell. Unknown names and shell metacharacters
-//! are rejected. A registered command runs the same orchestrator the chat pane uses.
+//! are rejected. A registered name is not run here: the controller is the executor.
 
 use std::sync::Arc;
 
@@ -10,7 +10,6 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::chat;
 use crate::error::AppError;
 use crate::parity::{self, Tier};
 use crate::state::AppState;
@@ -63,16 +62,8 @@ pub async fn exec(
             "no operation is registered for {name}"
         )));
     };
-    let query = body.argv.join(" ");
-    let (success, output) = chat::execute(&state, command.op, &query).await;
-    Ok(Json(json!({
-        "name": command.name,
-        "op": command.op,
-        "tier": match command.tier {
-            Tier::Bespoke => "bespoke",
-            Tier::Passthrough => "passthrough",
-        },
-        "success": success,
-        "output": output,
-    })))
+    let _ = (state, command);
+    Err(AppError::Conflict(
+        "the controller is the only way to run this".into(),
+    ))
 }

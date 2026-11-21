@@ -228,17 +228,29 @@ impl Router for ThresholdRouter {
             };
         }
 
+        // A mock spec is a name only a deterministic client can answer, so it is
+        // never selected automatically — sending it to a provider is a bad request.
+        // Pinning it above is how the mock client and replay reach it.
+        let live: Vec<&ModelSpec> = self.models.iter().filter(|m| !m.mock).collect();
+        if live.is_empty() {
+            return Err(LlmError::Config(
+                "no provider-served model is configured; every [[model]] is marked \
+                 `mock = true`"
+                    .into(),
+            ));
+        }
+
         let ceiling = req.effective_ceiling();
-        let mut sufficient: Vec<&ModelSpec> = self
-            .models
+        let mut sufficient: Vec<&ModelSpec> = live
             .iter()
+            .copied()
             .filter(|m| m.complexity_ceiling >= ceiling)
             .collect();
         let mut reason = RoutingReason::CheapestSufficient;
         if sufficient.is_empty() {
             // Nothing claims to be able to take the work; the most capable model is
             // the honest answer, and the reason records that it is a fallback.
-            sufficient = self.models.iter().collect();
+            sufficient = live.clone();
             reason = RoutingReason::OnlyCandidate;
         }
 
@@ -259,7 +271,7 @@ impl Router for ThresholdRouter {
         let best = self.cheapest(&sufficient)?;
         let cost = self.estimate(best);
         if req.cost_budget_micros > 0 && cost > req.cost_budget_micros {
-            let all: Vec<&ModelSpec> = self.models.iter().collect();
+            let all: Vec<&ModelSpec> = live.clone();
             let cheapest = self.cheapest(&all)?;
             let cheap_cost = self.estimate(cheapest);
             if cheap_cost > req.cost_budget_micros {
@@ -311,7 +323,40 @@ mod tests {
             output_cost_micros_per_1k: out_cost,
             typical_latency_ms: latency,
             complexity_ceiling: ceiling,
+            mock: false,
         }
+    }
+
+    #[test]
+    fn a_mock_model_is_never_chosen_automatically_but_can_be_pinned() {
+        let mut mock = spec("mock-small", 100, 400, 5, Complexity::High);
+        mock.mock = true;
+        let router = ThresholdRouter::from_specs(
+            vec![mock, spec("live", 150, 600, 400, Complexity::Medium)],
+            None,
+        );
+
+        // Cheaper than the live model, but its name is not a request to send.
+        let decision = router
+            .choose(&RoutingRequest::new(Purpose::Interpret))
+            .unwrap();
+        assert_eq!(decision.model, "live");
+
+        // Replay and the mock client reach it by pinning.
+        let pinned = router
+            .choose(&RoutingRequest::new(Purpose::Interpret).with_pinned_model("mock-small"))
+            .unwrap();
+        assert_eq!(pinned.model, "mock-small");
+        assert_eq!(pinned.reason, RoutingReason::Pinned);
+
+        // A pool of only mock specs is a configuration error, not a provider call.
+        let mut only = spec("mock-small", 100, 400, 5, Complexity::High);
+        only.mock = true;
+        let only_mock = ThresholdRouter::from_specs(vec![only], None);
+        let err = only_mock
+            .choose(&RoutingRequest::new(Purpose::Interpret))
+            .unwrap_err();
+        assert!(err.to_string().contains("mock = true"), "{err}");
     }
 
     fn router() -> ThresholdRouter {
