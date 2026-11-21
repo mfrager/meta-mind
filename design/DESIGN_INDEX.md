@@ -493,6 +493,10 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 | `conversation/voice_prosody.md` | Dynamic TTS prosody from affect, context, learned baselines |
 | `conversation/synthetic_testing.md` | Declarative conversation testing, personas, CI integration |
 | `conversation/cross_session_memory.md` | Cross-session continuity, project/user memory, sync |
+| `conversation/hill_climbing.md` | General-purpose hill-climbing optimizer for artifacts, configs, policies |
+| `conversation/report_generation.md` | Modality-aware report generation with hill-climbing optimization |
+| `conversation/dashboard_construction.md` | Cost-aware, context-responsive dashboard builder with hill-climbing |
+| `conversation/self_improvement_loop.md` | Universal self-reflection & improvement loop for artifacts, behaviors, policies |
 
 ---
 
@@ -595,6 +599,44 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - Multi-device sync with presence, handoff (voice↔text)
 - Cross-project learning (expertise, conventions, communication patterns)
 - Privacy controller with granular policies, ephemeral mode
+
+### M. Hill-Climbing Optimization Engine (`conversation/hill_climbing.md`)
+1. **Core Architecture** — Artifact, NeighborhoodGenerator, Evaluator, AcceptanceCriterion traits
+2. **Variants** — SteepestAscent, FirstImprovement, Stochastic, Pareto multi-objective
+3. **Domain Instantiations** — Report design, dashboard layout, policy tuning, prompt optimization
+4. **Hill-Climbing Integration** — As proactive plugin, in-conversation optimization, dashboard auto-layout
+5. **Convergence Criteria** — Max iterations, time budget, plateau detection, score threshold, budget exhaustion
+6. **Explainability** — Every step produces audit record with rationale
+7. **Configuration** — Variant, neighborhood size, acceptance, convergence parameters
+
+### N. Report Generation Engine (`conversation/report_generation.md`)
+1. **Report Schema** — Structured sections with modality, content, sources, metadata
+2. **Report Builder** — Fluent API with SectionBuilder, modality specification per section
+3. **Modality Renderers** — 10 modalities (Narrative, Bullets, DrillDown, Explain, ZoomOut, Summarize, Table, DecisionMatrix, Checklist, Timeline)
+3. **Multi-Format Export** — Markdown, HTML, PDF (Typst), JSON, Notion, Confluence, Slack Blocks
+4. **Hill-Climbing Integration** — Report as Optimizable; mutations for modality, detail, citations, restructure
+5. **In-Conversation Refinement** — Iterative report improvement via chat
+6. **Template Library** — Incident, Design Doc, Decision Record, Architecture Review, Research Brief
+7. **Evaluation Objectives** — Clarity, brevity, actionability, completeness, modality fit, source coverage, preference alignment
+
+### O. Dashboard Construction Engine (`conversation/dashboard_construction.md`)
+1. **Dashboard Schema** — Panels, layout, data sources, queries, visualizations, thresholds, interactions
+2. **Cost-Aware Query Model** — Latency, cost, cacheability, volatility per panel; global cost budget
+3. **Viewing Contexts** — Desktop, tablet, mobile, TV/wallboard, incident overlay, executive summary
+4. **Hill-Climbing Integration** — Dashboard as Optimizable; mutations for layout, panels, queries, costs
+5. **Dashboard Evaluator** — Multi-objective: info density, cognitive load, query cost, latency, actionability, mobile fitness, consistency, alert coverage, freshness
+6. **In-Conversation Operations** — Create, adapt (mobile/incident/executive), cost optimize, incident mode
+7. **Multi-Format Export** — Grafana JSON, Prometheus YAML, Datadog, Jsonnet, Terraform, Markdown, HTML, Slack
+8. **Template Library** — Operational, Incident, Executive, Debugging, Business KPI, Security Posture
+
+### P. Self-Reflection & Self-Improvement Loop (`conversation/self_improvement_loop.md`)
+1. **5-Phase Loop** — REFLECT (issues/opportunities) → PLAN (steps with verification) → ACT (mutations) → VERIFY (automated + human) → LEARN (patterns/rules)
+2. **Multi-Dimensional Budgets** — Time, compute tokens, API calls, monetary, human attention, agent attention
+3. **Domain Instantiations** — Report, dashboard, prompt, agent self-improvement loops
+4. **Cross-Loop Learning** — Transferable patterns, anti-patterns, successful configs across loops
+5. **Trigger System** — Scheduled, on-change, on-regression, on-feedback, on-incident, on-deployment, on-benchmark, cross-loop signals
+6. **Governance & Observability** — Audit logging, Prometheus metrics, human approval gates, auto-rollback
+7. **Example End-to-End** — Report improvement: reflect → plan → hill-climb act → verify → learn (1.5 min, +27% composite)
 
 ---
 
