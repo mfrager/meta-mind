@@ -690,6 +690,16 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Unified API** — `mm-data::MemorySystem` with episodic/segment/project/user stores, queries, sync, privacy
 - **Configuration** — Single `memory.toml` for all tiers, compression, vector index, sync, privacy
 
+### U. State Machine RDF Ontology (`state_machine_rdf.md`)
+- **OWL Ontology** — Classes for StateMachine, State, Transition, Event, Guard, Action, OrthogonalRegion, HistoryState, Instance, TransitionEvent, Snapshot
+- **Definition as Data** — SM definitions (states, transitions, regions, guards, actions) serialized as RDF triples
+- **Runtime as Data** — SmInstance with current state, history stack, orthogonal region states, parent/child hierarchy
+- **Events as PROV-O** — Transition events with timestamps, guard results, durations, provenance links
+- **SPARQL Query Patterns** — Active states, transition history, guard failures, state diagrams, session filtering
+- **RDF Storage Mapping** — Named graphs per session/turn/chunk, daily event logs, snapshot graphs in cubecast
+- **Visualization** — Graphviz DOT export from SPARQL, live WebSocket state updates, debug UI diagrams
+- **mm-sm Integration** — Trait extensions for to_turtle/from_turtle, automatic transition event logging
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*

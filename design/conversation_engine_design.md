@@ -1247,6 +1247,7 @@ scenarios:
 | `dashboard_construction.md` | Dashboard as artifact mutated by hill-climb SM |
 | `self_improvement_loop.md` | `ImprovementRegion` 5-phase SM |
 | `conversation_engine_improvements.md` | All consolidated into SM architecture |
+| `state_machine_rdf.md` | RDF ontology for all SM definitions, instances, events; SPARQL queries, visualization |
 
 ---
 
