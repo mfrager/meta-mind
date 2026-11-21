@@ -655,6 +655,20 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Configuration** — Unified TOML for all CME subsystems
 - **Rollout** — 12-phase migration, canary, compatibility checklist
 
+### R. RDF Backend Integration — Cubecast (`rdf_backend_integration.md`)
+- **Single FS Root** — One base directory (`$MM_DATA_DIR`/`~/.metamind`) for all stores
+- **Cubecast Engine** — Oxigraph+RocksDB, multi-graph registry, semantic registry, projects, inference
+- **New `mm-data` Crate** — Unified RDF layer wrapping cubecast; `mm-store-graph` becomes thin compat layer
+- **Init Sequence** — 9-step idempotent bootstrap: dirs → config → engine → ontology → agentstream → registries → migrations → health
+- **Agentstream Logs** — RDF event store: named graph per session, append-only N-Triples event log, materialized projections
+- **User Homes** — `users/<id>/` with FOAF/SKOS profile, preferences, project/app symlinks, RDF index
+- **Project Homes** — `projects/<id>/` with DOAP manifest, members, datasets, agents, RDF index
+- **App Homes** — `apps/<id>/` with manifest, config, plugins, data, RDF index
+- **Datasets Root** — `datasets/<id>/` with DCAT catalog, versioned snapshots, PROV-O provenance, quality metrics
+- **Unified Config** — Single `config.toml` merging cubecast + metamind settings
+- **Migration Plan** — 10-phase cutover from direct Oxigraph to cubecast with compatibility layer
+- **Integration** — `AppState::boot` initializes data layer; controller logs to agentstream
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*
