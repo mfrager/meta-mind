@@ -136,7 +136,18 @@ pub fn groups_for(text: &str) -> Vec<GroupId> {
     );
     add(
         GroupId::Decide,
-        any_word(&lower, &["decide", "should", "firewall", "risk", "calibration", "conformance", "compare"]),
+        any_word(
+            &lower,
+            &[
+                "decide",
+                "should",
+                "firewall",
+                "risk",
+                "calibration",
+                "conformance",
+                "compare",
+            ],
+        ),
     );
     add(
         GroupId::Change,
@@ -156,7 +167,19 @@ pub fn groups_for(text: &str) -> Vec<GroupId> {
     );
     add(
         GroupId::Later,
-        any_word(&lower, &["codex", "experience", "llm", "meta", "regression", "verify", "calibrate", "mcp"]),
+        any_word(
+            &lower,
+            &[
+                "codex",
+                "experience",
+                "llm",
+                "meta",
+                "regression",
+                "verify",
+                "calibrate",
+                "mcp",
+            ],
+        ),
     );
     groups
 }
@@ -887,7 +910,10 @@ fn schema_for(name: &str) -> Value {
         ),
         "memory.add" => object(
             &[
-                ("kind", json!({"type": "string", "enum": ["semantic", "episodic"]})),
+                (
+                    "kind",
+                    json!({"type": "string", "enum": ["semantic", "episodic"]}),
+                ),
                 ("content", json!({"type": "string", "minLength": 1})),
             ],
             &["kind", "content"],
@@ -939,9 +965,10 @@ fn schema_for(name: &str) -> Value {
             },
             "required": []
         }),
-        "sandbox.run" | "promote.run" | "action.rollback" => {
-            object(&[("id", json!({"type": "string", "minLength": 1}))], &["id"])
-        }
+        "sandbox.run" | "promote.run" | "action.rollback" => object(
+            &[("id", json!({"type": "string", "minLength": 1}))],
+            &["id"],
+        ),
         "reject.run" => object(
             &[
                 ("id", json!({"type": "string", "minLength": 1})),
@@ -949,9 +976,10 @@ fn schema_for(name: &str) -> Value {
             ],
             &["id", "reason"],
         ),
-        "sandbox_tool.describe" => {
-            object(&[("name", json!({"type": "string", "minLength": 1}))], &["name"])
-        }
+        "sandbox_tool.describe" => object(
+            &[("name", json!({"type": "string", "minLength": 1}))],
+            &["name"],
+        ),
         "sandbox_tool.run" => json!({
             "type": "object",
             "additionalProperties": false,
@@ -1007,9 +1035,15 @@ fn schema_for(name: &str) -> Value {
             "required": ["subject", "predicate", "object"]
         }),
         "library.applicable" => object(&[("goal", json!({"type": "string"}))], &[]),
-        "policy.history" => object(&[("policy", json!({"type": "string", "minLength": 1}))], &["policy"]),
+        "policy.history" => object(
+            &[("policy", json!({"type": "string", "minLength": 1}))],
+            &["policy"],
+        ),
         "skill.retrieve" | "case.retrieve" => object(&[("query", json!({"type": "string"}))], &[]),
-        "frame.missing" | "self_model.report" => object(&[("id", json!({"type": "string", "minLength": 1}))], &["id"]),
+        "frame.missing" | "self_model.report" => object(
+            &[("id", json!({"type": "string", "minLength": 1}))],
+            &["id"],
+        ),
         "loop.status" => json!({
             "type": "object",
             "additionalProperties": false,
@@ -1025,10 +1059,22 @@ fn schema_for(name: &str) -> Value {
             },
             "required": []
         }),
-        "module.rollback" => object(&[("uri", json!({"type": "string", "minLength": 1}))], &["uri"]),
-        "design.show" => object(&[("doc", json!({"type": "string", "minLength": 1}))], &["doc"]),
-        "pi.ingest" | "experience.compile" => object(&[("file", json!({"type": "string", "minLength": 1}))], &["file"]),
-        "meta.analyze" => object(&[("episode", json!({"type": "string", "minLength": 1}))], &["episode"]),
+        "module.rollback" => object(
+            &[("uri", json!({"type": "string", "minLength": 1}))],
+            &["uri"],
+        ),
+        "design.show" => object(
+            &[("doc", json!({"type": "string", "minLength": 1}))],
+            &["doc"],
+        ),
+        "pi.ingest" | "experience.compile" => object(
+            &[("file", json!({"type": "string", "minLength": 1}))],
+            &["file"],
+        ),
+        "meta.analyze" => object(
+            &[("episode", json!({"type": "string", "minLength": 1}))],
+            &["episode"],
+        ),
         "verify.run" => json!({
             "type": "object",
             "additionalProperties": false,

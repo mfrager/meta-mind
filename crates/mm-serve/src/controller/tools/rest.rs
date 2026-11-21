@@ -24,7 +24,11 @@ use super::super::exec::ToolResult;
 
 pub async fn loop_goal_allowed(app: &AppState, input: &Value) -> Result<(), String> {
     let raw = text(input, "goal");
-    let raw = if raw.is_empty() { text(input, "path") } else { raw };
+    let raw = if raw.is_empty() {
+        text(input, "path")
+    } else {
+        raw
+    };
     if raw.is_empty() {
         return Err("a goal file under bench/ or a goal id is required".into());
     }
@@ -107,7 +111,11 @@ pub async fn library_applicable(app: &AppState, input: &Value) -> ToolResult {
     }
     let goal = {
         let goal = text(input, "goal");
-        if goal.is_empty() { "the operator asked what applies".into() } else { goal }
+        if goal.is_empty() {
+            "the operator asked what applies".into()
+        } else {
+            goal
+        }
     };
     let state = ApplicabilityState::new(&goal, mm_core::Timestamp::now());
     let candidates: Vec<_> = selectable(&entries).into_iter().cloned().collect();
@@ -130,9 +138,7 @@ pub async fn policy_history(app: &AppState, input: &Value) -> ToolResult {
         return ToolResult::fail("a policy iri is required");
     }
     match library_store(app).policy_history(&policy).await {
-        Ok(rows) if rows.is_empty() => {
-            ToolResult::fail(format!("no such policy: {policy}"))
-        }
+        Ok(rows) if rows.is_empty() => ToolResult::fail(format!("no such policy: {policy}")),
         Ok(rows) => ToolResult::done(
             format!("{} policy version(s)", rows.len()),
             json!({ "versions": rows.len() }),
@@ -192,14 +198,15 @@ pub async fn case_retrieve(app: &AppState, input: &Value) -> ToolResult {
     };
     let hits: Vec<_> = rows
         .iter()
-        .filter(|row| query.is_empty() || row.title.to_ascii_lowercase().contains(&query) || row.slug.to_ascii_lowercase().contains(&query))
+        .filter(|row| {
+            query.is_empty()
+                || row.title.to_ascii_lowercase().contains(&query)
+                || row.slug.to_ascii_lowercase().contains(&query)
+        })
         .take(5)
         .map(|row| json!({ "iri": row.iri, "title": row.title }))
         .collect();
-    ToolResult::done(
-        format!("{} case hits", hits.len()),
-        json!({ "hits": hits }),
-    )
+    ToolResult::done(format!("{} case hits", hits.len()), json!({ "hits": hits }))
 }
 
 pub async fn frame_missing(app: &AppState, input: &Value) -> ToolResult {
@@ -208,7 +215,9 @@ pub async fn frame_missing(app: &AppState, input: &Value) -> ToolResult {
         return ToolResult::fail("a frame instance id is required");
     };
     match library_store(app).frame_instance_missing(&ulid).await {
-        Ok(Some(slots)) if slots.is_empty() => ToolResult::done("no missing slots", json!({ "slots": [] })),
+        Ok(Some(slots)) if slots.is_empty() => {
+            ToolResult::done("no missing slots", json!({ "slots": [] }))
+        }
         Ok(Some(slots)) => ToolResult::done(
             format!("{} missing slots", slots.len()),
             json!({ "slots": slots }),
@@ -246,7 +255,10 @@ pub fn conformance_run() -> ToolResult {
     let findings = mm_decision::run_conformance(&core);
     let passed = mm_decision::findings_passed(&findings);
     let summary = mm_decision::conformance_summary(&core);
-    let mut result = ToolResult::done(summary, json!({ "passed": passed, "findings": findings.len() }));
+    let mut result = ToolResult::done(
+        summary,
+        json!({ "passed": passed, "findings": findings.len() }),
+    );
     result.ok = passed;
     result
 }
@@ -261,7 +273,11 @@ pub async fn loop_run(app: &AppState, input: &Value) -> ToolResult {
     }
     let raw = {
         let goal = text(input, "goal");
-        if goal.is_empty() { text(input, "path") } else { goal }
+        if goal.is_empty() {
+            text(input, "path")
+        } else {
+            goal
+        }
     };
     let goal = if let Ok(id) = mm_core::id::parse_ulid(&raw) {
         let Some(being) = &app.being else {
@@ -271,7 +287,12 @@ pub async fn loop_run(app: &AppState, input: &Value) -> ToolResult {
         let Some(recorded) = guard.goals().get(&id) else {
             return ToolResult::fail(format!("no goal {}", ulid_string(&id)));
         };
-        let path = app.cfg.store.data_dir.join("goals").join(format!("{}.json", ulid_string(&id)));
+        let path = app
+            .cfg
+            .store
+            .data_dir
+            .join("goals")
+            .join(format!("{}.json", ulid_string(&id)));
         if let Some(parent) = path.parent() {
             if let Err(err) = std::fs::create_dir_all(parent) {
                 return ToolResult::fail(err.to_string());
@@ -323,7 +344,10 @@ pub async fn loop_status(app: &AppState, input: &Value) -> ToolResult {
     let sql = if id.is_empty() {
         "SELECT id, status FROM loop_runs ORDER BY rowid DESC LIMIT 5".to_string()
     } else {
-        format!("SELECT id, status FROM loop_runs WHERE id = '{}'", id.replace('\'', ""))
+        format!(
+            "SELECT id, status FROM loop_runs WHERE id = '{}'",
+            id.replace('\'', "")
+        )
     };
     let rows = match app.sqlite.query_json(&sql, mm_core::Params::new()).await {
         Ok(rows) => rows,
@@ -425,7 +449,10 @@ pub async fn module_load(app: &AppState, input: &Value) -> ToolResult {
     let Some(dir) = loader.find(&uri, &version) else {
         return ToolResult::fail(format!("no materialised version {uri}@{version}"));
     };
-    match loader.hot_load(&ModuleVersion::new(uri, version, dir)).await {
+    match loader
+        .hot_load(&ModuleVersion::new(uri, version, dir))
+        .await
+    {
         Ok(receipt) => ToolResult::done(
             format!("module {}", receipt.status.as_str()),
             json!({ "uri": receipt.uri, "version": receipt.version, "status": receipt.status.as_str() }),
@@ -542,7 +569,10 @@ pub fn experience_compile(app: &AppState, input: &Value) -> ToolResult {
     };
     let compiled = experience::compile(&trajectories, &[] as &[Insight]);
     ToolResult::done(
-        format!("experience compiled {} techniques", compiled.techniques.len()),
+        format!(
+            "experience compiled {} techniques",
+            compiled.techniques.len()
+        ),
         json!({ "techniques": compiled.techniques.len() }),
     )
 }
@@ -579,7 +609,11 @@ pub async fn regression_run(app: &AppState) -> ToolResult {
     let suite = app.cfg.root.join("bench/regression");
     match mm_mistakes::run_suite(&suite).await {
         Ok(report) => ToolResult::done(
-            format!("regression {} failed of {}", report.failed, report.cases.len()),
+            format!(
+                "regression {} failed of {}",
+                report.failed,
+                report.cases.len()
+            ),
             json!({ "failed": report.failed, "cases": report.cases.len() }),
         ),
         Err(err) => ToolResult::fail(err.to_string()),
@@ -606,7 +640,11 @@ pub fn mcp_list() -> ToolResult {
 }
 
 fn library_store(app: &AppState) -> LibraryStore {
-    LibraryStore::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids))
+    LibraryStore::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    )
 }
 
 fn loop_controller(app: &AppState) -> LoopController {
@@ -627,7 +665,11 @@ fn loop_controller(app: &AppState) -> LoopController {
 }
 
 fn collector(app: &AppState) -> LadderCollector {
-    let collector = LadderCollector::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let collector = LadderCollector::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     match &app.graph {
         Some(graph) => collector.with_graph(Arc::clone(graph)),
         None => collector,
@@ -666,7 +708,11 @@ async fn count(app: &AppState, sql: &str) -> i64 {
 }
 
 fn text(input: &Value, key: &str) -> String {
-    input.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    input
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn resolve(app: &AppState, path: &Path) -> Result<PathBuf, String> {

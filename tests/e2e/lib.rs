@@ -89,6 +89,33 @@ pub fn run_cli(data_dir: &Path, args: &[&str]) -> Output {
         .expect("spawn mm-cli")
 }
 
+/// Run `mm-cli` with extra environment pairs, which override inherited values.
+///
+/// Used by gates that assert the unconfigured-provider behaviour: the repository
+/// `.env` may configure a provider on a developer machine, so those gates pass an
+/// empty `OPENAI_BASE_URL`/`OPENAI_API_KEY` rather than assuming the environment.
+pub fn run_cli_with_env(data_dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(mm_cli());
+    command.arg("--data-dir").arg(data_dir).args(args);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    command.output().expect("spawn mm-cli")
+}
+
+/// Run `mm-cli` with extra environment pairs and require success.
+pub fn run_cli_ok_with_env(data_dir: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
+    let output = run_cli_with_env(data_dir, args, env);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        output.status.success(),
+        "mm-cli {args:?} failed ({}):\n{stdout}\n{stderr}",
+        output.status
+    );
+    stdout
+}
+
 /// Run `mm-cli` and require success.
 pub fn run_cli_ok(data_dir: &Path, args: &[&str]) -> String {
     let output = run_cli(data_dir, args);

@@ -2,7 +2,7 @@
 
 > Parent plan: `design/planning/implementation_plan1.md` §13 Phase 11 · Codename Metamind (`mm`)
 > Design of record: `design/digital_mind_design1.md` §43, §55–72, §84–86, §103–110;
-> supporting: `bootstrap_procses2.md`, `meta_analysis1.md`, `meta_analysis2.md`, `companion_loop1.md`.
+> supporting: `bootstrap_process2.md`, `meta_analysis1.md`, `meta_analysis2.md`, `companion_loop1.md`.
 
 ---
 
@@ -15,7 +15,7 @@ organs that make that loop real:
 1. **`mm-metaanalysis`** — event-triggered introspection, an explicit error taxonomy, an immutable
    prediction ledger, and calibration mathematics (Brier, log loss, ECE, reliability, selective risk).
 2. **Mistake→regression-test compiler** — every meaningful failure becomes a permanent test in
-   `bench/regression/` (design §60; `bootstrap_procses2.md` §9, §11).
+   `bench/regression/` (design §60; `bootstrap_process2.md` §9, §11).
 3. **`mm-selfeng`** — `ChangeSet` assembly, a git-worktree sandbox, benchmark/shadow evaluation, the
    `PromotionGate`, rollback, the evolution journal, and the four deterministic budgets.
 4. **`mm-pi`** — the async Pi RPC client and the Pi-session ingester that gives every generated line of
@@ -386,7 +386,7 @@ version in the `evolution_journal`/`config`, not vendored.
    prompt/tests/benchmarks/rollback). `sandbox.rs` creates a git worktree at `data/sandbox/<changeset-ulid>/`,
    runs `cargo build`/`cargo test`, and records results. The production tree is never written. Check:
    filesystem audit shows writes only under the sandbox.
-5. **Promotion pipeline + gate.** `benchmark.rs` (local fitness per `bootstrap_procses2.md` §14),
+5. **Promotion pipeline + gate.** `benchmark.rs` (local fitness per `bootstrap_process2.md` §14),
    `shadow.rs` (compare to baseline), `promotion.rs` (`PromotionGate` default policy: reject on any
    regression, on risk above `RiskBudget`, or on hard-prohibition hit — `meta_analysis1.md` §8), and
    `rollback.rs`. A promotion updates the Phase 2 code-metadata graph and appends to `evolution_journal`.
@@ -535,7 +535,7 @@ Objective criteria:
 | Design | This plan |
 |---|---|
 | `digital_mind_design1.md` §43 budgets, §55–58 self-bootstrap/capabilities, §59 sandbox/promotion, §60 mistakes→tests, §63 meta-analysis, §66 evolution journal, §68 CI of capabilities, §70 code improvement, §71 data improvement, §72 change sets, §84 error taxonomy, §85 architecture debt, §86 GC, §103 continuous loop, §104 control plane, §108 overbuild guardrails, §109–110 invariants | §1–§11 |
-| `bootstrap_procses2.md` §3 self-engineering loop, §4 code/data versioning, §7 capability packages, §8 experimental modification, §9–11 tests from mistakes, §13 escalation levels, §14 two fitness measures, §16 backlog | §1, §4, §5, §7, §9 |
+| `bootstrap_process2.md` §3 self-engineering loop, §4 code/data versioning, §7 capability packages, §8 experimental modification, §9–11 tests from mistakes, §13 escalation levels, §14 two fitness measures, §16 backlog | §1, §4, §5, §7, §9 |
 | `meta_analysis1.md` §1 three+ budgets, §2 ROI, §3 adaptive meta-analysis, §4 improvement queue, §5 experiments, §6 policy genome, §7–8 safe mutation/risk budget, §9 developmental stages, §11 lessons, §13 three selves, §14 evolution journal, §15 loop | §2, §5, §7, §10 |
 | `meta_analysis2.md` §1 cognitive state, §2 scan, §5 information gain, §14 metacognitive budget | §7, §8 |
 | `companion_loop1.md` §1 loop, §11 question cost, §16 policy learning | §7 (budget/policy hooks) |

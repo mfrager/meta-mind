@@ -466,8 +466,8 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 | `PHASE_INDEX.md` | Phase cross-reference table |
 | `planning/ui/INDEX.md` | Console UI design (11 documents) |
 | `planning/chat/INDEX.md` | Controller chat design (6 documents) |
-| `bootstrap_procses1.md` | Conversational & self-bootstrapping |
-| `bootstrap_procses2.md` | Unified self-engineering loop |
+|| `bootstrap_process1.md` | Conversational & self-bootstrapping ||
+|| `bootstrap_process2.md` | Unified self-engineering loop ||
 | `meta_analysis1.md` | Three budgets, meta-analysis, evolution |
 | `meta_analysis2.md` | Metacognitive controller, cognitive program |
 | `sanity_layer1.md` | Sanity firewall, bad-idea detection, common sense |
@@ -699,6 +699,13 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **RDF Storage Mapping** — Named graphs per session/turn/chunk, daily event logs, snapshot graphs in cubecast
 - **Visualization** — Graphviz DOT export from SPARQL, live WebSocket state updates, debug UI diagrams
 - **mm-sm Integration** — Trait extensions for to_turtle/from_turtle, automatic transition event logging
+
+### V. Agent Harness Research Comparison (`agent_harness_comparison.md`)
+- **35+ Papers Analyzed** — LangGraph, AutoGen, CrewAI, DSFlow, PGX, SEPM, HarnessMDP, HarnessNet, AgentFaultBench, AgentAudit, BTS-AgentBench, Verify the Verifier, Sage-Evolve, Auto-Alpha, ROGUE-AI, Swarm Shepherd, DiscernMem, TideCache, Aggron, AgentRoboCritic, and more
+- **12 Comparison Dimensions** — Orchestration, Memory, Proactive, Tools, Routing, Voice, Self-Improvement, Observability, Testing, Security, Deployment, Multi-Agent
+- **MetaMind Leads** — Hierarchical SM + orthogonal regions, deterministic planning, 3-tier voice with barge-in, 4-tier quality-validated memory, proactive SM with budgets, speculative KV pre-warm, 8-critic/6-verifier improvement, SM-level observability, synthetic SM tests
+- **MetaMind Gaps** — Multi-agent coordination (P0), security hardening (P0), learnable harness/MDP (P1), task graph memory (P1), benchmark integration (P1), visual debugger (P2)
+- **12 Priority Enhancements** — Mapped to research sources with effort estimates
 
 ---
 

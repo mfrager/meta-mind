@@ -16,7 +16,6 @@ use super::admit::{self, TurnView};
 use super::catalog::{self, Effect, GroupId};
 use super::confirm;
 use super::exec::{self, ToolResult};
-use super::firewall;
 use super::intro::{self, llm_config};
 use super::limits::{MAX_MODEL_ROUNDS, MAX_TOOL_STEPS, MODEL_DATA_BYTES};
 use super::persona;
@@ -140,7 +139,14 @@ pub async fn reply(
         {
             Consider::Run(result) => {
                 record_note(&mut notes, &propose.name, &result);
-                push_tool(&mut frames, &turn_id, &call_id, &propose.name, &propose.input, &result);
+                push_tool(
+                    &mut frames,
+                    &turn_id,
+                    &call_id,
+                    &propose.name,
+                    &propose.input,
+                    &result,
+                );
                 if result.ok {
                     if let Some(focus) = &result.focus {
                         push_focus(app, &mut frames, focus).await;
@@ -493,19 +499,8 @@ async fn consider(
         Ok(admitted) => admitted,
         Err(reason) => return Consider::Deny(reason),
     };
-    if firewall::guards(admitted.spec.effect) {
-        if let Err(reason) = firewall::allow(app, admitted.spec) {
-            return Consider::Deny(reason);
-        }
-    }
-    if name == "loop.run" {
-        if let Err(reason) = super::tools::rest::loop_goal_allowed(app, input).await {
-            return Consider::Deny(reason);
-        }
-    }
-    if name == "module.load" && input.get("change_set").and_then(Value::as_str).unwrap_or("").is_empty()
-    {
-        return Consider::Deny(crate::chat::PROMOTE_REASON.into());
+    if let Err(reason) = super::gate::check(app, admitted.spec, name, input).await {
+        return Consider::Deny(reason);
     }
     if matches!(admitted.spec.effect, Effect::Gate | Effect::External)
         && app.chat.session_waiting(session_id).unwrap_or(false)
@@ -572,7 +567,10 @@ fn push_tool(
 }
 
 fn honesty(text: &str, notes: &[ToolNote]) -> (String, bool, Option<String>) {
-    let unbacked = claims_write(text) && !notes.iter().any(|note| note.ok && note.write && family_matches(text, &note.name));
+    let unbacked = claims_write(text)
+        && !notes
+            .iter()
+            .any(|note| note.ok && note.write && family_matches(text, &note.name));
     let mut extra = None;
     for note in notes.iter().filter(|note| !note.ok) {
         let reason = note.reason.clone().unwrap_or_else(|| note.name.clone());
@@ -588,9 +586,16 @@ fn honesty(text: &str, notes: &[ToolNote]) -> (String, bool, Option<String>) {
 
 fn claims_write(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    ["stored", "remembered", "promoted", "loaded", "decided", "written"]
-        .iter()
-        .any(|verb| lower.contains(&format!("i {verb}")) || lower.contains(&format!("i have {verb}")))
+    [
+        "stored",
+        "remembered",
+        "promoted",
+        "loaded",
+        "decided",
+        "written",
+    ]
+    .iter()
+    .any(|verb| lower.contains(&format!("i {verb}")) || lower.contains(&format!("i have {verb}")))
 }
 
 fn family_matches(text: &str, tool: &str) -> bool {
@@ -664,7 +669,11 @@ async fn log_confirm(app: &AppState, request_id: &str, tool: &str, answer: &str)
 }
 
 /// Resume a parked turn after Approve, Reject, or Defer.
-pub async fn resume(app: &AppState, request_id: &str, answer: &str) -> Result<Vec<ChatFrame>, String> {
+pub async fn resume(
+    app: &AppState,
+    request_id: &str,
+    answer: &str,
+) -> Result<Vec<ChatFrame>, String> {
     let pending = app
         .chat
         .take_pending(request_id)
@@ -682,14 +691,8 @@ pub async fn resume(app: &AppState, request_id: &str, answer: &str) -> Result<Ve
             log_tool(app, request_id, &pending.name, result.ok, started).await;
             (result, pending.name.clone())
         }
-        "Reject" => (
-            denied_result("operator rejected"),
-            pending.name.clone(),
-        ),
-        _ => (
-            denied_result("operator deferred"),
-            pending.name.clone(),
-        ),
+        "Reject" => (denied_result("operator rejected"), pending.name.clone()),
+        _ => (denied_result("operator deferred"), pending.name.clone()),
     };
     let turn_id = format!("{request_id}-turn");
     push_tool(
@@ -1002,10 +1005,8 @@ mod tests {
         script(
             &state,
             vec![
-                ScriptedResponse::text("").with_tool_calls(vec![call(
-                    "loop.run",
-                    r#"{"path":"/etc/passwd"}"#,
-                )]),
+                ScriptedResponse::text("")
+                    .with_tool_calls(vec![call("loop.run", r#"{"path":"/etc/passwd"}"#)]),
                 ScriptedResponse::text("the path is outside bench"),
             ],
         );
@@ -1228,9 +1229,11 @@ mod tests {
         });
         assert!(focused, "doctor.run focuses state");
         let holder = frames.iter().find_map(|frame| match frame {
-            ChatFrame::ToolResult { name, output, .. } if name == "doctor.run" => {
-                output.get("data").and_then(|data| data.get("graph_holder")).and_then(serde_json::Value::as_str).map(str::to_string)
-            }
+            ChatFrame::ToolResult { name, output, .. } if name == "doctor.run" => output
+                .get("data")
+                .and_then(|data| data.get("graph_holder"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
             _ => None,
         });
         assert_eq!(holder.as_deref(), Some("this process"));
@@ -1266,15 +1269,19 @@ mod tests {
         let frames = super::resume(&state, &request, "Approve").await.unwrap();
         assert!(
             frames.iter().any(|frame| match frame {
-                ChatFrame::ToolResult { success: true, output, .. } => {
+                ChatFrame::ToolResult {
+                    success: true,
+                    output,
+                    ..
+                } => {
                     output.to_string().contains("ship the console")
                 }
                 _ => false,
             }),
             "approve runs the tool"
         );
-        let listed = crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({}))
-            .await;
+        let listed =
+            crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({})).await;
         assert!(listed.ok, "{}", listed.summary);
         assert!(
             listed.data.to_string().contains("ship the console"),
@@ -1292,9 +1299,13 @@ mod tests {
         .await;
         let rejected = super::resume(&state, &again, "Reject").await.unwrap();
         assert!(tool_reason(&rejected, "being.goal_add").contains("operator rejected"));
-        let after = crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({}))
-            .await;
-        assert!(!after.data.to_string().contains("a second goal"), "{}", after.data);
+        let after =
+            crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({})).await;
+        assert!(
+            !after.data.to_string().contains("a second goal"),
+            "{}",
+            after.data
+        );
         let err = super::resume(&state, &again, "Approve").await.unwrap_err();
         assert!(err.contains("this run is not waiting"), "{err}");
     }
@@ -1323,8 +1334,8 @@ mod tests {
         assert!(tool_reason(&frames, "being.goal_add").is_empty() || frames.iter().any(|frame| {
             matches!(frame, ChatFrame::ToolResult { name, success: true, .. } if name == "being.goal_add")
         }));
-        let listed = crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({}))
-            .await;
+        let listed =
+            crate::controller::exec::run(&state, "being.goal_list", &serde_json::json!({})).await;
         assert!(
             listed.data.to_string().contains("survive a restart"),
             "{}",
@@ -1348,7 +1359,9 @@ mod tests {
         );
         let frames = frames_for(&state, "remember this").await;
         assert!(
-            !frames.iter().any(|frame| matches!(frame, ChatFrame::InputRequest { .. })),
+            !frames
+                .iter()
+                .any(|frame| matches!(frame, ChatFrame::InputRequest { .. })),
             "a denial is the tool result"
         );
         assert!(tool_reason(&frames, "memory.add").contains("scripted denial"));
@@ -1399,7 +1412,10 @@ mod tests {
     #[tokio::test]
     async fn a_pane_edit_proposes_focus_patch_without_a_model_round() {
         let (_dir, state) = booted().await;
-        script(&state, vec![ScriptedResponse::text("this line must not be consumed")]);
+        script(
+            &state,
+            vec![ScriptedResponse::text("this line must not be consumed")],
+        );
         let (session, _) = state.chat.create_session(state.ids.next_string()).unwrap();
         let request_id = state.ids.next_string();
         let propose = super::Propose {
@@ -1419,14 +1435,20 @@ mod tests {
         )
         .await;
         assert!(outcome.pending.is_some());
-        assert!(!outcome.frames.iter().any(|frame| matches!(frame, ChatFrame::LlmRequestStarted { .. })));
+        assert!(!outcome
+            .frames
+            .iter()
+            .any(|frame| matches!(frame, ChatFrame::LlmRequestStarted { .. })));
         let request = outcome.frames.iter().find_map(|frame| match frame {
             ChatFrame::InputRequest { id, request } => Some((id.clone(), request.clone())),
             _ => None,
         });
         let (id, request) = request.expect("confirm");
         assert_eq!(id, outcome.pending.unwrap().call_id);
-        assert_eq!(request.get("purpose").and_then(|value| value.as_str()), Some("controller"));
+        assert_eq!(
+            request.get("purpose").and_then(|value| value.as_str()),
+            Some("controller")
+        );
     }
 
     #[tokio::test]
@@ -1443,25 +1465,37 @@ mod tests {
         .await;
         let created_frames = super::resume(&state, &created, "Approve").await.unwrap();
         let id = created_frames.iter().find_map(|frame| match frame {
-            ChatFrame::ToolResult { name, output, success: true, .. } if name == "changeset.new" => {
-                output.get("data").and_then(|data| data.get("id")).and_then(|id| id.as_str()).map(str::to_string)
-            }
+            ChatFrame::ToolResult {
+                name,
+                output,
+                success: true,
+                ..
+            } if name == "changeset.new" => output
+                .get("data")
+                .and_then(|data| data.get("id"))
+                .and_then(|id| id.as_str())
+                .map(str::to_string),
             _ => None,
         });
         let id = id.expect("changeset id");
         let promoted = park(
             &state,
             "promote the change set",
-            vec![ScriptedResponse::text("").with_tool_calls(vec![call(
-                "promote.run",
-                &format!(r#"{{"id":"{id}"}}"#),
-            )])],
+            vec![ScriptedResponse::text("")
+                .with_tool_calls(vec![call("promote.run", &format!(r#"{{"id":"{id}"}}"#))])],
         )
         .await;
         let _ = super::resume(&state, &promoted, "Approve").await.unwrap();
-        let audit = crate::controller::exec::run(&state, "audit.production_tree", &serde_json::json!({})).await;
+        let audit =
+            crate::controller::exec::run(&state, "audit.production_tree", &serde_json::json!({}))
+                .await;
         assert!(audit.ok, "{}", audit.summary);
-        assert_eq!(audit.data.get("promotions").and_then(|n| n.as_i64()), Some(1), "{}", audit.data);
+        assert_eq!(
+            audit.data.get("promotions").and_then(|n| n.as_i64()),
+            Some(1),
+            "{}",
+            audit.data
+        );
     }
 
     async fn boot_at(path: &std::path::Path) -> Arc<AppState> {
@@ -1499,7 +1533,9 @@ mod tests {
         frames
             .iter()
             .find_map(|frame| match frame {
-                ChatFrame::ToolResult { name: tool, output, .. } if tool == name => output
+                ChatFrame::ToolResult {
+                    name: tool, output, ..
+                } if tool == name => output
                     .get("reason")
                     .and_then(|reason| reason.as_str())
                     .map(str::to_string),

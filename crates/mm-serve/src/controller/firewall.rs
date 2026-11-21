@@ -2,8 +2,8 @@
 
 use mm_core::Ulid;
 use mm_decision::risk::{analyze_risk, RiskMeasure};
-use mm_firewall::report::{AuthorizationRef, FirewallInput, Reversibility, Stakes, ToolTarget};
 use mm_firewall::prohibitions::first_prohibition;
+use mm_firewall::report::{AuthorizationRef, FirewallInput, Reversibility, Stakes, ToolTarget};
 
 use crate::state::AppState;
 

@@ -16,6 +16,32 @@ fn fixture(relative: &str) -> String {
         .to_string()
 }
 
+/// A window that reaches past the oldest episode in a fixture.
+///
+/// The corpus carries fixed `valid_from` instants, so a literal `--window 30d`
+/// silently stops covering it as the fixture ages and consolidation becomes a
+/// no-op. Derive the window from the fixture instead, with a day of slack, so the
+/// gate keeps testing consolidation rather than the calendar.
+fn window_covering(relative: &str) -> String {
+    let raw = std::fs::read_to_string(fixture(relative)).expect("read episode fixture");
+    let oldest = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|episode| {
+            episode
+                .get("valid_from")
+                .and_then(|value| value.as_str())
+                .and_then(|text| mm_core::Timestamp::from_rfc3339(text).ok())
+        })
+        .min()
+        .expect("the fixture names a valid_from on every episode");
+    let now = mm_core::Timestamp::now().seconds;
+    let days = now.saturating_sub(oldest.seconds) / 86_400 + 2;
+    format!("{days}d")
+}
+
 /// The first ULID in the command's output.
 fn first_ulid(stdout: &str) -> String {
     stdout
@@ -115,6 +141,7 @@ async fn a_memory_added_through_the_cli_round_trips() {
 async fn consolidation_reduces_the_corpus_and_stays_reconciled() {
     let ws = Workspace::new();
     run_cli_ok(&ws.data_dir, &["doctor"]);
+    let window = window_covering("bench/memory/episodes.jsonl");
 
     let out = run_cli_ok(
         &ws.data_dir,
@@ -122,7 +149,7 @@ async fn consolidation_reduces_the_corpus_and_stays_reconciled() {
             "memory",
             "consolidate",
             "--window",
-            "30d",
+            &window,
             "--input",
             &fixture("bench/memory/episodes.jsonl"),
         ],
@@ -145,7 +172,7 @@ async fn consolidation_reduces_the_corpus_and_stays_reconciled() {
             "memory",
             "consolidate",
             "--window",
-            "30d",
+            &window,
             "--input",
             &fixture("bench/memory/episodes.jsonl"),
         ],

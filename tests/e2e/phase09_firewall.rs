@@ -24,7 +24,7 @@
 //!   the rows is also a count of the mirrors.
 
 use mm_core::{Params, Tabular};
-use mm_e2e::{run_cli_ok, Workspace};
+use mm_e2e::{run_cli_ok, run_cli_ok_with_env, Workspace};
 use mm_store_sqlite::SqliteStore;
 
 /// A repository path, absolute for a subprocess argument.
@@ -57,7 +57,10 @@ async fn the_phase_nine_gate_passes_end_to_end() {
     // 1. One conformance suite, run against every core named. A core that cannot
     //    be built is reported as unavailable rather than as a pass, so the run is
     //    a success as long as nothing was *graded* and failed.
-    let conformance = run_cli_ok(
+    // `local` and `hosted` are asserted unavailable below, so blank the provider
+    // variables for this run: a developer's `.env` must not decide whether the
+    // gate's own coverage claim holds.
+    let conformance = run_cli_ok_with_env(
         &ws.data_dir,
         &[
             "conformance",
@@ -68,6 +71,7 @@ async fn the_phase_nine_gate_passes_end_to_end() {
             "--core",
             "hosted",
         ],
+        &[("OPENAI_BASE_URL", ""), ("OPENAI_API_KEY", "")],
     );
     assert!(
         conformance.contains("conformance: rules 6 passed, 0 failed"),

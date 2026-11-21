@@ -446,8 +446,8 @@ Objective criteria — **all** must hold:
 | Source | Section |
 |---|---|
 | `digital_mind_design1.md` | §92 (Bootstrap Phase 0: deterministic kernel — identity, state storage, event log, versioning, permissions, tool registry, resource accounting, execution engine, test harness); §87 (RDF/OWL data model); §88 (Rust runtime model); §51 (world model storage); §108 (what not to overbuild); §109–110 (invariants, final system) |
-| `bootstrap_procses1.md` | §3 (start with a tiny kernel), §11 (bootstrapping guardrails: immutable kernel / stable core / adaptive policies) |
-| `bootstrap_procses2.md` | Unified self-improvement framing; "Behavior = Code × Data × Configuration × Model × Environment" (defines what later phases version) |
+| `bootstrap_process1.md` | §3 (start with a tiny kernel), §11 (bootstrapping guardrails: immutable kernel / stable core / adaptive policies) |
+| `bootstrap_process2.md` | Unified self-improvement framing; "Behavior = Code × Data × Configuration × Model × Environment" (defines what later phases version) |
 | `state_structure1.md` | Minimal persistent state; the principle that only behaviorally material state is stored; verified-state vs generated-state boundary |
 | Parent plan | §3 workspace layout, §4 identifiers, §5 storage topology, §6 ontology, §7 copy-in integration, §8 module contract, §9 testing, §10 logging, §13 Phase 1 |
 

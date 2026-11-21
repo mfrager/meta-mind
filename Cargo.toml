@@ -3,6 +3,9 @@ resolver = "2"
 members = [
     "crates/mm-core",
     "crates/mm-log",
+    "crates/mm-sm",
+    "crates/mm-data",
+    "crates/mm-cme",
     "crates/mm-store-sqlite",
     "crates/mm-store-graph",
     "crates/mm-eventlog",
@@ -54,6 +57,9 @@ publish = false
 # --- shared async/runtime ---
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "net", "io-util", "io-std"] }
 futures = "0.3"
+# Span-based instrumentation for the state-machine engine (`mm-sm`) and the
+# data layer below the conversation engine.
+tracing = "0.1"
 
 # --- serialization / errors ---
 serde = { version = "1", features = ["derive"] }
@@ -93,6 +99,9 @@ sha1 = "0.10"
 # --- Metamind crates ---
 mm-core = { path = "crates/mm-core" }
 mm-log = { path = "crates/mm-log" }
+mm-sm = { path = "crates/mm-sm" }
+mm-data = { path = "crates/mm-data" }
+mm-cme = { path = "crates/mm-cme" }
 mm-store-sqlite = { path = "crates/mm-store-sqlite" }
 mm-store-graph = { path = "crates/mm-store-graph" }
 mm-eventlog = { path = "crates/mm-eventlog" }

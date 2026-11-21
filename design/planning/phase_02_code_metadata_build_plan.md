@@ -474,5 +474,5 @@ passes (schema, gapless audit sequence, ULID correlation, redaction).
 | `digital_mind_design1.md` | §108–110 guardrails and invariants | separate `/code` graph; no runtime facts conflated; generated files not hand-edited |
 | `meta_analysis1.md` | self-scientist, ROI, improvement/evolution budgets | meta queries supply the measurement base for later budgets |
 | `meta_analysis2.md` | metacognitive controller, criticality propagation | module dependency graph as the structural substrate for later analysis |
-| `bootstrap_procses2.md` | SELF as mutable system; code/data versioned together | stable URIs + version + content hash enabling change-sets |
+| `bootstrap_process2.md` | SELF as mutable system; code/data versioned together | stable URIs + version + content hash enabling change-sets |
 | parent plan `implementation_plan1.md` | §4 identifier scheme; §6 ontology; §7 copy-in; §8 module contract; §10 logging | URI funnel, `mmc:`, `vendor/`, `plugin.toml`, per-phase log records |

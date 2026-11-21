@@ -130,11 +130,11 @@ pub async fn stream(
             .map_err(|err| AppError::Internal(err.to_string()))?;
         body.push_str(&frame.encode());
     }
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/event-stream")
         .body(Body::from(body))
-        .map_err(|err| AppError::Internal(err.to_string()))?)
+        .map_err(|err| AppError::Internal(err.to_string()))
 }
 
 pub(crate) async fn resolve(state: &AppState, id: &str) -> Result<FocusDoc, AppError> {

@@ -93,6 +93,9 @@ pub async fn open(
     State(state): State<Arc<AppState>>,
     Json(body): Json<OpenChat>,
 ) -> Result<Response, AppError> {
+    if state.features.cme_enabled {
+        return crate::routes::cme::open(State(state), Json(body)).await;
+    }
     if body.query.trim().is_empty() {
         return Err(AppError::BadRequest("a query is required".into()));
     }
@@ -111,10 +114,13 @@ pub async fn open(
     state
         .chat
         .begin(request_id.clone(), session_id.clone(), body.query.clone())?;
-    let propose = body.propose.as_ref().map(|propose| crate::controller::turn::Propose {
-        name: propose.name.clone(),
-        input: propose.input.clone(),
-    });
+    let propose = body
+        .propose
+        .as_ref()
+        .map(|propose| crate::controller::turn::Propose {
+            name: propose.name.clone(),
+            input: propose.input.clone(),
+        });
     let outcome = crate::controller::reply(
         &state,
         &request_id,
@@ -125,9 +131,13 @@ pub async fn open(
     )
     .await;
     let stored = if let Some(pending) = outcome.pending {
-        state.chat.finish_waiting(&request_id, outcome.frames, pending)?
+        state
+            .chat
+            .finish_waiting(&request_id, outcome.frames, pending)?
     } else {
-        state.chat.finish(&request_id, outcome.frames, "completed")?
+        state
+            .chat
+            .finish(&request_id, outcome.frames, "completed")?
     };
     Ok(sse_response(&stored)?.into_response())
 }
@@ -248,7 +258,7 @@ pub async fn branch(
     })))
 }
 
-fn sse_response(frames: &[(u64, ChatFrame)]) -> Result<Response, AppError> {
+pub(crate) fn sse_response(frames: &[(u64, ChatFrame)]) -> Result<Response, AppError> {
     let mut body = String::new();
     for (seq, frame) in frames {
         let value =
@@ -261,8 +271,8 @@ fn sse_response(frames: &[(u64, ChatFrame)]) -> Result<Response, AppError> {
             .map_err(|err| AppError::Internal(err.to_string()))?;
         body.push_str(&encoded.encode());
     }
-    Ok(Response::builder()
+    Response::builder()
         .header(header::CONTENT_TYPE, "text/event-stream")
         .body(axum::body::Body::from(body))
-        .map_err(|err| AppError::Internal(err.to_string()))?)
+        .map_err(|err| AppError::Internal(err.to_string()))
 }

@@ -62,6 +62,12 @@ pub struct ChatCatalog {
     cancelled: Mutex<BTreeSet<String>>,
 }
 
+impl Default for ChatCatalog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChatCatalog {
     pub fn new() -> Self {
         Self::open(None)
@@ -350,8 +356,7 @@ impl ChatCatalog {
         let runs = self.lock_runs()?;
         let source = runs
             .values()
-            .filter(|run| run.session_id == session_id)
-            .last()
+            .rfind(|run| run.session_id == session_id)
             .ok_or_else(|| AppError::NotFound(format!("no run for session {session_id}")))?;
         let mut frames = source.frames.clone();
         for frame in &mut frames {

@@ -416,4 +416,4 @@ non-zero + `tool.sandbox.deny`; every successful action has exactly one `observa
 | §87–90 ontology, runtime model, typed ops, backend map | `mm:Action/Observation/Tool/Permission`, `CognitiveOp::Act`, backend mapping for exec/verify |
 | §108–110 guardrails / invariants | environment decides truth; deterministic enforcement; no untested self-modification |
 | `congitive_elements4.md` (§4, §5, §16) | epistemic status on observations; "LLM for plausibility, world/tools for truth"; scarce-resource action value |
-| `bootstrap_procses1.md` / `bootstrap_procses2.md` | capability gaps detected via failed execution feed Phase 11; tools are learned skills |
+| `bootstrap_process1.md` / `bootstrap_process2.md` | capability gaps detected via failed execution feed Phase 11; tools are learned skills |

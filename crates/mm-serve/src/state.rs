@@ -12,20 +12,26 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mm_being::BeingFacade;
+use mm_cme::{ConversationRouter, RoutingTable, TurnExecutor};
 use mm_core::{Config, MmError, UlidFactory};
+use mm_data::{
+    initialize_data_layer, AgentstreamStore, InitConfig, InitResult, MemorySystem, RdfEngine,
+};
 use mm_eventlog::EventLog;
-use mm_llm::{LlmConfig, ProviderEnv};
+use mm_llm::{LlmConfig, ProviderEnv, ThresholdRouter};
 use mm_log::Logger;
 use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
 
 use crate::chat::ChatCatalog;
+use crate::cme::CmeRuntime;
 use crate::controller::{ControllerModel, SELF_DESCRIPTION};
 use crate::docs::FocusCatalog;
 use crate::dto::{
     EventHead, HealthEnvelope, KernelStatus, ServiceState, ServiceStatus, WIRE_VERSION,
 };
 use crate::error::AppError;
+use crate::feature_flags::FeatureFlags;
 use crate::trees::TreeCatalog;
 
 /// Everything the request handlers share.
@@ -62,6 +68,18 @@ pub struct AppState {
     pub trees: TreeCatalog,
     /// Chat sessions and resumable runs (plan `08`).
     pub chat: ChatCatalog,
+    /// The unified data layer, including RDF, agentstream and memory.
+    pub data: InitResult,
+    /// Shared unified memory API.
+    pub memory_system: Arc<MemorySystem>,
+    /// The data layer's RDF engine.
+    pub rdf_engine: Arc<RdfEngine>,
+    /// The data layer's agentstream store.
+    pub agentstream: Arc<AgentstreamStore>,
+    /// Phase 7 feature flags.
+    pub features: FeatureFlags,
+    /// Conversation-engine sessions and their drivers.
+    pub cme: Arc<CmeRuntime>,
 }
 
 impl AppState {
@@ -84,6 +102,16 @@ impl AppState {
     /// that proves the stores are writable before any route is served
     /// (plan `01` §5.1).
     pub async fn boot(cfg: Config, lock: ConsoleLock) -> Result<Self, MmError> {
+        Self::boot_with_flags(cfg, lock, FeatureFlags::from_env()).await
+    }
+
+    /// Boot with explicit feature flags. Tests and embedders use this to opt
+    /// into the conversation engine without changing the process environment.
+    pub async fn boot_with_flags(
+        cfg: Config,
+        lock: ConsoleLock,
+        features: FeatureFlags,
+    ) -> Result<Self, MmError> {
         std::fs::create_dir_all(&cfg.store.data_dir)?;
 
         let sqlite = SqliteStore::open(&cfg.store.sqlite_file).await?;
@@ -131,6 +159,20 @@ impl AppState {
         let chat =
             crate::chat::ChatCatalog::open(Some(cfg.store.data_dir.join("chat-sessions.json")));
 
+        // Phase 7: one unified data layer owns RDF, agentstream and memory. It
+        // lives beside the kernel's legacy stores until the migration removes
+        // them; the two directories do not share a RocksDB instance.
+        let data = initialize_data_layer(InitConfig {
+            base_dir: Some(cfg.store.data_dir.clone()),
+            ..InitConfig::default()
+        })
+        .await
+        .map_err(|error| MmError::Internal(format!("mm-data boot failed: {error}")))?;
+        let memory_system = Arc::clone(&data.memory_system);
+        let rdf_engine = Arc::clone(&data.engine);
+        let agentstream = Arc::clone(&data.agentstream);
+        let cme = Arc::new(CmeRuntime::new(Arc::clone(&memory_system), features));
+
         logger
             .emit(
                 mm_log::LogRecord::new(mm_log::Level::Info, mm_log::codes::LOG_INIT, "mm.serve")
@@ -157,7 +199,43 @@ impl AppState {
             focus,
             trees,
             chat,
+            data,
+            memory_system,
+            rdf_engine,
+            agentstream,
+            features,
+            cme,
         })
+    }
+
+    /// Build a conversation-engine executor from the current controller model.
+    ///
+    /// The executor shares the console's full tool catalog through a weak
+    /// reference, so a long-lived CME driver does not keep the application state
+    /// alive. The deterministic executor remains the fallback when no model is
+    /// configured, so the CME routes work in tests and offline sessions.
+    pub fn cme_executor(self: &Arc<Self>) -> TurnExecutor {
+        let path = Config::repo_root().join("config/llm.toml");
+        let config = LlmConfig::load_or_default(&path).unwrap_or_default();
+        let Some(client) = crate::controller::resolve_client(self, &config) else {
+            return TurnExecutor::deterministic();
+        };
+        if config.models.is_empty() {
+            return TurnExecutor::deterministic();
+        }
+        let router = ThresholdRouter::from_specs(
+            config.models.clone(),
+            config.defaults.default_model.clone(),
+        );
+        let table = RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
+            .unwrap_or_default();
+        TurnExecutor::with_llm(
+            client,
+            ConversationRouter::with_table(Arc::new(router), table),
+        )
+        .with_tools(Arc::new(crate::cme_tools::ConsoleTools::new(
+            Arc::downgrade(self),
+        )))
     }
 
     /// The `GET /api/health` envelope (plan `09` §1).
@@ -207,6 +285,15 @@ impl AppState {
                         .unwrap_or_else(|| "the RDF store did not open".to_string()),
                 ),
             },
+        });
+        services.push(ServiceStatus {
+            name: "cme".to_string(),
+            state: ServiceState::Ok,
+            reason: Some(if self.features.cme_enabled {
+                "conversation engine enabled".to_string()
+            } else {
+                "disabled by MM_CME_ENABLED".to_string()
+            }),
         });
         services.push(llm_status());
         services.push(match &self.being {
@@ -411,6 +498,9 @@ mod tests {
         let state = AppState::boot(cfg, lock).await.unwrap();
         assert!(state.graph.is_some(), "the console holds the graph");
         let opened = GraphStore::open(&state.cfg.store.graph_dir, &state.cfg.shapes_file()).await;
-        assert!(opened.is_err(), "a second open must fail while the first store is held");
+        assert!(
+            opened.is_err(),
+            "a second open must fail while the first store is held"
+        );
     }
 }

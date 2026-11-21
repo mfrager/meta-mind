@@ -6,6 +6,7 @@ pub(crate) mod catalog;
 pub(crate) mod confirm;
 pub(crate) mod exec;
 pub(crate) mod firewall;
+pub(crate) mod gate;
 pub(crate) mod guide;
 pub(crate) mod intro;
 pub(crate) mod limits;

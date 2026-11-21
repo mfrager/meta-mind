@@ -1,7 +1,7 @@
 # Metamind — Implementation Plan (12 Phases)
 
 > **Source design:** [`digital_mind_design1.md`](./digital_mind_design1.md)
-> **Supporting designs:** `bootstrap_procses1.md`, `bootstrap_procses2.md`, `meta_analysis1/2.md`,
+> **Supporting designs:** `bootstrap_process1.md`, `bootstrap_process2.md`, `meta_analysis1/2.md`,
 > `sanity_layer1.md`, `thought_systems1/2.md`, `congitive_elements1-4.md`, `state_structure1.md`,
 > `conceptual_frames1.md`, `companion_loop1/2.md`, `personality_simulator1-3.md`.
 > **Codename:** the running being is **Metamind** (`mm`). Crate prefix `mm-`, ontology prefix `mm:`.

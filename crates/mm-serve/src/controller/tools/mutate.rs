@@ -16,9 +16,7 @@ use mm_selfeng::{
     BudgetKind, BudgetLedger, ChangeSetStatus, DeterministicGate, EvolutionJournal,
     PromotionDecision,
 };
-use mm_tools::{
-    rollback, ActionSpec, ActionStatus, Executor, Principal, ToolName,
-};
+use mm_tools::{rollback, ActionSpec, ActionStatus, Executor, Principal, ToolName};
 use serde_json::{json, Value};
 
 use crate::state::AppState;
@@ -146,7 +144,10 @@ pub async fn decide_ask(app: &AppState, input: &Value) -> ToolResult {
     if prompt.is_empty() {
         return ToolResult::fail("a prompt is required");
     }
-    let kind = input.get("kind").and_then(Value::as_str).unwrap_or("yes_no");
+    let kind = input
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("yes_no");
     let id = app.ids.next();
     let question = match kind {
         "yes_no" => DecisionQuestion::YesNo {
@@ -195,7 +196,11 @@ pub async fn decide_ask(app: &AppState, input: &Value) -> ToolResult {
         }
     };
     let admitted = !matches!(answer.answer, mm_decision::AnswerValue::None);
-    let decision_id = if input.get("no_record").and_then(Value::as_bool).unwrap_or(false) {
+    let decision_id = if input
+        .get("no_record")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
         Value::Null
     } else {
         json!(ulid_string(&id))
@@ -229,20 +234,28 @@ async fn hosted_answer(
     state: &DecisionState,
 ) -> Result<mm_decision::DecisionAnswer, String> {
     let cfg = llm_config(app);
-    let client = OpenAiClient::new(&cfg).map_err(|_| {
-        "no language-model provider is configured".to_string()
-    })?;
+    let client = OpenAiClient::new(&cfg)
+        .map_err(|_| "no language-model provider is configured".to_string())?;
     let mut registry = SchemaRegistry::new();
     hosted::register(&mut registry).map_err(|err| err.to_string())?;
-    let core = HostedCore::new(std::sync::Arc::new(client), std::sync::Arc::new(registry), 256);
+    let core = HostedCore::new(
+        std::sync::Arc::new(client),
+        std::sync::Arc::new(registry),
+        256,
+    );
     core.answer(question, state)
         .await
         .map_err(|err| err.to_string())
 }
 
 pub async fn firewall_eval(app: &AppState, input: &Value) -> ToolResult {
-    let name = input.get("tool").and_then(Value::as_str).unwrap_or("memory.add");
-    let Some(spec) = super::super::catalog::get(name).or_else(|| super::super::catalog::get("memory.add")) else {
+    let name = input
+        .get("tool")
+        .and_then(Value::as_str)
+        .unwrap_or("memory.add");
+    let Some(spec) =
+        super::super::catalog::get(name).or_else(|| super::super::catalog::get("memory.add"))
+    else {
         return ToolResult::fail(format!("unknown tool {name}"));
     };
     match super::super::firewall::allow(app, spec) {
@@ -266,8 +279,8 @@ pub fn compare_check(input: &Value) -> ToolResult {
     let baseline = text(input, "baseline");
     let candidate = text(input, "candidate");
     let report = mm_selfeng::shadow::compare(
-        &[baseline.clone()],
-        &[candidate.clone()],
+        std::slice::from_ref(&baseline),
+        std::slice::from_ref(&candidate),
     );
     ToolResult::done(
         format!("{} divergences", report.divergences),
@@ -286,7 +299,11 @@ pub fn risk_analyze(input: &Value) -> ToolResult {
         .iter()
         .filter_map(|row| {
             Some(mm_decision::LossOutcome {
-                name: row.get("name").and_then(Value::as_str).unwrap_or("outcome").into(),
+                name: row
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("outcome")
+                    .into(),
                 probability: row.get("probability").and_then(Value::as_f64)?,
                 loss: row.get("loss").and_then(Value::as_f64)?,
             })
@@ -354,7 +371,11 @@ pub async fn changeset_new(app: &AppState, input: &Value) -> ToolResult {
         Ok(change_set) => change_set,
         Err(err) => return ToolResult::fail(err.to_string()),
     };
-    let store = ChangeSetStore::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let store = ChangeSetStore::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     if let Err(err) = store.create(&change_set).await {
         return ToolResult::fail(err.to_string());
     }
@@ -375,7 +396,11 @@ pub async fn sandbox_run(app: &AppState, input: &Value) -> ToolResult {
     let Some(id) = parse_id(input) else {
         return ToolResult::fail("a change-set id is required");
     };
-    let store = ChangeSetStore::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let store = ChangeSetStore::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     let change_set = match store.get(id).await {
         Ok(Some(change_set)) => change_set,
         Ok(None) => return ToolResult::fail(format!("no change set {}", ulid_string(&id))),
@@ -389,12 +414,15 @@ pub async fn sandbox_run(app: &AppState, input: &Value) -> ToolResult {
     );
     match sandbox.prepare(&change_set).await {
         Ok(dir) => {
-            let _ = store.set_status(change_set.id, ChangeSetStatus::Sandboxed).await;
+            let _ = store
+                .set_status(change_set.id, ChangeSetStatus::Sandboxed)
+                .await;
             let mut result = ToolResult::done(
                 format!("sandbox {}", dir.root.display()),
                 json!({ "sandbox": dir.root.display().to_string(), "id": ulid_string(&id) }),
             );
-            result.focus = Some(json!({ "id": "changesets", "kind": "tree", "title": "Change sets" }));
+            result.focus =
+                Some(json!({ "id": "changesets", "kind": "tree", "title": "Change sets" }));
             result
         }
         Err(err) => ToolResult::fail(err.to_string()),
@@ -405,7 +433,11 @@ pub async fn promote_run(app: &AppState, input: &Value) -> ToolResult {
     let Some(id) = parse_id(input) else {
         return ToolResult::fail("a change-set id is required");
     };
-    let store = ChangeSetStore::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let store = ChangeSetStore::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     let change_set = match store.get(id).await {
         Ok(Some(change_set)) => change_set,
         Ok(None) => return ToolResult::fail(format!("no change set {}", ulid_string(&id))),
@@ -421,16 +453,26 @@ pub async fn promote_run(app: &AppState, input: &Value) -> ToolResult {
         Ok(remaining) => remaining,
         Err(err) => return ToolResult::fail(err.to_string()),
     };
-    if let Err(err) = ledger.debit(BudgetKind::Evolution, 1.0, change_set.id).await {
+    if let Err(err) = ledger
+        .debit(BudgetKind::Evolution, 1.0, change_set.id)
+        .await
+    {
         return ToolResult::fail(err.to_string());
     }
-    let mut bundle = mm_selfeng::EvidenceBundle::new(change_set.id, regression).with_risk(0.0, remaining);
+    let mut bundle =
+        mm_selfeng::EvidenceBundle::new(change_set.id, regression).with_risk(0.0, remaining);
     let bench_file = app.cfg.root.join("bench/promotion/promotion_bench.json");
     if bench_file.exists() {
         match mm_selfeng::benchmark::load_specs(&bench_file) {
             Ok(specs) => {
                 if let Some(spec) = specs.first() {
-                    match mm_selfeng::benchmark::run_benchmark(spec, &app.cfg.root, app.logger.as_ref()).await {
+                    match mm_selfeng::benchmark::run_benchmark(
+                        spec,
+                        &app.cfg.root,
+                        app.logger.as_ref(),
+                    )
+                    .await
+                    {
                         Ok(result) => bundle = bundle.with_bench(result),
                         Err(err) => return ToolResult::fail(err.to_string()),
                     }
@@ -443,7 +485,11 @@ pub async fn promote_run(app: &AppState, input: &Value) -> ToolResult {
     if gate.policy().touches_immutable(&change_set).is_some() {
         bundle = bundle.touching_immutable();
     }
-    let journal = EvolutionJournal::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let journal = EvolutionJournal::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     match gate.promote(&change_set, &bundle, &store, &journal).await {
         Ok(outcome) => {
             let reason = outcome
@@ -479,7 +525,11 @@ pub async fn reject_run(app: &AppState, input: &Value) -> ToolResult {
     if reason.trim().len() < 8 {
         return ToolResult::fail("a rejection without a reason is not a decision: pass --reason");
     }
-    let store = ChangeSetStore::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let store = ChangeSetStore::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     let change_set = match store.get(id).await {
         Ok(Some(change_set)) => change_set,
         Ok(None) => return ToolResult::fail(format!("no change set {}", ulid_string(&id))),
@@ -496,7 +546,11 @@ pub async fn reject_run(app: &AppState, input: &Value) -> ToolResult {
             failed: 0,
         },
     );
-    let journal = EvolutionJournal::new(app.sqlite.clone(), Arc::clone(&app.logger), Arc::clone(&app.ids));
+    let journal = EvolutionJournal::new(
+        app.sqlite.clone(),
+        Arc::clone(&app.logger),
+        Arc::clone(&app.ids),
+    );
     match gate
         .record_decision(
             &change_set,
@@ -529,7 +583,9 @@ pub async fn reject_run(app: &AppState, input: &Value) -> ToolResult {
             if let Err(err) = journal.append(&event).await {
                 return ToolResult::fail(err.to_string());
             }
-            let _ = store.set_status(change_set.id, ChangeSetStatus::Rejected).await;
+            let _ = store
+                .set_status(change_set.id, ChangeSetStatus::Rejected)
+                .await;
             ToolResult::done(
                 reason.clone(),
                 json!({
@@ -578,7 +634,11 @@ pub async fn audit_production_tree(app: &AppState) -> ToolResult {
 pub fn sandbox_tool_list() -> ToolResult {
     match mm_tools::tools::default_registry() {
         Ok(registry) => {
-            let names: Vec<String> = registry.list().iter().map(|spec| spec.name.to_string()).collect();
+            let names: Vec<String> = registry
+                .list()
+                .iter()
+                .map(|spec| spec.name.to_string())
+                .collect();
             ToolResult::done(
                 format!("{} sandbox tools", names.len()),
                 json!({ "tools": names }),
@@ -640,7 +700,10 @@ pub async fn sandbox_tool_run(app: &AppState, input: &Value) -> ToolResult {
     match executor.execute(action).await {
         Ok(result) => {
             let ok = matches!(result.status, ActionStatus::Ok | ActionStatus::Deduplicated);
-            let reason = result.reason.clone().unwrap_or_else(|| result.status.as_str().into());
+            let reason = result
+                .reason
+                .clone()
+                .unwrap_or_else(|| result.status.as_str().into());
             let mut body = ToolResult::done(
                 reason.clone(),
                 json!({
@@ -758,7 +821,11 @@ fn resolve_allowed(app: &AppState, path: &Path) -> Result<PathBuf, String> {
     } else {
         app.cfg.root.join(path)
     };
-    let repo = app.cfg.root.canonicalize().unwrap_or_else(|_| app.cfg.root.clone());
+    let repo = app
+        .cfg
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| app.cfg.root.clone());
     let data = app
         .cfg
         .store

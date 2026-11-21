@@ -2,7 +2,7 @@
 
 **Status:** Design Proposal  
 **Location:** `design/self_testing_benchmarking_suite.md`  
-**Related:** `bootstrap_procses1.md`, `bootstrap_procses2.md`, `PHASE_INDEX.md`, `tests/e2e/`
+**Related:** `bootstrap_process1.md`, `bootstrap_process2.md`, `PHASE_INDEX.md`, `tests/e2e/`
 
 ---
 
@@ -13,7 +13,7 @@ This design specifies an **internal benchmarking, self-testing, and bootstrappin
 - **Tests every crate/module** in the MetaMind workspace in increasing complexity tiers
 - **Uses live LLM minimally** — only where semantic cognition is genuinely required to validate integration
 - **Generates detailed, structured reports** per test and per suite run
-- **Serves as the regression backbone** for the self-engineering loop (bootstrap_procses2.md §3)
+- **Serves as the regression backbone** for the self-engineering loop (bootstrap_process2.md §3)
 - **Excludes audio/voice** — no TTS, ASR, Realtime API, or prosody tests
 - **Enables bootstrapping** — the suite itself is a capability the being can run, evaluate, and improve
 
@@ -29,7 +29,7 @@ The suite lives under `bench/self_test/` and `tests/self_test/` and is invoked v
 | **Minimal LLM calls per test** | One call max per semantic test; cached via `mm-llm` disk cache |
 | **Self-describing tests** | Each test declares: crate, tier, LLM usage, expected duration, fixtures, success criteria |
 | **Report as first-class artifact** | Reports are RDF + JSON, queryable, versioned, fed to meta-analysis |
-| **Bootstrappable** | The suite can test itself; new tests generated from mistakes (bootstrap_procses2.md §9) |
+| **Bootstrappable** | The suite can test itself; new tests generated from mistakes (bootstrap_process2.md §9) |
 | **Tiered complexity** | 5 tiers from zero-LLM unit → full cognitive episode |
 
 ---
@@ -199,7 +199,7 @@ Every test produces a report written to `bench/self_test/reports/<test_id>_<time
   "run_id": "01JXK2M...",           // ULID
   "timestamp": "2026-11-21T14:32:10Z",
   "git_commit": "7f92a1...",
-  "self_version": {                 // bootstrap_procses2.md §4
+  "self_version": {                 // bootstrap_process2.md §4
     "code": "7f92a1",
     "ontology": "31",
     "memory": "82",
@@ -302,10 +302,10 @@ bench/self_test/
     └── conformal.json        # Conformal prediction intervals
 ```
 
-**Baseline promotion** (bootstrap_procses2.md §3):
+**Baseline promotion** (bootstrap_process2.md §3):
 1. Run suite on candidate self-version
 2. Compare aggregate metrics vs current baseline
-3. If **global fitness** improves (bootstrap_procses2.md §14): promote
+3. If **global fitness** improves (bootstrap_process2.md §14): promote
 4. New baseline = candidate reports; old baseline archived
 
 ---
@@ -511,7 +511,7 @@ pub struct SelfTestCapability {
 }
 ```
 
-**Bootstrap loop** (bootstrap_procses2.md §3):
+**Bootstrap loop** (bootstrap_process2.md §3):
 1. Being runs `mm-cli self-test --bootstrap`
 2. Results → meta-analysis → lessons → candidate policies
 3. If regression: `mm-selfeng` creates ChangeSet, tests in sandbox

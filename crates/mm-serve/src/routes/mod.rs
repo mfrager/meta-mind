@@ -33,6 +33,7 @@ const LOCAL_ORIGINS: &[&str] = &[
 
 mod changesets;
 mod chat;
+pub(crate) mod cme;
 mod exec;
 pub(crate) mod focus;
 mod runs;
@@ -69,6 +70,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/chat/{request_id}/stop", post(chat::stop))
         .route("/api/chat/{request_id}/regenerate", post(chat::regenerate))
         .route("/api/chat", post(chat::open))
+        .route("/api/cme/chat", post(cme::open))
+        .route(
+            "/api/cme/sessions/{session_id}/snapshot",
+            get(cme::snapshot),
+        )
+        .route("/api/cme/sessions/{session_id}/metrics", get(cme::metrics))
+        .route("/api/cme/sessions/{session_id}/events", get(cme::events))
+        .route("/debug/cme", get(cme::debug))
         .route("/api/commands", get(exec::commands))
         .route("/api/exec", post(exec::exec))
         .route("/api/runs", get(runs::list))

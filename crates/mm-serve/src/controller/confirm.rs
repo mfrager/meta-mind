@@ -48,7 +48,10 @@ pub fn confirm_request(name: &str, input: &Value) -> Value {
 fn body_line(name: &str, input: &Value) -> String {
     match name {
         "memory.add" => {
-            let kind = input.get("kind").and_then(Value::as_str).unwrap_or("semantic");
+            let kind = input
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("semantic");
             let content = input.get("content").and_then(Value::as_str).unwrap_or("");
             format!("Store a {kind} memory: \"{content}\"")
         }

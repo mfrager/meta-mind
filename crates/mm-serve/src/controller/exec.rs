@@ -64,7 +64,15 @@ impl ToolResult {
 pub async fn run(app: &AppState, name: &str, input: &Value) -> ToolResult {
     let limit = if matches!(
         name,
-        "promote.run" | "sandbox.run" | "loop.run" | "gc.apply" | "gc.propose" | "debt.scan" | "codex.scan" | "codex.verify" | "regression.run"
+        "promote.run"
+            | "sandbox.run"
+            | "loop.run"
+            | "gc.apply"
+            | "gc.propose"
+            | "debt.scan"
+            | "codex.scan"
+            | "codex.verify"
+            | "regression.run"
     ) {
         Duration::from_secs(600)
     } else {

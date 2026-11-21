@@ -27,6 +27,8 @@ path = "src/main.rs"
 
 [dependencies]
 mm-core = { workspace = true }
+mm-cme = { workspace = true }
+mm-data = { workspace = true }
 mm-being = { workspace = true }
 mm-log = { workspace = true }
 mm-selfeng = { workspace = true }
@@ -46,6 +48,7 @@ mm-metaanalysis = { workspace = true }
 mm-pi = { workspace = true }
 mm-runtime = { workspace = true }
 sqlx = { workspace = true }
+async-trait = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
