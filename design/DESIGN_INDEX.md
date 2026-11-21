@@ -638,6 +638,23 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 6. **Governance & Observability** — Audit logging, Prometheus metrics, human approval gates, auto-rollback
 7. **Example End-to-End** — Report improvement: reflect → plan → hill-climb act → verify → learn (1.5 min, +27% composite)
 
+### Q. Unified Conversation Engine Design (`conversation_engine_design.md`)
+- **Architectural Position** — CME as cognitive controller owning structure (TurnPlan, chunks, modalities), LLM fills content
+- **Core Data Model** — Session, TurnPlan, ChunkDirective, ChatFrame, ProactiveQueue, VoiceSession (3 tiers)
+- **Runtime Loop** — Event loop with user input, proactive tick, voice audio, confirmations, plugins, compression, improvement
+- **Turn Execution** — Deterministic: build transcript → route → speculative pre-warm → execute chunks → finalize
+- **Voice Architecture** — 3 tiers (RequestResponse, StreamingPipeline, FullDuplexNative) with negotiation & failover
+- **Memory System** — 4-tier hierarchy (Episodic → Segment → Project → User) with compression pipeline
+- **Preference Learning** — Bayesian inference from behavioral signals applied to planner, proactive, voice, reports
+- **Multi-LLM Routing** — Conversation-aware routing (modality, voice_tier, proactive, session context)
+- **Proactive Plugin System** — WASM-compatible, 6 built-in plugins, sandboxed execution
+- **Voice Prosody** — Affect → prosody mapping → SSML, context-aware modulation
+- **Observability** — REST snapshots, WebSocket events, OpenTelemetry traces, Prometheus metrics (20+)
+- **Integration** — New `mm-cme` crate, phased migration from `mm-serve`, feature flags, API compat
+- **Testing** — Unit, integration, synthetic (YAML DSL, 5 personas, 8 checkers)
+- **Configuration** — Unified TOML for all CME subsystems
+- **Rollout** — 12-phase migration, canary, compatibility checklist
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*

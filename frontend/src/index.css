@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "streamdown/styles.css";
 
 /*
  * Structured Color (design/planning/ui/02). Color is semantic. Surfaces are
@@ -662,3 +665,392 @@ dialog.mm-dialog::backdrop {
     overflow: visible !important;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Agent workspace design layer (ported from agentgui). Appended so the
+ * workspace tokens and surface treatments win the cascade.
+ * ------------------------------------------------------------------ */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-panel: var(--panel-radius);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
+
+  --shadow-elev-1: var(--elevation-1);
+  --shadow-elev-2: var(--elevation-2);
+  --shadow-elev-3: var(--elevation-3);
+  --shadow-panel: var(--panel-shadow);
+  --shadow-popover: var(--popover-shadow);
+}
+
+:root {
+  --radius: 0.625rem;
+  --panel-radius: 1rem;
+
+  /* Base canvas: a very light, cool neutral gray. */
+  --background: oklch(0.968 0.005 250);
+  --foreground: oklch(0.226 0.017 255);
+
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --surface-muted: oklch(0.982 0.004 250);
+  --surface-sunken: oklch(0.958 0.007 252);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.226 0.017 255);
+  --popover: oklch(0.997 0.002 250);
+  --popover-foreground: oklch(0.226 0.017 255);
+
+  --primary: oklch(0.548 0.176 259);
+  --primary-foreground: oklch(0.988 0.002 250);
+
+  --secondary: oklch(0.964 0.007 252);
+  --secondary-foreground: oklch(0.318 0.021 255);
+
+  --muted: oklch(0.964 0.007 252);
+  --muted-foreground: oklch(0.548 0.02 256);
+
+  --accent: oklch(0.945 0.015 233);
+  --accent-foreground: oklch(0.3 0.045 253);
+
+  --destructive: oklch(0.577 0.212 26);
+  --destructive-foreground: oklch(0.988 0.002 250);
+
+  --border: oklch(0.865 0.012 252);
+  --input: oklch(0.855 0.013 252);
+  --ring: oklch(0.62 0.135 250);
+
+  /* Sidebar sits a shade darker than the workspace. */
+  --sidebar: oklch(0.944 0.011 251);
+  --sidebar-foreground: oklch(0.294 0.021 255);
+  --sidebar-accent: oklch(0.916 0.017 249);
+  --sidebar-border: oklch(0.85 0.014 251);
+
+  --positive: oklch(0.6 0.128 165);
+  --caution: oklch(0.72 0.14 76);
+
+  /* Gradients: restrained blue into green, used only for active states. */
+  --gradient-accent: linear-gradient(
+    135deg,
+    oklch(0.582 0.178 260) 0%,
+    oklch(0.606 0.145 218) 52%,
+    oklch(0.632 0.119 169) 100%
+  );
+  --gradient-accent-soft: linear-gradient(
+    135deg,
+    color-mix(in oklab, oklch(0.582 0.178 260) 10%, white) 0%,
+    color-mix(in oklab, oklch(0.606 0.145 218) 9%, white) 55%,
+    color-mix(in oklab, oklch(0.632 0.119 169) 11%, white) 100%
+  );
+  --gradient-active-nav: linear-gradient(
+    100deg,
+    color-mix(in oklab, oklch(0.582 0.178 260) 12%, white) 0%,
+    color-mix(in oklab, oklch(0.632 0.119 169) 10%, white) 100%
+  );
+  --gradient-panel: linear-gradient(
+    180deg,
+    oklch(1 0 0) 0%,
+    oklch(0.993 0.003 250) 58%,
+    oklch(0.987 0.005 250) 100%
+  );
+  --gradient-sidebar: linear-gradient(
+    180deg,
+    oklch(0.951 0.011 251) 0%,
+    oklch(0.938 0.012 251) 100%
+  );
+  --gradient-top-highlight: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, oklch(0.582 0.178 260) 45%, white) 35%,
+    color-mix(in oklab, oklch(0.632 0.119 169) 45%, white) 70%,
+    transparent
+  );
+
+  /* Elevation: diffuse, low-contrast, with a bright inner top edge. */
+  --elevation-1:
+    0 1px 1px oklch(0.25 0.02 255 / 0.04), 0 2px 4px -1px oklch(0.25 0.02 255 / 0.05);
+  --elevation-2:
+    0 1px 1px oklch(0.25 0.02 255 / 0.05), 0 4px 10px -3px oklch(0.25 0.02 255 / 0.08),
+    0 10px 24px -16px oklch(0.25 0.02 255 / 0.28);
+  --elevation-3:
+    0 1px 1px oklch(0.25 0.02 255 / 0.05), 0 8px 18px -6px oklch(0.25 0.02 255 / 0.1),
+    0 24px 48px -28px oklch(0.25 0.02 255 / 0.34);
+  --panel-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.9), 0 1px 2px oklch(0.25 0.02 255 / 0.04),
+    0 18px 40px -30px oklch(0.25 0.02 255 / 0.45);
+  --popover-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.85), 0 2px 4px oklch(0.25 0.02 255 / 0.06),
+    0 16px 32px -16px oklch(0.25 0.02 255 / 0.22);
+  --bevel-border: oklch(0.842 0.014 251);
+
+  --transition-pane: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 18%, white);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 26%, transparent);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 42%, transparent);
+    background-clip: content-box;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Reusable surface treatments. All color/elevation decisions live here
+ * so views stay declarative.
+ * ------------------------------------------------------------------ */
+@layer components {
+  .app-panel {
+    background-image: var(--gradient-panel);
+    border: 1px solid var(--bevel-border);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--panel-shadow);
+  }
+
+  /* Chat reads tighter than the surrounding workspace panels. */
+  .chat-panel {
+    border-radius: var(--radius);
+  }
+
+  .pane-header {
+    background: color-mix(in oklab, var(--surface) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .surface-raised {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--elevation-1), inset 0 1px 0 oklch(1 0 0 / 0.8);
+  }
+
+  .surface-inset {
+    background: color-mix(in oklab, var(--surface-sunken) 66%, white);
+    border: 1px solid color-mix(in oklab, var(--input) 72%, white);
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 1px 2px oklch(0.25 0.02 255 / 0.06);
+  }
+
+  .accent-gradient {
+    background-image: var(--gradient-accent);
+  }
+
+  .accent-soft {
+    background-image: var(--gradient-accent-soft);
+  }
+
+  .accent-text {
+    background-image: var(--gradient-accent);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .active-nav-item {
+    background-image: var(--gradient-active-nav);
+    border: 1px solid color-mix(in oklab, var(--primary) 22%, white);
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.8),
+      0 1px 2px oklch(0.25 0.02 255 / 0.06);
+  }
+
+  .hover-lift {
+    transition:
+      background-color 140ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      border-color 140ms ease;
+  }
+  .hover-lift:hover {
+    box-shadow: var(--elevation-1);
+    background-color: color-mix(in oklab, var(--surface) 60%, white);
+  }
+
+  .sidebar-shell {
+    background-image: var(--gradient-sidebar);
+    border-right: 1px solid var(--sidebar-border);
+  }
+
+  .hairline-top {
+    position: relative;
+  }
+  .hairline-top::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: var(--gradient-top-highlight);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .status-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 999px;
+    background: var(--positive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 18%, transparent);
+  }
+
+  .status-dot-busy {
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+    animation: pulse-dot 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Streamdown prose tuned to the workspace type scale. */
+.markdown-body {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+
+.markdown-body :where(p) {
+  margin-block: 0.55em;
+}
+
+.markdown-body :where(h1, h2, h3, h4) {
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  margin-block: 1.1em 0.45em;
+}
+
+.markdown-body :where(h1) {
+  font-size: 1.35rem;
+}
+.markdown-body :where(h2) {
+  font-size: 1.12rem;
+}
+.markdown-body :where(h3) {
+  font-size: 1rem;
+}
+
+.markdown-body :where(ul, ol) {
+  padding-inline-start: 1.15rem;
+  margin-block: 0.5em;
+}
+
+.markdown-body :where(li) {
+  margin-block: 0.22em;
+}
+
+.markdown-body :where(table) {
+  width: 100%;
+  font-size: 0.8125rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-block: 0.75em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.markdown-body :where(th) {
+  background: var(--surface-sunken);
+  font-weight: 550;
+  text-align: left;
+}
+
+.markdown-body :where(th, td) {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-body :where(tr:last-child td) {
+  border-bottom: 0;
+}
+
+.markdown-body :where(blockquote) {
+  border-left: 2px solid color-mix(in oklab, var(--primary) 35%, var(--border));
+  padding-left: 0.85rem;
+  color: var(--muted-foreground);
+}
+
+.markdown-body :where(a) {
+  color: color-mix(in oklab, var(--primary) 88%, black);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@source "../node_modules/streamdown/dist/index.js";
+@source "../node_modules/@streamdown/code/dist/index.js";
