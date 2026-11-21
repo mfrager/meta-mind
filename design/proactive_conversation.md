@@ -16,7 +16,106 @@
 
 ---
 
-## 2. Message Segmentation & Streaming
+## 2. Agent Introduction & Onboarding
+
+### 2.1 In-Character Introduction (First Message)
+The agent opens every new conversation (or session after timeout) with a brief, character-driven introduction that establishes identity, signals readiness, and invites the first topic.
+
+**Template:**
+```
+[Agent identity + one-line capability summary] + [how to engage] + [optional: current context hint]
+```
+
+**Examples by persona:**
+
+| Persona | Introduction |
+|---|---|
+| **Engineering Partner** | "I'm Metamind — your engineering partner. I write, review, debug, and architect. What are we working on?" |
+| **Research Analyst** | "Metamind here. I dig through docs, compare options, model tradeoffs, and surface what matters. What's the question?" |
+| **Operations Companion** | "Metamind, ops mode. I monitor, deploy, investigate incidents, and automate the boring stuff. What's on fire — or what should be?" |
+| **Generalist** | "Metamind. I think, search, build, and remember. Talk to me like a colleague — what do you need?" |
+
+**Rules:**
+- ≤ 2 sentences total
+- No preamble ("Hi, I'm..."), no feature list
+- Ends with an open, low-pressure invitation
+- If returning user: "Back at it. Where were we?" or "Still on the auth refactor?"
+
+### 2.2 Questionnaires (Structured Multi-Question Flows)
+
+A **questionnaire** is a preset ordered list of questions the agent asks one at a time, streaming each question as a separate chunk, capturing answers, and building a structured result.
+
+**Questionnaire Definition:**
+```json
+{
+  "id": "onboarding_v1",
+  "title": "New User Onboarding",
+  "description": "Quick profile to tailor how I work with you.",
+  "questions": [
+    { "id": "name", "prompt": "What should I call you?", "type": "short_text", "required": true },
+    { "id": "role", "prompt": "What's your role? (engineer, PM, researcher, etc.)", "type": "short_text", "required": true },
+    { "id": "focus", "prompt": "What domain do you work in most? (backend, ML, infra, product...)", "type": "short_text", "required": false },
+    { "id": "style", "prompt": "How do you prefer I communicate? (terse, conversational, teaching, direct)", "type": "choice", "options": ["terse", "conversational", "teaching", "direct"], "required": true },
+    { "id": "goals", "prompt": "What's the main thing you want help with right now?", "type": "long_text", "required": false }
+  ],
+  "completion_message": "Got it, {name}. I'll keep things {style} and focus on {focus}. What's first?"
+}
+```
+
+**Question Types:**
+| Type | Rendering | Validation |
+|---|---|---|
+| `short_text` | Single-line input | Min/max length |
+| `long_text` | Multi-line input | Optional |
+| `choice` | Button grid (2–4 options) | Must pick one |
+| `multi_choice` | Checkboxes | Min/max selections |
+| `scale` | 1–5 or 1–10 slider | Numeric range |
+| `confirm` | Yes/No buttons | Boolean |
+
+**Questionnaire Runtime Behavior:**
+1. Agent introduces questionnaire: "Quick 5-question setup — one at a time."
+2. Streams **one question per chunk** with natural pause (500–800ms).
+3. User answers → agent acknowledges briefly ("Got it." / "Makes sense.") → next question.
+4. User can **interrupt anytime**: "Skip this" / "Stop questionnaire" / "I'll answer later."
+   - Agent persists partial answers, exits gracefully.
+5. On completion → agent summarizes key takeaways (1 chunk) → asks "What's first?"
+6. Results stored in user model; informs `preferred_pace`, `style`, `domain_context`.
+
+**Questionnaire Triggers:**
+- Explicit: User says "run onboarding" / "configure me"
+- Implicit: First session with new identity (no user model exists)
+- Periodic: Quarterly "re-calibrate" questionnaire (opt-in)
+
+### 2.3 Intro Questionnaire — Name Only (Minimal Onboarding)
+
+For users who want zero friction, a **single-question** questionnaire that captures only a display name.
+
+**Definition:**
+```json
+{
+  "id": "intro_name_only",
+  "title": "Quick Intro",
+  "questions": [
+    { "id": "name", "prompt": "What should I call you?", "type": "short_text", "required": true, "max_length": 30 }
+  ],
+  "completion_message": "Nice to meet you, {name}. What are we working on?"
+}
+```
+
+**Behavior:**
+- Triggered automatically on **first-ever session** (no persisted user model).
+- Single chunk: "What should I call you?"
+- User replies with name → agent: "Nice to meet you, Alex. What are we working on?"
+- If user gives more than name ("I'm Alex, backend engineer at Acme"), agent extracts name, stores the rest as implicit context, and moves on.
+- User can skip: "Skip" / "Later" → agent uses "there" / "you" and proceeds immediately.
+
+**Integration with Full Onboarding:**
+- Name-only intro runs first.
+- After 3–5 meaningful exchanges, agent may proactively suggest: "Want to do a quick 5-question setup so I can tailor better?" → launches full `onboarding_v1` with `name` pre-filled.
+
+---
+
+## 3. Message Segmentation & Streaming
 
 ### 2.1 Chunking Strategy
 Break multi-part responses into **micro-turns** (1–3 sentences each), streamed with 300–800ms delays between chunks.
@@ -45,7 +144,7 @@ Agent: "OK. Next step: ..."         [immediate pivot, no apology, no replay]
 
 ---
 
-## 3. Proactive Behaviors (Agent-Initiated)
+## 4. Proactive Behaviors (Agent-Initiated)
 
 ### 3.1 Search & Lookup (Background, Then Report)
 ```
@@ -127,7 +226,7 @@ Agent: "Plan: 1) Add MFA to current store, 2) Migrate sessions to Redis, 3) Cut 
 
 ---
 
-## 4. Conversation Pacing Patterns
+## 5. Conversation Pacing Patterns
 
 ### 4.1 Problem-Solving Rhythm
 ```
@@ -155,7 +254,7 @@ Agent: "Plan: 1) Add MFA to current store, 2) Migrate sessions to Redis, 3) Cut 
 
 ---
 
-## 5. State Tracking for Proactivity
+## 6. State Tracking for Proactivity
 
 Minimal persistent counters (reset per session or project):
 
@@ -177,7 +276,7 @@ struct ProactiveState {
 
 ---
 
-## 6. Anti-Patterns (What Not To Do)
+## 7. Anti-Patterns (What Not To Do)
 
 | Anti-Pattern | Correction |
 |---|---|
@@ -191,7 +290,7 @@ struct ProactiveState {
 
 ---
 
-## 7. Implementation Notes
+## 8. Implementation Notes
 
 ### 7.1 Streaming Architecture
 - SSE frames: `type: "chunk"`, `content: "..."`, `pause_ms: 400`
@@ -219,7 +318,7 @@ build_turn(user_input, proactive_queue) -> Vec<Chunk>
 
 ---
 
-## 8. Example Full Exchange
+## 9. Example Full Exchange
 
 ```
 User: "The API is slow again."
@@ -238,7 +337,7 @@ Agent: "Nice call splitting the work — caching is lower risk separate." [chunk
 
 ---
 
-## 9. Configuration Knobs (Per-User/Per-Project)
+## 10. Configuration Knobs (Per-User/Per-Project)
 
 ```toml
 [conversation]
