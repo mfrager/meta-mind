@@ -639,21 +639,24 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 7. **Example End-to-End** — Report improvement: reflect → plan → hill-climb act → verify → learn (1.5 min, +27% composite)
 
 ### Q. Unified Conversation Engine Design (`conversation_engine_design.md`)
-- **Architectural Position** — CME as cognitive controller owning structure (TurnPlan, chunks, modalities), LLM fills content
-- **Core Data Model** — Session, TurnPlan, ChunkDirective, ChatFrame, ProactiveQueue, VoiceSession (3 tiers)
-- **Runtime Loop** — Event loop with user input, proactive tick, voice audio, confirmations, plugins, compression, improvement
-- **Turn Execution** — Deterministic: build transcript → route → speculative pre-warm → execute chunks → finalize
-- **Voice Architecture** — 3 tiers (RequestResponse, StreamingPipeline, FullDuplexNative) with negotiation & failover
-- **Memory System** — 4-tier hierarchy (Episodic → Segment → Project → User) with compression pipeline
-- **Preference Learning** — Bayesian inference from behavioral signals applied to planner, proactive, voice, reports
-- **Multi-LLM Routing** — Conversation-aware routing (modality, voice_tier, proactive, session context)
-- **Proactive Plugin System** — WASM-compatible, 6 built-in plugins, sandboxed execution
-- **Voice Prosody** — Affect → prosody mapping → SSML, context-aware modulation
-- **Observability** — REST snapshots, WebSocket events, OpenTelemetry traces, Prometheus metrics (20+)
-- **Integration** — New `mm-cme` crate, phased migration from `mm-serve`, feature flags, API compat
-- **Testing** — Unit, integration, synthetic (YAML DSL, 5 personas, 8 checkers)
-- **Configuration** — Unified TOML for all CME subsystems
-- **Rollout** — 12-phase migration, canary, compatibility checklist
+- **Core Architecture** — **Hierarchical State Machine Engine** (`mm-sm` crate): SmInstance, SmEvent, SmState, SmAction, SmGuard, orthogonal regions, history pseudostates, parent/child spawning
+- **Session** — Top-level SM with 6 orthogonal regions: Turn, Proactive, Voice, Memory, Preferences, Plugins, Improvement
+- **Turn** — Child SM (spawned per user input/proactive): Planning → Routing → SpeculativeWarm → Executing → Streaming → ToolCalling → WaitingConfirm → Finalizing → Completed/Interrupted/Failed
+- **Chunk** — Leaf SM (one per ChunkDirective): Pending → Streaming/Buffering/ToolExecuting → Completed
+- **Proactive Region** — Orthogonal SM: Idle → Evaluating → Selecting → Planning → Executing → Injecting → Idle/Suppressed
+- **Voice Region** — Orthogonal SM: Negotiating → Tier1/2/3 → Streaming → BargedIn → Recovering → Degraded
+- **Memory Region** — Orthogonal SM: Episodic → Compressing → Segmented → ProjectAggregating → UserSyncing
+- **Preference Region** — Orthogonal SM per dimension: ColdStart → Observing → Converging → Stable → DriftDetected → Relearning
+- **Plugin Region** — Orthogonal SM: Loading → Validating → Registered → Running → Suspended/Updating/Unloading
+- **Improvement Region** — Orthogonal SM: Idle → Reflecting → Planning → Acting → Verifying → Learning → Completed
+- **TurnPlanner** — Deterministic logic in `Turn.Planning` state; builds TurnPlan with modality-aware chunks
+- **Multi-LLM Routing** — In `Turn.Routing` state; conversation-aware (modality, voice_tier, proactive, preferences)
+- **Voice Prosody** — In `VoiceRegion` states; affect + modality → SSML params
+- **Observability** — SM introspection: REST snapshots (state + orthogonal), WS events (SMTransition), OTel spans (per SM), Prometheus (transition counters, state duration histograms)
+- **Integration** — `mm-cme` crate with `SessionDriver`; `mm-serve` thin HTTP wrapper; feature flags per region
+- **Testing** — SM unit tests (transition tables), integration (cross-region), synthetic (YAML DSL with SM assertions)
+- **Configuration** — Unified TOML with per-region SM params (timeouts, budgets, thresholds)
+- **Rollout** — 14-phase migration from ad-hoc loops to SM architecture
 
 ### R. RDF Backend Integration — Cubecast (`rdf_backend_integration.md`)
 - **Single FS Root** — One base directory (`$MM_DATA_DIR`/`~/.metamind`) for all stores
@@ -668,6 +671,24 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Unified Config** — Single `config.toml` merging cubecast + metamind settings
 - **Migration Plan** — 10-phase cutover from direct Oxigraph to cubecast with compatibility layer
 - **Integration** — `AppState::boot` initializes data layer; controller logs to agentstream
+
+### S. Integration Plan — Conversation Engine + RDF Backend (`integration_plan.md`)
+- **7-Phase Build** — Foundation → Core SM Engine (`mm-sm`) → RDF Data + Unified Memory (`mm-data`) → Conversation Engine Core (`mm-cme`) → Planner/Executor/Routing/Voice → Unified Memory/Prefs/Plugins (parallel) → Observability/Improvement/Report/Dashboard → mm-serve Integration/Migration/Production
+- **Critical Path** — Foundation → mm-sm → mm-data → mm-cme core → (Planner/Executor/Routing/Voice + Memory/Prefs/Plugins) → Obs/Improvement/Report/Dashboard → mm-serve Integration
+- **New Crates** — `mm-sm` (core SM engine), `mm-data` (RDF layer + unified memory), `mm-cme` (conversation SMs); `mm-store-graph` deprecated
+- **Key Milestones** — Phase 1: SM engine runs; Phase 2: RDF + memory works; Phase 3: Session/Turn/Chunk SMs run; Phase 4: Planner/Executor/Routing/Voice work; Phase 5: Memory/Prefs/Plugins delegate to mm-data; Phase 6: Full observability + improvement + generators; Phase 7: mm-serve on CME, migration, canary, v2.0.0-cme
+- **Risk Mitigation** — Dual-run mode, feature flags, migration dry-runs, synthetic test regression detection, clear exit criteria per phase
+- **Success Criteria** — Turn p99 < 2s, 200+ sessions, 99.9% uptime, full SM observability, <1 day new modality/plugin
+
+### T. Unified Memory System (`unified_memory_system.md`)
+- **4-Tier Hierarchy** — Episodic (raw turns, agentstream) → Compressed Segments (narrative + structured artifacts) → Project Memory (aggregated decisions, commitments, conventions) → User Memory (global preferences, expertise, cross-project learning)
+- **Single Compression Pipeline** — LLM extraction → narrative → embeddings → quality validation → RDF + vector index
+- **State Machine Driven** — Memory Region SM (Episodic → Compressing → Segmented → ProjectAggregating → UserSyncing) drives all transitions
+- **RDF Storage Mapping** — Each tier maps to cubecast named graphs: agentstream, segments, projects, users
+- **Session Continuity** — Resume with project/user context, personalized greetings, continuation suggestions
+- **Multi-Device Sync** — Presence, state broadcast, voice↔text handoff with prosody preservation
+- **Unified API** — `mm-data::MemorySystem` with episodic/segment/project/user stores, queries, sync, privacy
+- **Configuration** — Single `memory.toml` for all tiers, compression, vector index, sync, privacy
 
 ---
 

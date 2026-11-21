@@ -1,5 +1,7 @@
 # Cross-Session Memory & Continuity
 
+> **⚠️ SUPERSEDED**: This design has been merged into the **[Unified Memory System](unified_memory_system.md)**. The 4-tier hierarchy (Episodic → Compressed Segments → Project Memory → User Memory), compression pipeline, session continuity, multi-device sync, cross-project learning, and privacy controls are now defined in the unified design. This file is kept for historical reference only.
+
 > Persistent conversation memory across sessions, projects, and time — enabling true continuity.
 
 ---

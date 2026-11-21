@@ -1,5 +1,7 @@
 # Structured Conversation Compression
 
+> **⚠️ SUPERSEDED**: This design has been merged into the **[Unified Memory System](unified_memory_system.md)**. The CompressedConversation schema, two-stage extraction pipeline (structured extraction + narrative generation), semantic retrieval with vector index, incremental compression, and quality validation are now defined in the unified design (Tier 2: Compressed Segments). This file is kept for historical reference only.
+
 > Lossless semantic compression preserving queryable artifacts, decisions, commitments.
 
 ---

@@ -1,8 +1,8 @@
-# MetaMind Conversation Engine — Unified Design Plan
+# MetaMind Conversation Engine — Unified Design Plan (State Machine Architecture)
 
 **Status**: Design proposal for the next major version of the mm-serve conversation backend
-**Scope**: Merge existing `mm-serve` implementation with all 17 conversation designs in `design/conversation/`
-**Target Crate**: `crates/mm-serve` (replacing/refactoring the controller, chat, routes, state)
+**Scope**: Merge existing `mm-serve` implementation with all 17 conversation designs in `design/conversation/` around a **core state machine engine**
+**Target Crate**: `crates/mm-cme` (new), `crates/mm-serve` (thin HTTP wrapper)
 
 ---
 
@@ -12,695 +12,1046 @@ This design unifies:
 - **Existing**: `mm-serve` controller (turn-based, tool-calling, chat sessions, personality, affect)
 - **New**: 17 conversation designs covering proactive behavior, voice (3 tiers), deterministic turn planning, speculative execution, compression, preference learning, multi-LLM routing, plugin system, prosody, synthetic testing, cross-session memory, hill-climbing, report generation, dashboard construction, self-improvement loops
 
-The result is a **Conversation Management Engine (CME)** that:
-- Owns conversation *structure* (TurnPlan, chunks, modalities), not just content
-- Supports voice at 3 tiers with failover
-- Runs proactive loops independently of user input
-- Learns preferences and improves itself continuously
-- Generates hill-climbable reports and dashboards as first-class outputs
+**Core architectural principle**: Everything is a **state machine**. The Conversation Management Engine (CME) is a **hierarchical state machine** where:
+
+- **Session** = top-level state machine
+- **Turn** = child state machine (spawned per turn)
+- **Chunk** = leaf state machine (streaming emission unit)
+- **Proactive**, **Voice**, **Memory**, **Preferences**, **Routing**, **Plugins**, **Improvement** = orthogonal state machines that compose via **state machine composition** (parallel, hierarchical, history)
+
+The LLM fills content slots in a TurnPlan; the state machine engine decides *what* states exist, *when* transitions fire, *how* they emit, and *what* orthogonal regions run in parallel.
 
 ---
 
-## I. Architectural Position
+## I. Core State Machine Engine
 
-### Current (mm-serve)
-```
-UI → HTTP Routes → controller::reply() → LLM loop (tools → response) → SSE frames
-```
+### I.1 Why State Machines?
 
-### Target (CME)
-```
-UI (Text/Voice) → CME Session → TurnPlanner → LLM Router → LLM Service
-                           ↓
-                    ProactiveQueue (plugins, goals, affect)
-                           ↓
-                    Memory (4-tier: session → segment → project → user)
-                           ↓
-                    Observability (snapshots, traces, WebSocket, metrics)
-```
+| Problem | State Machine Solution |
+|---------|------------------------|
+| Turn planning + execution + interruption | Hierarchical states: `Turn.Planning → Turn.Executing → Turn.Streaming → Turn.Completed` with `Interruption` history state |
+| Proactive items running parallel to user turns | Orthogonal regions: `Session.Proactive` region runs independent of `Session.Turn` region |
+| Voice tiers with failover | State machine with `TierNegotiation → ActiveTier → Failover → DegradedTier` |
+| Memory compression tiers | State machine: `Episodic → Compressing → Segment → Project → User` with timed transitions |
+| Preference learning convergence | State machine: `ColdStart → Observing → Converging → Stable` per dimension |
+| Plugin lifecycle | State machine: `Loaded → Validated → Registered → Running → Suspended → Unloaded` |
+| Self-improvement loop | State machine: `Reflect → Plan → Act → Verify → Learn` with budget guards |
 
-**Key principle**: CME is the *cognitive controller*. The LLM fills content slots in a TurnPlan; CME decides *what* chunks exist, *when* they emit, *how* they render (modality), and *what* proactive work runs between turns.
-
----
-
-## II. Core Data Model (Merge of Existing + New)
-
-### II.1 Session (extends existing `chat::Session`)
+### I.2 State Machine Engine API (Core)
 
 ```rust
-pub struct Session {
-    // Existing
-    pub id: SessionId,
-    pub title: String,
-    pub created_at: i64,
-    pub run_ids: Vec<RunId>,
+// mm-cme/src/state_machine/mod.rs
 
-    // New: cross-session memory
+/// Unique identifier for a state machine instance
+pub type SmId = Ulid;
+
+/// Event that can trigger transitions
+pub trait SmEvent: Send + Sync + 'static {
+    fn event_type(&self) -> &'static str;
+}
+
+/// State in a state machine
+pub trait SmState: Send + Sync + 'static {
+    fn name(&self) -> &'static str;
+    fn is_final(&self) -> bool { false }
+    fn is_history(&self) -> bool { false }
+}
+
+/// Action executed on transition (entry/exit/transition)
+pub trait SmAction<Ctx>: Send + Sync {
+    fn execute(&self, ctx: &mut Ctx, event: &dyn SmEvent) -> Pin<Box<dyn Future<Output = Result<(), SmError>> + Send>>;
+}
+
+/// Guard condition for transition
+pub trait SmGuard<Ctx>: Send + Sync {
+    fn check(&self, ctx: &Ctx, event: &dyn SmEvent) -> bool;
+}
+
+/// Transition definition
+pub struct Transition<S, E, Ctx> {
+    pub from: S,
+    pub to: S,
+    pub event: E,
+    pub guard: Option<Box<dyn SmGuard<Ctx>>>,
+    pub action: Option<Box<dyn SmAction<Ctx>>>,
+}
+
+/// State machine definition (compile-time checked via typestate)
+pub struct StateMachine<S, E, Ctx> {
+    pub initial: S,
+    pub states: Vec<S>,
+    pub transitions: Vec<Transition<S, E, Ctx>>,
+    pub orthogonal_regions: Vec<StateMachine<S, E, Ctx>>,  // parallel regions
+    pub history_states: Vec<S>,  // deep/shallow history
+}
+
+/// Runtime instance of a state machine
+pub struct SmInstance<S, E, Ctx> {
+    pub id: SmId,
+    pub definition: Arc<StateMachine<S, E, Ctx>>,
+    pub current_state: S,
+    pub history: Vec<(S, Instant)>,  // for history pseudostates
+    pub context: Ctx,
+    pub parent: Option<SmId>,        // for hierarchical composition
+    pub children: Vec<SmId>,         // spawned child machines
+    pub orthogonal_current: HashMap<String, S>,  // per region
+}
+
+impl<S, E, Ctx> SmInstance<S, E, Ctx> {
+    /// Process an event, return list of emitted events (for parent/observers)
+    pub async fn dispatch(&mut self, event: E) -> Result<Vec<Box<dyn SmEvent>>, SmError> { ... }
+    
+    /// Spawn a child state machine (hierarchical)
+    pub fn spawn_child<CS, CE, CCtx>(&mut self, def: StateMachine<CS, CE, CCtx>) -> SmId { ... }
+    
+    /// Enter orthogonal region
+    pub fn enter_region(&mut self, region_name: &str, initial_state: S) { ... }
+    
+    /// Get current state (including orthogonal regions)
+    pub fn snapshot(&self) -> SmSnapshot<S> { ... }
+}
+
+/// Snapshot for observability
+pub struct SmSnapshot<S> {
+    pub id: SmId,
+    pub current: S,
+    pub orthogonal: HashMap<String, S>,
+    pub history_depth: usize,
+    pub timestamp: Instant,
+}
+```
+
+### I.3 Composition Patterns
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SESSION STATE MACHINE                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    TURN REGION (hierarchical)                       │   │
+│  │  Idle → Planning → Executing → Streaming → Completed                │   │
+│  │                    ↓                    ↓                            │   │
+│  │               [Interruption]*      [Chunk]* (parallel chunks)       │   │
+│  │                    ↓                    ↓                            │   │
+│  │               Interrupted          Finalizing                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                  PROACTIVE REGION (orthogonal)                      │   │
+│  │  Idle → Evaluating → Selecting → Executing → Injecting → Idle       │   │
+│  │                    ↓                    ↓                            │   │
+│  │               Suppressed            Completed                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    VOICE REGION (orthogonal)                        │   │
+│  │  Negotiating → Tier1/2/3 → Streaming → BargedIn? → Recovering → ... │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                   MEMORY REGION (orthogonal)                        │   │
+│  │  Episodic → Compressing → Segmented → ProjectAggregated → UserSync  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                 PREFERENCE REGION (orthogonal, per dimension)       │   │
+│  │  ColdStart → Observing → Converging → Stable → DriftDetected → ...  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## II. Core Data Model (State Machine Centric)
+
+### II.1 Session = Top-Level State Machine Instance
+
+```rust
+// mm-cme/src/session.rs
+
+/// Session is a state machine instance with orthogonal regions
+pub struct Session {
+    pub sm: SmInstance<SessionState, SessionEvent, SessionContext>,
+    
+    // Persistent identity
+    pub id: SessionId,
     pub user_id: UserId,
     pub project_id: Option<ProjectId>,
-    pub memory_context: MemoryContext,      // compressed segments + project/user refs
-    pub preference_profile: PreferenceProfile,  // learned from behavior
+    pub created_at: i64,
+    
+    // Orthogonal region handles (accessed via sm.orthogonal_current)
+    pub turn_region: Option<SmId>,
+    pub proactive_region: Option<SmId>,
+    pub voice_region: Option<SmId>,
+    pub memory_region: Option<SmId>,
+    pub preference_region: Option<SmId>,
+    
+    // Cross-region shared context
+    pub context: SessionContext,
+}
 
-    // New: voice
-    pub voice_tier: VoiceTier,              // RequestResponse | Streaming | FullDuplex
-    pub voice_session: Option<VoiceSession>, // audio config, VAD, barge-in state
+/// Session states (top-level)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionState {
+    Initializing,
+    Active,
+    Paused,           // user away, voice idle
+    Suspended,        // explicit pause
+    Resuming,         // restoring from memory
+    Terminating,
+    Terminated,
+}
 
-    // New: proactive
-    pub proactive_config: ProactiveConfig,   // enabled plugins, pace, budgets
-    pub proactive_queue: ProactiveQueue,     // pending proactive items
+/// Events that drive session lifecycle
+#[derive(Debug, Clone)]
+pub enum SessionEvent {
+    UserInput(UserInputEvent),
+    VoiceAudio(AudioChunk),
+    TurnCompleted(TurnOutcome),
+    ProactiveTrigger(ProactiveTrigger),
+    MemoryPressure(MemoryPressure),
+    PreferenceUpdate(PreferenceDimension, f32),
+    VoiceTierChange(VoiceTier),
+    ShutdownRequest,
+    ResumeRequest(ResumeContext),
+}
+
+/// Shared context across all regions
+pub struct SessionContext {
+    pub memory: MemoryContext,
+    pub preferences: PreferenceProfile,
+    pub affect: AffectState,
+    pub budgets: SessionBudgets,
+    pub config: SessionConfig,
 }
 ```
 
-### II.2 Turn & TurnPlan (replaces ad-hoc loop in `controller::reply`)
+### II.2 Turn = Child State Machine (Spawned per Turn)
 
 ```rust
-/// Deterministic plan constructed BEFORE any LLM call
-pub struct TurnPlan {
+// mm-cme/src/turn.rs
+
+/// Turn state machine - spawned by Session for each user input or proactive item
+pub struct Turn {
+    pub sm: SmInstance<TurnState, TurnEvent, TurnContext>,
+    pub plan: TurnPlan,           // deterministic plan (immutable after Planning)
+    pub chunks: Vec<ChunkSm>,     // child chunk state machines
     pub turn_id: TurnId,
-    pub session_id: SessionId,
-    pub user_query: Option<String>,          // None for proactive turns
-    pub chunks: Vec<ChunkDirective>,         // ordered emission plan
-    pub tool_policy: ToolPolicy,             // which groups, caps, confirmations
-    pub modality: ResponseModality,          // drill_down | explain | zoom_out | summarize | bullets
-    pub detail_level: u8,                    // 1-3
-    pub voice_config: Option<VoiceTurnConfig>, // tier, barge-in, prosody hints
-    pub speculative_hint: Option<SpeculativeHint>, // partial transcript → pre-warm
-    pub budget: TurnBudget,                  // token, time, cost, tool caps
-    pub metadata: TurnMetadata,              // parent_turn_id, is_proactive, trigger
+    pub parent_session: SmId,
 }
 
-/// A single emission unit in the stream
-pub struct ChunkDirective {
+/// Turn states
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TurnState {
+    Planning,          // building TurnPlan (deterministic, no LLM yet)
+    Routing,           // selecting model via router
+    SpeculativeWarm,   // pre-warming KV cache from partials (Tier 2/3)
+    Executing,         // LLM call in progress
+    Streaming,         // emitting chunks (parallel chunk SMs)
+    ToolCalling,       // executing tool calls (sub-state)
+    WaitingConfirm,    // paused on confirmation gate
+    Finalizing,        // honesty check, compression, memory update
+    Completed,
+    Interrupted,       // history state for barge-in/cancel
+    Failed(ErrorKind),
+}
+
+/// Turn events
+#[derive(Debug, Clone)]
+pub enum TurnEvent {
+    PlanReady(TurnPlan),
+    RouteSelected(RoutingDecision),
+    SpeculativeReady,
+    LlmChunk(LlmStreamChunk),
+    ToolResult(ToolResult),
+    ConfirmationAnswer(ConfirmAnswer),
+    ChunkCompleted(ChunkId),
+    AllChunksDone,
+    BargeInDetected(BargeInInfo),
+    CancelRequested,
+    Error(ErrorKind),
+}
+
+/// Turn context (mutable during execution)
+pub struct TurnContext {
+    pub transcript: Transcript,
+    pub routing: RoutingRequest,
+    pub budget: TurnBudget,
+    pub emitted_chunks: Vec<EmittedChunk>,
+    pub tool_results: Vec<ToolResult>,
+    pub speculative_hint: Option<SpeculativeHint>,
+    pub voice_config: Option<VoiceTurnConfig>,
+}
+```
+
+### II.3 Chunk = Leaf State Machine (Streaming Emission Unit)
+
+```rust
+// mm-cme/src/chunk.rs
+
+/// Chunk state machine - one per ChunkDirective in TurnPlan
+pub struct ChunkSm {
+    pub sm: SmInstance<ChunkState, ChunkEvent, ChunkContext>,
+    pub directive: ChunkDirective,
     pub chunk_id: ChunkId,
-    pub kind: ChunkKind,                     // Text | StructuredCard | ToolCall | ToolResult | Focus | Status | InputRequest | ProactiveItem
-    pub content: ChunkContent,               // text, card schema, tool spec, etc.
-    pub streaming: StreamingPolicy,          // Stream | Buffer | HoldUntilComplete
-    pub depends_on: Option<ChunkId>,         // for ordering
-    pub modality_hint: Option<ResponseModality>, // override for this chunk
+    pub parent_turn: SmId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChunkState {
+    Pending,           // waiting for depends_on
+    Streaming,         // actively emitting (text/audio/structured)
+    Buffering,         // holding until complete (StructuredCard)
+    ToolExecuting,     // tool call in progress
+    ToolWaitingConfirm,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+pub enum ChunkEvent {
+    DependencyMet,
+    LlmToken(String),
+    LlmComplete,
+    ToolResult(ToolResult),
+    ConfirmationAnswer,
+    FlushBuffer,
+    Cancel,
+    Error(String),
+}
+
+pub struct ChunkContext {
+    pub buffer: String,
+    pub stream_sender: Option<mpsc::Sender<ChatFrame>>,
+    pub tool_calls: Vec<ToolCall>,
 }
 ```
 
-### II.3 ChatFrame (extends existing `dto::chat::ChatFrame`)
+---
+
+## III. Orthogonal Regions (Subsystems as State Machines)
+
+### III.1 Proactive Region
 
 ```rust
-pub enum ChatFrame {
-    // Existing
-    Started { query: String },
-    Run { request_id, session_id, query },
-    LlmRequestStarted { turn_id, phase, subsystem, turn_number, visible, voice: VoiceParams },
-    LlmResponse { turn_id, phase, text, visible, is_final },
-    ToolCall { id, turn_id, phase, name, input },
-    ToolResult { id, turn_id, name, success, output, duration_ms },
-    Focus { doc: Value },
-    FinalResponse { response_id, text, blocks, suggestions, unbacked },
-    Completed { subsystems: Vec<String> },
-    InputRequest { id, request: Value },
-    InputAnswer { id, answer: Value, at: i64 },
-    Status { doc_id, status, reason },
-    Failed { error, reason },
+// mm-cme/src/proactive/region.rs
 
-    // New: modality-aware
-    ModalityChunk { turn_id, chunk_id, modality: ResponseModality, content: ModalityContent },
-    StructuredSection { turn_id, section_id, section: ReportSection },
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ProactiveState {
+    Idle,
+    Evaluating,        // scoring candidates from queue + plugins + goals
+    Selecting,         // diversity-aware top-N selection
+    Planning,          // building mini TurnPlan per item
+    Executing,         // spawning child Turn SMs
+    Injecting,         // merging frames into session stream
+    Suppressed,        // budget exhausted or user busy
+    Completed,
+}
 
-    // New: proactive
-    ProactiveItem { item_id, kind: ProactiveKind, payload: Value, status: ProactiveStatus },
+#[derive(Debug, Clone)]
+pub enum ProactiveEvent {
+    Tick,
+    BudgetAvailable,
+    CandidateScored(Vec<ScoredProposal>),
+    SelectionMade(Vec<ProactiveItem>),
+    TurnSpawned(SmId),
+    TurnCompleted(TurnOutcome),
+    FramesInjected,
+    BudgetExhausted,
+    UserActivityDetected,  // suppress if user typing
+}
 
-    // New: voice
-    VoiceChunk { turn_id, audio: AudioChunk, is_final: bool },
-    BargeInDetected { turn_id, at_ms: u32 },
-
-    // New: observability
-    TurnPlanInspection { turn_id, plan: TurnPlan },
-    StateSnapshot { session_id, snapshot: SessionSnapshot },
+pub struct ProactiveContext {
+    pub queue: ProactiveQueue,
+    pub plugins: Vec<Box<dyn ProactivePlugin>>,
+    pub budget: ProactiveBudget,
+    pub config: ProactiveConfig,
+    pub last_user_activity: Instant,
 }
 ```
 
-### II.4 ProactiveQueue (new)
+### III.2 Voice Region
 
 ```rust
-pub struct ProactiveQueue {
-    pub items: VecDeque<ProactiveItem>,
-    pub running: Option<ProactiveItem>,
-    pub history: Vec<ProactiveItem>,
-    pub budget: ProactiveBudget,             // per-turn, per-session caps
+// mm-cme/src/voice/region.rs
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VoiceState {
+    Negotiating,       // tier negotiation with provider caps
+    Tier1_ReqResp,     // ASR → LLM → TTS sequential
+    Tier2_Streaming,   // ASR stream → LLM stream → TTS stream (overlap)
+    Tier3_FullDuplex,  // Realtime API / WebRTC
+    BargedIn,          // interruption detected
+    Recovering,        // cancelling old, starting new
+    Degraded,          // fallback tier active
+    Idle,
 }
 
-pub struct ProactiveItem {
-    pub id: ProactiveId,
-    pub kind: ProactiveKind,                 // Search | Lookup | Joke | Suggestion | Advice | Criticism | Brainstorm | QANarrow | PlanRefine | Plugin
-    pub trigger: ProactiveTrigger,           // Time | Event | Pattern | UserSignal | Scheduled
-    pub payload: Value,                      // context for the action
-    pub status: ProactiveStatus,             // Pending | Running | Completed | Failed | Suppressed
-    pub result: Option<ProactiveResult>,     // frames to inject, side effects
-    pub plugin_id: Option<PluginId>,         // if from plugin
-}
-```
-
-### II.5 Voice Types (new — 3 tiers)
-
-```rust
-pub enum VoiceTier {
-    RequestResponse,   // ASR → LLM → TTS (existing path, new audio I/O)
-    StreamingPipeline, // ASR stream → LLM stream → TTS stream (overlap, speculative)
-    FullDuplexNative,  // Realtime API / WebRTC (inline tools, barge-in native)
+#[derive(Debug, Clone)]
+pub enum VoiceEvent {
+    AudioChunk(AudioChunk),
+    AsrPartial(AsrPartial),
+    AsrFinal(AsrFinal),
+    TierNegotiated(VoiceTier),
+    LlmStreamStart,
+    LlmToken(String),
+    LlmToolCall(ToolCall),
+    TtsChunk(AudioChunk),
+    BargeInDetected(BargeInInfo),
+    TierFailover(VoiceTier),
+    SessionPause,
+    SessionResume,
 }
 
-pub struct VoiceSession {
+pub struct VoiceContext {
     pub tier: VoiceTier,
-    pub config: AudioConfig,                 // sample_rate, channels, codec
-    pub vad: VadConfig,                      // sensitivity, min_speech_ms, silence_ms
-    pub tts: TtsConfig,                      // voice_id, prosody_baseline, ssml_template
-    pub asr: AsrConfig,                      // language, partials, punctuation
-    pub barge_in: BargeInConfig,             // enabled, threshold, action (interrupt/queue)
-    pub state: VoiceSessionState,            // Idle | Listening | Processing | Speaking | BargedIn
+    pub session: VoiceSession,
+    pub asr: AsrHandle,
+    pub tts: TtsHandle,
+    pub llm_stream: Option<LlmStreamHandle>,
+    pub realtime: Option<RealtimeHandle>,
+    pub prosody: ProsodyController,
+    pub barge_in: BargeInDetector,
+}
+```
+
+### III.3 Memory Region (Unified — see `unified_memory_system.md`)
+
+The Memory Region SM drives the **unified 4-tier memory hierarchy** defined in `unified_memory_system.md`. This replaces the separate designs in `cross_session_memory.md` and `conversation_compression.md`.
+
+```rust
+// mm-cme/src/memory/region.rs
+// DELEGATES TO: mm-data::MemorySystem (unified implementation)
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MemoryState {
+    Episodic,           // Tier 1: raw turns buffered in Agentstream + SQLite
+    Compressing,        // Tier 1→2: UnifiedCompressor running (LLM extraction + narrative + embed)
+    Segmented,          // Tier 2: CompressedSegment stored in RDF + vector index
+    ProjectAggregating, // Tier 2→3: ProjectAggregator merging into ProjectMemory
+    ProjectSynced,      // Tier 3: ProjectMemory updated in cubecast project layer
+    UserSyncing,        // Tier 3→4: CrossProjectLearner updating UserMemory
+    UserSynced,         // Tier 4: UserMemory updated in cubecast user layer
+    Purging,            // Retention cleanup across all tiers
 }
 
-pub struct VoiceTurnConfig {
-    pub tier: VoiceTier,
-    pub allow_barge_in: bool,
-    pub prosody_hint: Option<ProsodyParams>, // from affect, context, modality
-    pub speculative: bool,                   // pre-warm from partials
+#[derive(Debug, Clone)]
+pub enum MemoryEvent {
+    TurnCompleted(TurnOutcome),           // → buffer in episodic
+    CompressionTriggered,                 // → Compressing
+    CompressionDone(Vec<CompressedSegment>), // → Segmented
+    ProjectAggregationTriggered,          // → ProjectAggregating
+    ProjectAggregationDone(ProjectMemory),   // → ProjectSynced
+    UserSyncTriggered,                    // → UserSyncing
+    UserSyncDone(UserMemory),             // → UserSynced
+    RetentionTick,                        // → Purging
+    PurgeCompleted,
+}
+
+/// Thin context — real state lives in mm-data::MemorySystem
+pub struct MemoryContext {
+    pub memory_system: Arc<MemorySystem>,  // delegate to mm-data
+    pub config: MemoryConfig,
+}
+```
+
+**Key Unification Points:**
+- **Single compression pipeline**: `UnifiedCompressor` in `mm-data` handles LLM extraction, narrative, embeddings, quality validation
+- **RDF storage per tier**: Episodic→Agentstream graphs, Segments→main store+vector index, Projects→cubecast project layer, Users→cubecast user layer
+- **Session continuity**: `SessionContinuityManager` provides resume context with project/user memory
+- **Multi-device sync**: `MultiDeviceSync` handles presence, broadcast, voice↔text handoff
+- **Cross-project learning**: `CrossProjectLearner` transfers expertise/conventions to user memory
+
+**Configuration**: Single `memory.toml` (see `unified_memory_system.md` §VII) controls all tiers.
+
+### III.4 Preference Region (Per Dimension)
+
+```rust
+// mm-cme/src/preferences/region.rs
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PreferenceState {
+    ColdStart,          // no observations
+    Observing,          // collecting signals
+    Converging,         // variance decreasing
+    Stable,             // variance < threshold, applied to planner
+    DriftDetected,      // new signals contradict posterior
+    Relearning,         // adapting to drift
+}
+
+#[derive(Debug, Clone)]
+pub enum PreferenceEvent {
+    SignalObserved(PreferenceDimension, f32, f32),  // dimension, signal, weight
+    PosteriorUpdated(PreferencePosterior),
+    ConvergenceReached,
+    DriftDetected(PreferenceDimension),
+    AppliedToPlanner(PlannerConfig),
+    ResetRequested,
+}
+
+pub struct PreferenceContext {
+    pub dimensions: HashMap<PreferenceDimension, PreferencePosterior>,
+    pub config: PreferenceConfig,
+    pub planner_hooks: PlannerHooks,
+}
+```
+
+### III.5 Plugin Region
+
+```rust
+// mm-cme/src/plugins/region.rs
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PluginState {
+    Loading,            // WASM/.so load
+    Validating,         // schema + capability check
+    Registered,         // triggers registered
+    Running,            // evaluating proposals
+    Suspended,          // budget/resource pressure
+    Updating,           // hot reload
+    Unloading,
+    Failed(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum PluginEvent {
+    LoadRequest(PluginId, PluginSource),
+    ValidationResult(Result<PluginManifest, ValidationError>),
+    TriggerFired(ProactiveTrigger, PluginContext),
+    ProposalReceived(Vec<ProactiveProposal>),
+    ExecutionComplete(ProactiveResult),
+    BudgetPressure,
+    ReloadRequest(PluginId),
+    UnloadRequest(PluginId),
+}
+
+pub struct PluginContext {
+    pub plugins: HashMap<PluginId, LoadedPlugin>,
+    pub trigger_registry: TriggerRegistry,
+    pub sandbox: Sandbox,
+    pub budget: PluginBudget,
 }
 ```
 
 ---
 
-## III. Runtime Loop (Replaces `controller::reply`)
+## IV. Runtime: State Machine Engine Driver
 
-### III.1 Main Event Loop (per session)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    CME SESSION EVENT LOOP                       │
-├─────────────────────────────────────────────────────────────────┤
-│  while session.active {                                         │
-│      select! {                                                  │
-│          // 1. User input (text or voice)                       │
-│          msg = rx_user.recv() => handle_user_input(msg),        │
-│                                                                  │
-│          // 2. Proactive tick (independent of user)             │
-│          _ = proactive_ticker.tick() => run_proactive_cycle(),  │
-│                                                                  │
-│          // 3. Voice audio chunks (Tier 2/3)                    │
-│          audio = rx_audio.recv() => handle_voice_audio(audio),  │
-│                                                                  │
-│          // 4. Tool confirmations (Approve/Reject/Defer)        │
-│          answer = rx_confirm.recv() => resume_parked_turn(answer),│
-│                                                                  │
-│          // 5. Plugin events (async completions)                │
-│          event = rx_plugins.recv() => handle_plugin_event(event),│
-│                                                                  │
-│          // 6. Memory compression trigger                       │
-│          _ = compression_ticker.tick() => compress_if_needed(), │
-│                                                                  │
-│          // 7. Self-improvement trigger                         │
-│          _ = improvement_ticker.tick() => run_improvement_loop(),│
-│      }                                                            │
-│  }                                                               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### III.2 Turn Execution (deterministic, replaces ad-hoc LLM loop)
+### IV.1 Session Driver (Main Loop)
 
 ```rust
-async fn execute_turn(state: &CmeState, plan: TurnPlan) -> TurnOutcome {
-    // 1. Build transcript with compression applied
-    let transcript = build_transcript(state, &plan).await;
+// mm-cme/src/driver.rs
 
-    // 2. Select model via router (multi-LLM routing)
-    let routing = build_routing_request(&plan, &transcript);
-    let decision = state.llm_router.choose(&routing)?;
+pub struct SessionDriver {
+    pub session: Session,
+    pub event_bus: EventBus,
+    pub tick_interval: Duration,
+}
 
-    // 3. If speculative: pre-warm KV cache from partial transcript
-    if let Some(hint) = &plan.speculative_hint {
-        state.llm_service.speculative_prewarm(hint).await?;
-    }
+impl SessionDriver {
+    pub async fn run(mut self) -> Result<(), DriverError> {
+        // Start all orthogonal regions
+        self.session.sm.enter_region("turn", TurnState::Idle);
+        self.session.sm.enter_region("proactive", ProactiveState::Idle);
+        self.session.sm.enter_region("voice", VoiceState::Negotiating);
+        self.session.sm.enter_region("memory", MemoryState::Episodic);
+        self.session.sm.enter_region("preferences", PreferenceState::ColdStart);
+        self.session.sm.enter_region("plugins", PluginState::Loading);
+        
+        // Load plugins
+        self.dispatch(SessionEvent::PluginLoadAll).await?;
 
-    // 4. Execute chunks in order (streaming where configured)
-    for chunk in &plan.chunks {
-        match chunk.kind {
-            ChunkKind::Text => stream_text_chunk(state, &plan, chunk).await?,
-            ChunkKind::StructuredCard => emit_structured_chunk(state, chunk).await?,
-            ChunkKind::ToolCall => execute_tool_chunk(state, &plan, chunk).await?,
-            ChunkKind::ProactiveItem => inject_proactive_chunk(state, chunk).await?,
-            ChunkKind::VoiceChunk => stream_voice_chunk(state, chunk).await?,
-            _ => {}
+        let mut ticker = interval(self.tick_interval);
+        
+        loop {
+            tokio::select! {
+                // 1. External events (user input, voice audio, HTTP)
+                event = self.event_bus.recv() => {
+                    self.dispatch(event).await?;
+                }
+                
+                // 2. Internal tick (proactive, memory, preferences)
+                _ = ticker.tick() => {
+                    self.dispatch(SessionEvent::Tick).await?;
+                }
+                
+                // 3. Child turn completion
+                outcome = self.wait_for_turn_completion() => {
+                    self.dispatch(SessionEvent::TurnCompleted(outcome)).await?;
+                }
+                
+                // 4. Shutdown signal
+                _ = shutdown_signal() => {
+                    self.dispatch(SessionEvent::ShutdownRequest).await?;
+                    break;
+                }
+            }
         }
-        // Check for barge-in / cancellation between chunks
-        if state.is_cancelled(&plan.turn_id) || state.is_barged_in(&plan.turn_id) {
-            return handle_interruption(state, &plan).await;
+        
+        // Graceful termination: wait for regions to reach final states
+        self.terminate_gracefully().await
+    }
+    
+    async fn dispatch(&mut self, event: SessionEvent) -> Result<(), DriverError> {
+        // Dispatch to session SM
+        let emitted = self.session.sm.dispatch(event.clone()).await?;
+        
+        // Dispatch to orthogonal regions (they handle relevant events)
+        for region_name in ["turn", "proactive", "voice", "memory", "preferences", "plugins"] {
+            if let Some(region_sm) = self.session.get_region(region_name) {
+                region_sm.dispatch(event.clone()).await?;
+            }
+        }
+        
+        // Handle emitted events (parent notifications, observability)
+        for e in emitted {
+            self.handle_emitted(e).await?;
+        }
+        
+        Ok(())
+    }
+}
+```
+
+### IV.2 Turn Driver (Spawned by Session)
+
+```rust
+pub struct TurnDriver {
+    pub turn: Turn,
+    pub session_tx: mpsc::Sender<SessionEvent>,
+}
+
+impl TurnDriver {
+    pub async fn run(mut self) -> Result<TurnOutcome, DriverError> {
+        // 1. PLANNING: Build TurnPlan (deterministic, no LLM)
+        self.turn.sm.dispatch(TurnEvent::PlanReady(self.build_plan())).await?;
+        
+        // 2. ROUTING: Select model
+        let routing = self.build_routing_request();
+        let decision = self.llm_router.choose(&routing).await?;
+        self.turn.sm.dispatch(TurnEvent::RouteSelected(decision)).await?;
+        
+        // 3. SPECULATIVE: Pre-warm if voice Tier 2/3
+        if self.turn.context.voice_config.as_ref().map(|v| v.speculative).unwrap_or(false) {
+            self.llm_service.speculative_prewarm(&self.turn.context.speculative_hint).await?;
+            self.turn.sm.dispatch(TurnEvent::SpeculativeReady).await?;
+        }
+        
+        // 4. EXECUTING: Call LLM, spawn chunk SMs
+        let llm_stream = self.llm_service.call_streaming(self.build_llm_request()).await?;
+        self.turn.sm.dispatch(TurnEvent::LlmStreamStart).await?;
+        
+        // Spawn chunk SMs for each ChunkDirective
+        for chunk_directive in &self.turn.plan.chunks {
+            let chunk_sm = ChunkSm::new(chunk_directive.clone(), self.turn.turn_id);
+            let chunk_id = self.turn.sm.spawn_child(chunk_sm);
+            self.turn.chunks.push(chunk_sm);
+        }
+        
+        // 5. STREAMING: Drive chunk SMs from LLM stream
+        while let Some(chunk) = llm_stream.next().await {
+            for chunk_sm in &mut self.turn.chunks {
+                chunk_sm.dispatch(ChunkEvent::LlmToken(chunk.text.clone())).await?;
+            }
+            
+            // Check for tool calls
+            if let Some(tool_calls) = chunk.tool_calls {
+                self.turn.sm.dispatch(TurnEvent::ToolCalling).await?;
+                for tc in tool_calls {
+                    let result = self.execute_tool(tc).await?;
+                    self.turn.context.tool_results.push(result.clone());
+                    // Find relevant chunk SM and dispatch
+                    self.dispatch_to_tool_chunk(tc.id, result).await?;
+                }
+            }
+            
+            // Check for barge-in
+            if self.voice_context.barge_in_detected() {
+                self.turn.sm.dispatch(TurnEvent::BargeInDetected(...)).await?;
+                break;
+            }
+        }
+        
+        // 6. FINALIZING
+        self.turn.sm.dispatch(TurnEvent::AllChunksDone).await?;
+        let outcome = self.finalize().await?;
+        
+        // Notify session
+        self.session_tx.send(SessionEvent::TurnCompleted(outcome.clone())).await?;
+        
+        Ok(outcome)
+    }
+}
+```
+
+---
+
+## V. Subsystems as State Machine Transitions
+
+### V.1 Turn Planning (in Turn.Planning state)
+
+```rust
+// mm-cme/src/planner.rs
+
+pub struct TurnPlanner;
+
+impl TurnPlanner {
+    pub fn build_plan(&self, ctx: &TurnContext, session: &SessionContext) -> TurnPlan {
+        // 1. Determine modality from preferences + context
+        let modality = session.preferences.choose_modality(ctx);
+        let detail_level = session.preferences.choose_detail_level(ctx);
+        
+        // 2. Build chunk directives (deterministic structure)
+        let chunks = self.plan_chunks(ctx, modality, detail_level);
+        
+        // 3. Tool policy from session config + proactive queue
+        let tool_policy = self.plan_tool_policy(session);
+        
+        // 4. Budget allocation
+        let budget = self.allocate_budget(session.budgets, chunks.len());
+        
+        // 5. Voice config if applicable
+        let voice_config = session.voice_region.as_ref().map(|v| v.build_turn_config());
+        
+        TurnPlan {
+            turn_id: ctx.turn_id,
+            session_id: ctx.session_id,
+            user_query: ctx.user_query.clone(),
+            chunks,
+            tool_policy,
+            modality,
+            detail_level,
+            voice_config,
+            speculative_hint: ctx.speculative_hint.clone(),
+            budget,
+            metadata: TurnMetadata {
+                parent_turn_id: ctx.parent_turn_id,
+                is_proactive: ctx.is_proactive,
+                trigger: ctx.trigger.clone(),
+            },
         }
     }
-
-    // 5. Finalize: compress, update memory, log observability
-    finalize_turn(state, &plan).await
-}
-```
-
-### III.3 Proactive Cycle (runs independent of user input)
-
-```rust
-async fn run_proactive_cycle(state: &CmeState) {
-    // 1. Check budget
-    if !state.proactive_budget.try_consume(1) { return; }
-
-    // 2. Score candidates from queue + plugins + goals
-    let candidates = gather_proactive_candidates(state).await;
-
-    // 3. Select top-N (diversity-aware)
-    let selected = select_proactive_items(candidates, state.proactive_config.max_per_cycle);
-
-    // 4. For each: build mini TurnPlan, execute, inject frames
-    for item in selected {
-        let mini_plan = build_proactive_plan(state, &item).await;
-        let outcome = execute_turn(state, mini_plan).await;
-        state.inject_frames(outcome.frames).await;
-        item.mark_completed(outcome);
-    }
-
-    // 5. Learn from outcomes (preference learning)
-    state.preference_learner.observe_proactive_outcomes(&selected).await;
-}
-```
-
----
-
-## IV. Voice Architecture (3 Tiers with Failover)
-
-### IV.1 Tier 1: Request/Response (ASR → LLM → TTS)
-- **Use case**: Simple voice commands, low latency not critical
-- **Implementation**: Wrap existing `controller::reply` with audio I/O
-- **Latency**: ~800-1500ms (ASR + LLM + TTS sequential)
-
-### IV.2 Tier 2: Streaming Pipeline (ASR stream → LLM stream → TTS stream)
-- **Use case**: Natural conversation, moderate latency
-- **Key features**:
-  - ASR partials → speculative LLM pre-warm (30-50% latency reduction)
-  - LLM streaming → TTS chunking (sentence-boundary)
-  - Overlap: TTS starts before LLM finishes
-  - Barge-in: interrupt TTS, cancel LLM, new ASR
-- **Implementation**: New `VoicePipeline` struct with buffered channels
-
-### IV.3 Tier 3: Full-Duplex Native (Realtime API / WebRTC)
-- **Use case**: Human-like conversation, lowest latency
-- **Key features**:
-  - Single WebSocket/WebRTC connection
-  - Inline tool calling (model calls tools mid-stream)
-  - Native barge-in (model hears interruption)
-  - Prosody in → prosody out (affect-aware)
-- **Implementation**: `RealtimeSession` wrapping provider realtime APIs
-
-### IV.4 Tier Negotiation & Failover
-
-```rust
-async fn negotiate_tier(requested: VoiceTier, caps: &ProviderCaps) -> VoiceTier {
-    match requested {
-        VoiceTier::FullDuplexNative if caps.supports_realtime => VoiceTier::FullDuplexNative,
-        VoiceTier::FullDuplexNative => negotiate_tier(VoiceTier::StreamingPipeline, caps),
-        VoiceTier::StreamingPipeline if caps.supports_streaming => VoiceTier::StreamingPipeline,
-        VoiceTier::StreamingPipeline => VoiceTier::RequestResponse,
-        VoiceTier::RequestResponse => VoiceTier::RequestResponse,
+    
+    fn plan_chunks(&self, ctx: &TurnContext, modality: ResponseModality, detail: u8) -> Vec<ChunkDirective> {
+        match modality {
+            ResponseModality::DrillDown => vec![
+                ChunkDirective::text("overview", detail),
+                ChunkDirective::structured("details", DetailLevel::Deep),
+                ChunkDirective::structured("sources", SourceList),
+            ],
+            ResponseModality::Explain => vec![
+                ChunkDirective::text("concept", detail),
+                ChunkDirective::structured("examples", DetailLevel::Medium),
+                ChunkDirective::text("analogy", detail),
+            ],
+            ResponseModality::ZoomOut => vec![
+                ChunkDirective::structured("summary", DetailLevel::High),
+                ChunkDirective::structured("implications", DetailLevel::Medium),
+            ],
+            ResponseModality::Summarize => vec![
+                ChunkDirective::structured("bullets", DetailLevel::Low),
+            ],
+            ResponseModality::Bullets => vec![
+                ChunkDirective::bullets(detail, ctx.max_bullets, ctx.heading_style, ctx.sources_per_bullet),
+            ],
+        }
     }
 }
 ```
 
----
-
-## V. Memory System (4-Tier Hierarchy)
-
-### V.1 Tier Definitions
-
-| Tier | Scope | Retention | Content |
-|------|-------|-----------|---------|
-| **Episodic** | Session | Session + 30d | Full frames, turn plans, audio, affect traces |
-| **Segment** | Session | 90d | Compressed: narrative + artifacts (decisions, commitments, code_refs, open_questions) |
-| **Project** | Project | Years | Aggregated: patterns, conventions, expertise, continuation suggestions |
-| **User** | User | Years | Identity, preferences, communication style, cross-project learning |
-
-### V.2 Compression Pipeline (runs async)
-
-```
-Raw Turns → Extract Artifacts → Generate Narrative → Embed → Store as Segment
-                ↓
-         Artifacts: decisions[], commitments[], code_refs[], open_questions[],
-                     preferences[], entities[], relationships[]
-```
-
-### V.3 Session Resume
+### V.2 Multi-LLM Routing (in Turn.Routing state)
 
 ```rust
-async fn resume_session(session_id: SessionId) -> ResumeContext {
-    let segments = load_recent_segments(session_id, 5).await;
-    let project_mem = load_project_memory(session_id).await;
-    let user_mem = load_user_memory(user_id).await;
+// mm-cme/src/routing/region.rs
 
-    ResumeContext {
-        narrative_summary: segments.iter().map(|s| s.narrative).join("\n\n"),
-        active_artifacts: merge_artifacts(segments),
-        continuation_suggestions: project_mem.continuation_suggestions,
-        personalized_greeting: build_greeting(user_mem, project_mem),
+pub struct ConversationRouter {
+    inner: Arc<dyn Router>,  // wraps mm-llm::routing::ThresholdRouter
+}
+
+impl ConversationRouter {
+    pub async fn choose(&self, turn: &TurnContext, session: &SessionContext) -> RoutingDecision {
+        let req = RoutingRequest {
+            purpose: turn.plan.purpose,
+            complexity: self.estimate_complexity(&turn.context.transcript),
+            stakes: if turn.plan.metadata.is_proactive { Stakes::Low } else { Stakes::Medium },
+            required_precision: match turn.plan.modality {
+                ResponseModality::DrillDown => Precision::High,
+                _ => Precision::Normal,
+            },
+            latency_budget_ms: turn.plan.voice_config.as_ref()
+                .map(|v| v.tier.latency_budget())
+                .unwrap_or(0),
+            cost_budget_micros: turn.plan.budget.cost_micros,
+            pinned_model: None,
+            // Conversation-aware fields
+            modality: Some(turn.plan.modality),
+            voice_tier: turn.plan.voice_config.as_ref().map(|v| v.tier),
+            is_proactive: turn.plan.metadata.is_proactive,
+            session_context: SessionContext::from(&turn.context.transcript),
+            preference_profile: session.preferences.clone(),
+        };
+        self.inner.choose(&req).await
     }
 }
 ```
 
----
-
-## VI. Preference Learning (Implicit, Bayesian)
-
-### VI.1 Behavioral Signals → Preference Dimensions
-
-| Signal | Dimension | Inference |
-|--------|-----------|-----------|
-| Response length accepted | verbosity | Shorter accepted → prefer concise |
-| User interrupts / continues | initiative | Interrupts → prefer proactive; continues → prefer detail |
-| Technical terms used | technical_depth | Jargon → prefer technical |
-| Formal/informal language | formality | Match user's register |
-| Response time tolerance | pace | Fast replies → prefer quick; slow → prefer thorough |
-
-### VI.2 Bayesian Update (per dimension)
+### V.3 Voice Prosody (in Voice region states)
 
 ```rust
-struct PreferencePosterior {
-    mean: f32,      // current estimate [0,1]
-    variance: f32,  // uncertainty
-    n_observations: u32,
-}
+// mm-cme/src/voice/prosody.rs
 
-fn update(posterior: &mut PreferencePosterior, signal: f32, weight: f32) {
-    // Conjugate prior: Gaussian with known variance
-    let prior_prec = 1.0 / posterior.variance;
-    let signal_prec = weight / SIGNAL_VARIANCE;
-    posterior.mean = (posterior.mean * prior_prec + signal * signal_prec) / (prior_prec + signal_prec);
-    posterior.variance = 1.0 / (prior_prec + signal_prec);
-    posterior.n_observations += 1;
-}
-```
-
-### VI.3 Application
-
-- **TurnPlanner**: Adjusts `detail_level`, `modality`, `chunk_count` from preferences
-- **ProactiveQueue**: Tunes frequency, kinds from `initiative` + `pace`
-- **VoiceProsody**: Sets baseline from `formality`, `warmth`
-- **Report/Dashboard**: Chooses default modality, density from `verbosity`, `technical_depth`
-
----
-
-## VII. Multi-LLM Routing (extends existing `mm-llm::routing`)
-
-### VII.1 Enhanced RoutingRequest
-
-```rust
-pub struct RoutingRequest {
-    // Existing
-    pub purpose: Purpose,
-    pub complexity: Complexity,
-    pub stakes: Stakes,
-    pub required_precision: Precision,
-    pub latency_budget_ms: u32,
-    pub cost_budget_micros: i64,
-    pub pinned_model: Option<String>,
-
-    // New: conversation-aware
-    pub modality: Option<ResponseModality>,     // drill_down → needs reasoning model
-    pub voice_tier: Option<VoiceTier>,          // FullDuplex → needs realtime model
-    pub is_proactive: bool,                     // background → prefer cheap/fast
-    pub session_context: SessionContext,        // long context → needs large window
-    pub preference_profile: PreferenceProfile,  // user prefers certain models
-}
-```
-
-### VII.2 Routing Table (config-driven)
-
-| Task Type | Preferred Model | Fallback |
-|-----------|----------------|----------|
-| Coding/Tools | Claude 3.5 Sonnet | GPT-4o |
-| Reasoning/Planning | o1-preview | Claude 3 Opus |
-| Voice Realtime | GPT-4o Realtime | Gemini Live |
-| Fast Chat | GPT-4o-mini | Haiku |
-| Proactive/Background | Haiku | GPT-4o-mini |
-| Structured Output | GPT-4o (grammar) | Claude (tool use) |
-| Long Context | Gemini 1.5 Pro | Claude 3.5 Sonnet |
-
-### VII.3 Integration Point
-
-```rust
-// In TurnPlanner.build_routing_request()
-fn build_routing_request(&self, plan: &TurnPlan, transcript: &Transcript) -> RoutingRequest {
-    RoutingRequest {
-        purpose: plan.purpose,
-        complexity: self.estimate_complexity(transcript),
-        stakes: if plan.is_proactive { Stakes::Low } else { Stakes::Medium },
-        required_precision: match plan.modality {
-            ResponseModality::DrillDown => Precision::High,
-            ResponseModality::Summarize => Precision::Normal,
-            _ => Precision::Normal,
-        },
-        latency_budget_ms: plan.voice_config.as_ref()
-            .map(|v| v.tier.latency_budget())
-            .unwrap_or(0),
-        cost_budget_micros: plan.budget.cost_micros,
-        modality: Some(plan.modality),
-        voice_tier: plan.voice_config.as_ref().map(|v| v.tier),
-        is_proactive: plan.metadata.is_proactive,
-        session_context: SessionContext::from(transcript),
-        preference_profile: self.state.preference_profile.clone(),
-        ..Default::default()
+impl VoiceRegion {
+    fn compute_prosody(&self, ctx: &VoiceContext) -> ProsodyParams {
+        let mut params = ctx.prosody.baseline;
+        
+        // Affect modulation (from mm-being)
+        params.rate += 0.15 * ctx.prosody.affect.arousal;
+        params.pitch += 0.1 * ctx.prosody.affect.valence;
+        params.volume += 0.1 * ctx.prosody.affect.energy;
+        params.warmth += 0.2 * ctx.prosody.affect.warmth;
+        params.pause_factor += 0.3 * ctx.prosody.affect.caution;
+        
+        // Modality modulation (from turn plan)
+        if let Some(turn_modality) = ctx.current_turn_modality {
+            match turn_modality {
+                ResponseModality::DrillDown => { params.rate *= 0.9; params.detail += 0.2; }
+                ResponseModality::Summarize => { params.rate *= 1.1; params.detail -= 0.1; }
+                ResponseModality::Explain => { params.pause_factor *= 1.2; }
+                _ => {}
+            }
+        }
+        
+        params.clamp()
     }
 }
 ```
 
----
-
-## VIII. Proactive Plugin System (WASM-Compatible)
-
-### VIII.1 Plugin Interface
+### V.4 Preference Learning (in Preference region)
 
 ```rust
-#[async_trait]
-trait ProactivePlugin: Send + Sync {
-    fn id(&self) -> PluginId;
-    fn name(&self) -> &str;
-    fn version(&self) -> &str;
-    fn config_schema(&self) -> Value;          // JSON Schema
-    fn triggers(&self) -> Vec<ProactiveTrigger>;
-    async fn evaluate(&self, ctx: &PluginContext) -> Vec<ProactiveProposal>;
-    async fn execute(&self, proposal: ProactiveProposal, ctx: &PluginContext) -> ProactiveResult;
-}
+// mm-cme/src/preferences/learner.rs
 
-struct PluginContext {
-    session: &Session,
-    memory: &MemoryContext,
-    preferences: &PreferenceProfile,
-    tools: &ToolCatalog,
-    llm: &LlmService,
-    budget: &ProactiveBudget,
-}
-```
-
-### VIII.2 Built-in Plugins
-
-| Plugin | Triggers | Proposals |
-|--------|----------|-----------|
-| **SearchLookup** | New entity, technical term, "what is" | Web search, doc lookup, definition |
-| **GoalNarrowing** | Vague goal detected | Clarifying questions, option enumeration |
-| **PlanRefinement** | Plan created, feedback received | Risk analysis, alternative steps, timeline |
-| **PatternWatcher** | Recurring topic, repeated error | Suggestion, automation, template |
-| **AffectResponder** | Strong affect detected | Empathy, de-escalation, celebration |
-| **KnowledgeGap** | "I don't know", failed recall | Research proposal, learning resource |
-
-### VIII.3 Plugin Lifecycle
-
-```
-Load (WASM/so) → Validate Schema → Register Triggers → Hot Reload → Sandbox Execute
-                                                              ↓
-                                            Resource limits: CPU, memory, network, time
-```
-
----
-
-## IX. Voice Prosody Adaptation (from `voice_prosody.md`)
-
-### IX.1 Affect → Prosody Mapping
-
-```rust
-struct ProsodyController {
-    baseline: ProsodyParams,           // from personality + user preference
-    affect: AffectState,               // from mm-being affect.rs
-    context: ProsodyContext,           // modality, stakes, modality
-}
-
-fn compute_prosody(controller: &ProsodyController) -> ProsodyParams {
-    let mut params = controller.baseline;
-
-    // Affect modulation (bounded)
-    params.rate += 0.15 * controller.affect.arousal;           // faster when aroused
-    params.pitch += 0.1 * controller.affect.valence;           // higher when positive
-    params.volume += 0.1 * controller.affect.energy;           // louder when energetic
-    params.warmth += 0.2 * controller.affect.warmth;           // warmer when warm
-    params.pause_factor += 0.3 * controller.affect.caution;    // more pauses when cautious
-
-    // Context modulation
-    match controller.context.modality {
-        ResponseModality::DrillDown => { params.rate *= 0.9; params.detail += 0.2; }
-        ResponseModality::Summarize => { params.rate *= 1.1; params.detail -= 0.1; }
-        ResponseModality::Explain => { params.pause_factor *= 1.2; }
-        _ => {}
+impl PreferenceRegion {
+    fn observe_signal(&mut self, dimension: PreferenceDimension, signal: f32, weight: f32) {
+        let posterior = self.context.dimensions.entry(dimension).or_default();
+        
+        // Bayesian update
+        let prior_prec = 1.0 / posterior.variance;
+        let signal_prec = weight / SIGNAL_VARIANCE;
+        posterior.mean = (posterior.mean * prior_prec + signal * signal_prec) / (prior_prec + signal_prec);
+        posterior.variance = 1.0 / (prior_prec + signal_prec);
+        posterior.n_observations += 1;
+        
+        // Check convergence
+        if posterior.variance < self.config.convergence_threshold && posterior.n_observations >= self.config.min_observations {
+            self.dispatch(PreferenceEvent::ConvergenceReached(dimension)).await?;
+        }
+        
+        // Check drift (new signal far from posterior)
+        if (signal - posterior.mean).abs() > 3.0 * posterior.variance.sqrt() {
+            self.dispatch(PreferenceEvent::DriftDetected(dimension)).await?;
+        }
+        
+        // Apply to planner hooks
+        self.context.planner_hooks.update(dimension, posterior.mean);
     }
-
-    params.clamp()
 }
 ```
 
-### IX.2 SSML Generation
+### V.5 Self-Improvement Loop (Orthogonal Region)
 
 ```rust
-fn to_ssml(text: &str, prosody: &ProsodyParams) -> String {
-    format!(
-        r#"<speak><prosody rate="{:.0}%" pitch="{:+.1}st" volume="{:+.1}dB">{}</prosody></speak>"#,
-        prosody.rate * 100.0,
-        prosody.pitch * 12.0,  // semitones
-        prosody.volume * 6.0,  // dB
-        escape_xml(text)
-    )
+// mm-cme/src/improvement/region.rs
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ImprovementState {
+    Idle,
+    Reflecting,      // critics analyze artifacts
+    Planning,        // generate improvement proposals
+    Acting,          // mutate artifacts (hill-climb)
+    Verifying,       // run verifiers (tests, LLM judge, human)
+    Learning,        // extract patterns, update rules
+    RollingBack,     // verification failed
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub enum ImprovementEvent {
+    Trigger(ImprovementTrigger),  // Scheduled | OnChange | OnRegression | OnFeedback
+    ReflectionDone(Vec<Issue>),
+    PlanReady(Vec<ImprovementProposal>),
+    MutationApplied(HillClimbStep),
+    VerificationResult(VerificationResult),
+    PatternLearned(LearnedPattern),
+    RollbackTriggered,
+    BudgetExhausted,
+}
+
+pub struct ImprovementContext {
+    pub critics: Vec<Box<dyn Critic>>,
+    pub verifiers: Vec<Box<dyn Verifier>>,
+    pub hill_climber: HillClimbingEngine,
+    pub learning_store: LearningStore,
+    pub budgets: ImprovementBudgets,
+    pub governance: GovernanceConfig,
 }
 ```
 
 ---
 
-## X. Observability (from `conversation_management_engine.md` §14)
+## VI. Observability as State Machine Introspection
 
-### X.1 State Snapshots (REST)
+### VI.1 State Snapshots (REST)
 
 ```
 GET /api/cme/sessions/{id}/snapshot
-→ SessionSnapshot {
-    turn: TurnSnapshot,
-    memory: MemorySnapshot,
-    proactive: ProactiveSnapshot,
-    voice: VoiceSnapshot,
-    preferences: PreferenceSnapshot,
+→ {
+    session: { sm_id, current_state, orthogonal_states, history_depth },
+    turn: { sm_id, current_state, plan, chunks: [{id, state, progress}] },
+    proactive: { sm_id, current_state, queue_length, budget_remaining },
+    voice: { sm_id, current_state, tier, barge_in_count },
+    memory: { sm_id, current_state, episodic_count, segment_count },
+    preferences: { sm_id, states: {dimension: {state, mean, variance}} },
+    plugins: { sm_id, states: {plugin_id: state} },
+    improvement: { sm_id, current_state, last_run, patterns_learned },
     timestamp: i64
 }
 ```
 
-### X.2 Real-time Event Stream (WebSocket)
+### VI.2 Real-time Event Stream (WebSocket)
 
 ```
 WS /api/cme/sessions/{id}/events
-→ Events: TurnStarted, ChunkEmitted, ToolCalled, ProactiveInjected,
-          BargeInDetected, ModalitySwitched, MemoryCompressed,
-          PreferenceUpdated, ImprovementLoopTriggered
+→ Events with SM context:
+  { type: "SMTransition", sm_id, sm_type: "Turn", from: "Streaming", to: "Interrupted", event: "BargeInDetected" }
+  { type: "SMTransition", sm_id, sm_type: "Proactive", from: "Idle", to: "Evaluating", event: "Tick" }
+  { type: "SMTransition", sm_id, sm_type: "Voice", from: "Tier2_Streaming", to: "Tier1_ReqResp", event: "TierFailover" }
+  { type: "SMTransition", sm_id, sm_type: "Memory", from: "Episodic", to: "Compressing", event: "CompressionTriggered" }
+  { type: "SMTransition", sm_id, sm_type: "Preference.verbosity", from: "Converging", to: "Stable", event: "ConvergenceReached" }
 ```
 
-### X.3 Distributed Tracing (OpenTelemetry)
+### VI.3 Distributed Tracing (OpenTelemetry)
+
+Each state machine instance = trace span; transitions = span events; orthogonal regions = parallel spans.
 
 ```
-Trace: conversation.turn
-  Span: turn.plan (TurnPlanner)
-  Span: turn.route (LLMRouter)
-  Span: turn.llm (LlmService.call)
-  Span: turn.chunks (ChunkExecutor)
-  Span: turn.proactive (ProactiveCycle)
-  Span: turn.compress (CompressionPipeline)
-  Span: turn.learn (PreferenceLearner)
+Trace: session.{id}
+  Span: session (Session SM)
+    Event: SessionState: Active
+    Span: turn.{turn_id} (Turn SM - child)
+      Event: TurnState: Planning
+      Event: TurnState: Routing
+      Event: TurnState: Executing
+      Span: chunk.{chunk_id} (Chunk SM - child)
+        Event: ChunkState: Streaming
+        Event: ChunkState: Completed
+    Span: proactive (Orthogonal region)
+      Event: ProactiveState: Evaluating → Selecting → Executing
+    Span: voice (Orthogonal region)
+      Event: VoiceState: Tier2_Streaming → BargedIn → Recovering
+    Span: memory (Orthogonal region)
+      Event: MemoryState: Episodic → Compressing → Segmented
+    Span: preferences (Orthogonal region, per dimension)
+      Event: PreferenceState.verbosity: Observing → Converging → Stable
+    Span: improvement (Orthogonal region)
+      Event: ImprovementState: Reflecting → Planning → Acting → Verifying → Learning
 ```
 
-### X.4 Prometheus Metrics
+### VI.4 Prometheus Metrics (State Machine Derived)
 
 | Metric | Type | Labels |
 |--------|------|--------|
-| `cme_turns_total` | Counter | session_id, modality, outcome |
-| `cme_turn_duration_ms` | Histogram | modality, voice_tier |
-| `cme_chunk_latency_ms` | Histogram | chunk_kind, streaming |
-| `cme_proactive_items_total` | Counter | kind, status, plugin |
-| `cme_voice_tier_negotiated` | Counter | requested, actual |
-| `cme_barge_in_total` | Counter | tier, outcome |
-| `cme_memory_compression_ratio` | Gauge | tier |
-| `cme_preference_posterior_variance` | Gauge | dimension |
-| `cme_improvement_loops_total` | Counter | domain, outcome |
-| `cme_llm_routing_decision` | Counter | model, reason, modality |
+| `cme_sm_transitions_total` | Counter | sm_type, from_state, to_state, event_type |
+| `cme_sm_state_duration_ms` | Histogram | sm_type, state |
+| `cme_sm_active_count` | Gauge | sm_type |
+| `cme_turn_sm_duration_ms` | Histogram | outcome, modality |
+| `cme_proactive_sm_cycle_ms` | Histogram | status |
+| `cme_voice_sm_tier_changes` | Counter | from_tier, to_tier, reason |
+| `cme_memory_sm_compression_ratio` | Gauge | tier |
+| `cme_preference_sm_convergence` | Gauge | dimension, posterior_variance |
+| `cme_improvement_sm_cycles` | Counter | trigger, outcome |
 
 ---
 
-## XI. Integration with Existing mm-serve
-
-### XI.1 Crate Structure (Refactored)
+## VII. Crate Structure (State Machine Centric)
 
 ```
 crates/
-├── mm-cme/                    # NEW: Conversation Management Engine
+├── mm-sm/                      # NEW: Core State Machine Engine (no deps on metamind)
 │   ├── src/
-│   │   ├── session.rs         # Session, TurnPlan, ChunkDirective
-│   │   ├── planner.rs         # TurnPlanner, SpeculativeExecutor
-│   │   ├── executor.rs        # TurnExecutor, ChunkExecutor
-│   │   ├── proactive.rs       # ProactiveQueue, PluginSystem
-│   │   ├── voice/             # VoicePipeline, RealtimeSession, Prosody
-│   │   ├── memory/            # Compression, 4-tier store
-│   │   ├── preferences/       # BayesianLearner, Profile
-│   │   ├── routing/           # ConversationRouter (wraps mm-llm)
-│   │   ├── observability/     # Snapshots, WebSocket, OTel, Metrics
-│   │   ├── improvement/       # SelfImprovementLoop
-│   │   ├── report/            # ReportGenerator (hill-climbable)
-│   │   ├── dashboard/         # DashboardConstructor (hill-climbable)
+│   │   ├── machine.rs          # StateMachine, SmInstance, SmEvent, SmState, SmAction, SmGuard
+│   │   ├── hierarchical.rs     # Parent/child spawning, history pseudostates
+│   │   ├── orthogonal.rs       # Region management, parallel composition
+│   │   ├── snapshot.rs         # SmSnapshot, serialization
+│   │   ├── tracing.rs          # OpenTelemetry integration
 │   │   └── lib.rs
 │   └── Cargo.toml
 │
-├── mm-serve/                  # HTTP server, routes, AppState
+├── mm-cme/                     # Conversation Management Engine
+│   ├── src/
+│   │   ├── session.rs          # Session SM + regions
+│   │   ├── turn.rs             # Turn SM (child of Session)
+│   │   ├── chunk.rs            # Chunk SM (child of Turn)
+│   │   ├── planner.rs          # TurnPlanning logic (in Turn.Planning)
+│   │   ├── executor.rs         # TurnExecutor (drives Turn SM)
+│   │   ├── regions/
+│   │   │   ├── proactive.rs    # ProactiveRegion SM
+│   │   │   ├── voice.rs        # VoiceRegion SM
+│   │   │   ├── memory.rs       # MemoryRegion SM
+│   │   │   ├── preferences.rs  # PreferenceRegion SM (per dimension)
+│   │   │   ├── plugins.rs      # PluginRegion SM
+│   │   │   └── improvement.rs  # ImprovementRegion SM
+│   │   ├── routing.rs          # ConversationRouter (used in Turn.Routing)
+│   │   ├── observability.rs    # Snapshots, WS, OTel, Metrics
+│   │   ├── driver.rs           # SessionDriver (main loop)
+│   │   ├── report.rs           # ReportGenerator (uses hill_climbing SM)
+│   │   ├── dashboard.rs        # DashboardConstructor (uses hill_climbing SM)
+│   │   └── lib.rs
+│   └── Cargo.toml              # deps: mm-sm, mm-llm, mm-being, mm-data
+│
+├── mm-serve/                   # HTTP server, routes, AppState
 │   └── src/
-│       ├── routes/            # Thin adapters → mm-cme
-│       ├── state.rs           # AppState holds CmeEngine
+│       ├── routes/             # Thin adapters → mm-cme
+│       ├── state.rs            # AppState holds SessionDriver
 │       └── main.rs
 │
-├── mm-llm/                    # LLM service, routing, clients (existing)
-├── mm-being/                  # Personality, affect, goals (existing)
-└── mm-core/                   # Config, IDs, errors (existing)
+├── mm-llm/                     # LLM service, routing, clients (existing)
+├── mm-being/                   # Personality, affect, goals (existing)
+├── mm-data/                    # RDF layer (cubecast) (from rdf_backend_integration.md)
+└── mm-core/                    # Config, IDs, errors (existing)
 ```
-
-### XI.2 Migration Path
-
-| Phase | Action | Risk |
-|-------|--------|------|
-| 1 | Create `mm-cme` crate with core types (Session, TurnPlan, Chunk) | Low — new code |
-| 2 | Extract `TurnPlanner` from `controller::reply` logic | Medium — core logic |
-| 3 | Implement `ProactiveQueue` + 2 plugins (SearchLookup, GoalNarrowing) | Medium — new behavior |
-| 4 | Add voice Tier 1 (wrap existing) + audio I/O abstractions | Low — wrapper |
-| 5 | Add Tier 2 streaming pipeline + speculative execution | High — new async patterns |
-| 6 | Add Tier 3 realtime (provider-dependent) | High — external deps |
-| 7 | Implement 4-tier memory + compression pipeline | Medium — storage changes |
-| 8 | Add preference learning + apply to planner | Medium — ML-lite |
-| 9 | Add observability (snapshots, WS, OTel, metrics) | Low — instrumentation |
-| 10 | Add hill-climbing + report/dashboard generators | Medium — new domains |
-| 11 | Add self-improvement loop + governance | High — meta-cognitive |
-| 12 | Synthetic testing framework + CI integration | Medium — test infra |
 
 ---
 
-## XII. Configuration (Unified)
+## VIII. Configuration (State Machine Centric)
 
 ```toml
 # config/cme.toml
+
 [cme]
-# Session
+# Session SM
 max_session_age_days = 30
 max_turns_per_session = 1000
+tick_interval_ms = 100
 
-# Turn Planning
+# Turn SM
+[turn]
 default_modality = "bullets"
 default_detail_level = 2
 max_chunks_per_turn = 8
 turn_token_budget = 8000
 turn_time_budget_ms = 30000
+planning_timeout_ms = 5000
+routing_timeout_ms = 2000
+speculative_timeout_ms = 1000
 
-# Proactive
+# Proactive Region SM
 [proactive]
 enabled = true
 max_per_cycle = 2
 cycle_interval_ms = 15000
-budget_per_turn = 0.15  # fraction of turn budget
+budget_per_turn = 0.15
+suppress_on_user_activity = true
+suppress_threshold_ms = 500
 plugins = ["search_lookup", "goal_narrowing", "plan_refinement"]
 
-# Voice
+# Voice Region SM
 [voice]
 default_tier = "StreamingPipeline"
 fallback_chain = ["FullDuplexNative", "StreamingPipeline", "RequestResponse"]
@@ -708,19 +1059,41 @@ sample_rate = 24000
 vad_sensitivity = 0.5
 barge_in_enabled = true
 barge_in_threshold = 0.3
+tier_negotiation_timeout_ms = 1000
 
-# Memory
+# Memory Region SM
 [memory]
 episodic_retention_days = 30
 segment_retention_days = 90
 compression_trigger_turns = 10
-compression_model = "haiku"  # cheap model for compression
+compression_model = "haiku"
+project_aggregation_interval_hours = 6
+user_sync_interval_hours = 24
 
-# Preferences
+# Preference Region SM (per dimension)
 [preferences]
 learning_rate = 0.1
 min_observations_for_apply = 5
+convergence_threshold = 0.02
+drift_threshold_sigma = 3.0
 dimensions = ["verbosity", "initiative", "technical_depth", "formality", "pace"]
+
+# Plugin Region SM
+[plugins]
+sandbox = "wasmtime"  # wasmtime | native
+max_cpu_ms_per_eval = 100
+max_memory_mb = 64
+network_allowed = false
+hot_reload_enabled = true
+
+# Improvement Region SM
+[improvement]
+enabled = true
+budget_time_ms_per_hour = 300000
+budget_tokens_per_hour = 500000
+human_approval_required = ["report", "dashboard", "agent_cognition"]
+critics = ["correctness", "clarity", "actionability", "completeness", "consistency", "tone", "efficiency", "safety"]
+verifiers = ["unit_test", "lint", "schema", "llm_judge", "human_review", "simulation"]
 
 # Routing
 [routing]
@@ -734,128 +1107,147 @@ websocket_events_enabled = true
 otel_enabled = true
 prometheus_enabled = true
 debug_ui_enabled = true
-
-# Improvement
-[improvement]
-enabled = true
-budget_time_ms_per_hour = 300000
-budget_tokens_per_hour = 500000
-human_approval_required = ["report", "dashboard", "agent_cognition"]
 ```
 
 ---
 
-## XIII. Testing Strategy
+## IX. Migration Path (State Machine Refactor)
 
-### XIII.1 Unit Tests (per module)
-- TurnPlanner: deterministic plans for given inputs
-- ProactiveQueue: budget enforcement, priority ordering
-- Memory: compression round-trip, artifact extraction
-- Preferences: Bayesian update convergence
-- Routing: golden table for routing decisions
-- Voice: tier negotiation, failover logic
-
-### XIII.2 Integration Tests
-- Full turn: plan → route → LLM → chunks → frames
-- Proactive cycle: trigger → proposal → execute → inject
-- Voice Tier 1/2: audio in → frames out (mock ASR/TTS)
-- Session resume: cold boot → context restored
-- Improvement loop: artifact → reflect → plan → act → verify → learn
-
-### XIII.3 Synthetic Testing (from `synthetic_testing.md`)
-```yaml
-# tests/synthetic/conversation_scenarios.yaml
-scenarios:
-  - name: "technical_debugging"
-    persona: "senior_engineer"
-    turns: 8
-    checkers: [tool_correctness, modality_fit, proactive_relevance, latency]
-  - name: "voice_natural_conversation"
-    persona: "casual_user"
-    voice_tier: "StreamingPipeline"
-    turns: 12
-    checkers: [barge_in_handling, prosody_appropriateness, turn_taking]
-  - name: "report_generation_refinement"
-    persona: "product_manager"
-    turns: 6
-    checkers: [report_clarity, hill_climb_improvement, export_format]
-```
+| Phase | Action | State Machine Focus |
+|-------|--------|---------------------|
+| 1 | Create `mm-sm` crate with core engine | Core SM primitives |
+| 2 | Create `mm-cme` with `Session`, `Turn`, `Chunk` SMs | Hierarchical composition |
+| 3 | Implement `TurnPlanner` as `Turn.Planning` state logic | Deterministic planning |
+| 4 | Implement `ProactiveRegion` as orthogonal region | Parallel composition |
+| 5 | Implement `VoiceRegion` with 3-tier SM | Failover transitions |
+| 6 | Implement `MemoryRegion` with 4-tier SM | Timed transitions |
+| 7 | Implement `PreferenceRegion` per dimension | Convergence guards |
+| 8 | Implement `PluginRegion` lifecycle | Sandbox guards |
+| 9 | Implement `ImprovementRegion` 5-phase loop | Budget guards |
+| 10 | Add observability (snapshots, WS, OTel, metrics) | SM introspection |
+| 11 | Integrate `mm-serve` routes → `SessionDriver` | Driver pattern |
+| 12 | Migrate existing `mm-serve` sessions | History state resume |
+| 13 | Synthetic testing + load testing | SM coverage |
+| 14 | Canary deploy | Feature flags per region |
 
 ---
 
-## XIV. Rollout & Compatibility
+## X. Testing Strategy (State Machine Based)
 
-### XIV.1 API Compatibility
-
-| Existing Endpoint | New Behavior | Breaking? |
-|-------------------|--------------|-----------|
-| `POST /api/chat` | Returns SSE with modality chunks | No (additive frames) |
-| `GET /api/chat/stream` | Includes proactive frames | No (new frame types) |
-| `POST /api/chat/answer` | Same | No |
-| `GET /api/health` | Adds CME services | No |
-
-### XIV.2 Feature Flags
+### X.1 Unit Tests (Per SM)
 
 ```rust
-struct FeatureFlags {
-    cme_enabled: bool,              // route to new engine
-    proactive_enabled: bool,
-    voice_tier: VoiceTier,
-    memory_compression_enabled: bool,
-    preference_learning_enabled: bool,
-    improvement_loop_enabled: bool,
+// Test Turn SM transitions
+#[test]
+fn turn_sm_planning_to_routing_on_plan_ready() {
+    let mut turn = TurnSm::new(TurnState::Planning);
+    turn.dispatch(TurnEvent::PlanReady(plan)).await;
+    assert_eq!(turn.current_state, TurnState::Routing);
+}
+
+#[test]
+fn turn_sm_barge_in_goes_to_interrupted_history() {
+    let mut turn = TurnSm::new(TurnState::Streaming);
+    turn.dispatch(TurnEvent::BargeInDetected(...)).await;
+    assert_eq!(turn.current_state, TurnState::Interrupted);
+    assert!(turn.history.contains(&TurnState::Streaming));
+}
+
+#[test]
+fn turn_sm_resume_from_interrupted() {
+    let mut turn = TurnSm::new_with_history(TurnState::Interrupted, vec![TurnState::Streaming]);
+    turn.dispatch(TurnEvent::Resume).await;
+    assert_eq!(turn.current_state, TurnState::Streaming);  // history restore
 }
 ```
 
-### XIV.3 Migration Checklist
+### X.2 Integration Tests (Cross-Region)
 
-- [ ] `mm-cme` crate compiles and unit tests pass
-- [ ] `mm-serve` routes delegate to `CmeEngine` behind flag
-- [ ] Existing chat sessions resume correctly (memory compat)
-- [ ] Voice Tier 1 works with existing audio test harness
-- [ ] Proactive items appear in SSE stream without breaking UI
-- [ ] Observability endpoints return data
-- [ ] Synthetic test suite passes ≥90% checkers
-- [ ] Load test: 100 concurrent sessions, p99 < 2s
-- [ ] Canary deploy with 5% traffic
-- [ ] Full rollout
+```rust
+#[tokio::test]
+async fn proactive_region_suppressed_during_user_typing() {
+    let mut session = Session::new();
+    session.dispatch(SessionEvent::UserInput(...)).await;
+    
+    // Proactive tick should go to Suppressed
+    session.dispatch(SessionEvent::Tick).await;
+    assert_eq!(session.proactive_region.current_state, ProactiveState::Suppressed);
+    
+    // After user idle, should return to Evaluating
+    advance_time(Duration::from_secs(2));
+    session.dispatch(SessionEvent::Tick).await;
+    assert_eq!(session.proactive_region.current_state, ProactiveState::Evaluating);
+}
+
+#[tokio::test]
+async fn voice_tier_failover_on_provider_error() {
+    let mut session = Session::new();
+    session.voice_region.current_state = VoiceState::Tier3_FullDuplex;
+    session.dispatch(VoiceEvent::TierFailover(VoiceTier::StreamingPipeline)).await;
+    assert_eq!(session.voice_region.current_state, VoiceState::Tier2_Streaming);
+}
+```
+
+### X.3 Synthetic Testing (YAML DSL with SM Assertions)
+
+```yaml
+# tests/synthetic/conversation_scenarios.yaml
+scenarios:
+  - name: "voice_barge_in_recovery"
+    persona: "interruptive_user"
+    voice_tier: "StreamingPipeline"
+    turns: 8
+    sm_assertions:
+      - turn_1: [Planning, Routing, Executing, Streaming, BargedIn, Recovering, Streaming, Completed]
+      - proactive: [Idle, Suppressed, Idle, Evaluating, Executing]
+      - voice: [Negotiating, Tier2_Streaming, BargedIn, Recovering, Tier2_Streaming]
+    checkers: [barge_in_handling, prosody_appropriateness, turn_taking, sm_coverage]
+  
+  - name: "preference_convergence"
+    persona: "concise_engineer"
+    turns: 20
+    sm_assertions:
+      - preference.verbosity: [ColdStart, Observing, Converging, Stable]
+      - preference.initiative: [ColdStart, Observing, Converging, Stable]
+    checkers: [preference_accuracy, sm_convergence_timing]
+```
 
 ---
 
-## XV. Open Questions & Decisions Needed
+## XI. Open Questions
 
 | Question | Options | Recommendation |
 |----------|---------|----------------|
-| **WASM vs native plugins** | WASM (sandbox) vs `.so` (performance) | Start native, WASM for 3rd-party |
-| **Realtime provider** | OpenAI Realtime, Gemini Live, custom WebRTC | Abstract behind `RealtimeClient` trait |
-| **Memory storage** | SQLite (current) vs dedicated vector DB | Keep SQLite + add `mm-vector` crate later |
-| **Preference persistence** | Per-session vs cross-session (user) | Cross-session (user memory tier) |
-| **Improvement loop autonomy** | Fully auto vs human-in-the-loop | Human approval for report/dashboard/agent |
-| **TurnPlan serialization** | Store in chat DB vs separate store | Chat DB (single source of truth) |
+| **SM engine: library vs embedded** | `mm-sm` as separate crate vs inline in `mm-cme` | Separate crate (reusable for agent loops, workflows) |
+| **Async vs sync transitions** | All async (current) vs sync for simple guards | Async throughout; sync guards via `SmGuard` trait |
+| **Persistence of SM state** | Event sourcing (replay) vs snapshots | Snapshots + event log for audit |
+| **WASM plugins as SMs** | Each plugin = SM instance | Yes, `PluginRegion` spawns child SM per plugin |
+| **Distributed SMs** | Single process vs multi-node | Single process first; CRDT for multi-node later |
+| **SM visualization** | Mermaid/PlantUML export from definitions | Add `mm-sm` dev feature for diagram generation |
 
 ---
 
-## XVI. Appendix: Design Document Cross-Reference
+## XII. Appendix: Design Document Cross-Reference
 
-| Design Doc | Sections Implemented Here |
-|------------|---------------------------|
-| `proactive_conversation.md` | §II.4, §III.3, §VIII, §XII[proactive] |
-| `conversation_management_engine.md` | §II, §III, §IV, §X, §XI, §XII |
-| `turn_planning.md` | §II.2, §III.2 |
-| `speculative_execution.md` | §III.2 step 3, §IV.2 |
-| `conversation_compression.md` | §V, §XI.2 step 7 |
-| `preference_learning.md` | §VI, §XII[preferences] |
-| `multi_llm_routing.md` | §VII, §XII[routing] |
-| `proactive_plugin_system.md` | §VIII |
-| `voice_prosody.md` | §IX |
-| `synthetic_testing.md` | §XIII.3 |
-| `cross_session_memory.md` | §V |
-| `hill_climbing.md` | §XI.2 step 10, §II.3 (ReportSection) |
-| `report_generation.md` | §XI.2 step 10, ReportGenerator |
-| `dashboard_construction.md` | §XI.2 step 10, DashboardConstructor |
-| `self_improvement_loop.md` | §XI.2 step 11, §III.1 step 7 |
-| `conversation_engine_improvements.md` | All (this plan consolidates the 9 improvements) |
+| Design Doc | SM Region / State |
+|------------|-------------------|
+| `proactive_conversation.md` | `ProactiveRegion` SM (§III.1, §VIII) |
+| `conversation_management_engine.md` | `Session`/`Turn`/`Chunk` SMs (§II, §III, §IV) |
+| `turn_planning.md` | `Turn.Planning` state logic |
+| `speculative_execution.md` | `Turn.SpeculativeWarm` state |
+| `conversation_compression.md` | `MemoryRegion` SM (§III.3) |
+| `preference_learning.md` | `PreferenceRegion` SM (§III.4) |
+| `multi_llm_routing.md` | `Turn.Routing` state logic |
+| `proactive_plugin_system.md` | `PluginRegion` SM (§III.5) |
+| `voice_prosody.md` | `VoiceRegion` prosody computation |
+| `synthetic_testing.md` | SM assertions in test DSL |
+| `cross_session_memory.md` | `MemoryRegion` tier transitions |
+| `hill_climbing.md` | `ImprovementRegion.Acting` state (hill-climb SM) |
+| `report_generation.md` | Report as artifact mutated by hill-climb SM |
+| `dashboard_construction.md` | Dashboard as artifact mutated by hill-climb SM |
+| `self_improvement_loop.md` | `ImprovementRegion` 5-phase SM |
+| `conversation_engine_improvements.md` | All consolidated into SM architecture |
 
 ---
 
-*This design plan is the single source of truth for the CME implementation. Each section maps to a crate module or implementation phase. Review, approve, then begin Phase 1.*
+*This design plan establishes the **core state machine engine** as the single architectural foundation. Every subsystem is a state machine or state machine region; composition is via hierarchical and orthogonal patterns. Review, approve, then begin Phase 1 (`mm-sm` crate).*

@@ -367,7 +367,9 @@ pub async fn initialize_data_layer(config: InitConfig) -> Result<InitResult, Dat
 
 ---
 
-## IV. Agentstream Logs (RDF Event Store)
+## IV. Agentstream Logs (RDF Event Store) — **Part of Unified Memory Tier 1**
+
+> **Note**: Agentstream is now the **Episodic tier (Tier 1)** of the [Unified Memory System](unified_memory_system.md). It stores raw turns, tool calls, voice chunks, and events as the input to the compression pipeline. See `unified_memory_system.md` §II.1 for the full episodic schema and §III.1 for the compression pipeline.
 
 ### IV.1 Ontology (agentstream.ttl)
 
@@ -493,7 +495,9 @@ impl AgentstreamStore {
 
 ---
 
-## V. User / Project / App Home Directories
+## V. User / Project / App Home Directories — **Unified Memory Tiers 3 & 4**
+
+> **Note**: User homes (Tier 4), Project homes (Tier 3), and App homes are now part of the [Unified Memory System](unified_memory_system.md). User homes store UserMemory (global preferences, expertise, cross-project learning). Project homes store ProjectMemory (aggregated decisions, commitments, conventions). App homes store app-specific config/state. See `unified_memory_system.md` §II.3, §II.4 for schemas and §VI for RDF storage mapping.
 
 ### V.1 RDF Metadata Schema
 
@@ -601,6 +605,8 @@ impl UserRegistry {
 ---
 
 ## VI. Datasets Root
+
+> **Note**: Datasets are managed by the `mm-data::DatasetCatalog` and are **separate from the Unified Memory hierarchy** (which covers conversation memory: episodic → segments → project → user). Datasets use DCAT/PROV-O for versioned data artifacts with provenance. They can be *referenced* from ProjectMemory (`key_artifacts`, `datasets` fields) but have independent lifecycle and storage.
 
 ### VI.1 DCAT Catalog (datasets/catalog.ttl)
 
