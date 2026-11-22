@@ -707,6 +707,16 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **MetaMind Gaps** — Multi-agent coordination (P0), security hardening (P0), learnable harness/MDP (P1), task graph memory (P1), benchmark integration (P1), visual debugger (P2)
 - **12 Priority Enhancements** — Mapped to research sources with effort estimates
 
+### W. Conversation Manager v2 — Tools, Agents, and Inspector (`conversation_manager_agent_inspector_plan.md`)
+- **Diagnosis** — 69 CLI-shaped tools advertised to the CM, silent argument coercion, mid-JSON truncation, 4-round cap, static prompt, no topic/project state, no external work seam, no live inspector
+- **Tool Surface** — 8 CM tools (`context`, `project`, `task`, `memory`, `being`, `kernel`, `focus`, `agent`); strict args, typed result envelopes, structural truncation, timeouts, idempotency; admin catalog remains CLI-only
+- **Conversation State** — Explicit hierarchical topic tree with optional verified backend refs (`file`, `focus_doc`, graph IRI, memory, project, task, agent run, URL, artifact); revisioned `ConversationContext`; project/task model distinct from being goals and commitments
+- **Agent Delegation** — Single `agent` tool; new `mm-agent` crate; Hermes via OpenAI-compatible API in a separate `agent/<run_id>` agentstream session; Pi via `mm-pi` RPC; turn-by-turn results, per-turn summaries for long content, `ContinueUntilDone` loop policy
+- **Personal Loop** — Prompt packet from being identity, user model, relationship, affect, memory continuity, topic tree, project work, recent operations, and active agents
+- **Live Inspector** — Dirty-section `StatusService` with revisions and coalesced SSE; right-hand rail with Status tab (topic, metamind, tasks, operations, variables) and Trace tab (turn-grouped agentstream viewer, summaries/raw, follow, cancel)
+- **Build Plan** — 10 phases from contracts and state stores through tools, agents, personal prompt, status service, inspector UI, trace viewer, and migration
+- **Acceptance** — Each original complaint mapped to a concrete design response and verification method
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*
