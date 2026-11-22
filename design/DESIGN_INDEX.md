@@ -707,15 +707,19 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **MetaMind Gaps** — Multi-agent coordination (P0), security hardening (P0), learnable harness/MDP (P1), task graph memory (P1), benchmark integration (P1), visual debugger (P2)
 - **12 Priority Enhancements** — Mapped to research sources with effort estimates
 
-### W. Conversation Manager v2 — Tools, Agents, and Inspector (`conversation_manager_agent_inspector_plan.md`)
-- **Diagnosis** — 69 CLI-shaped tools advertised to the CM, silent argument coercion, mid-JSON truncation, 4-round cap, static prompt, no topic/project state, no external work seam, no live inspector
-- **Tool Surface** — 8 CM tools (`context`, `project`, `task`, `memory`, `being`, `kernel`, `focus`, `agent`); strict args, typed result envelopes, structural truncation, timeouts, idempotency; admin catalog remains CLI-only
-- **Conversation State** — Explicit hierarchical topic tree with optional verified backend refs (`file`, `focus_doc`, graph IRI, memory, project, task, agent run, URL, artifact); revisioned `ConversationContext`; project/task model distinct from being goals and commitments
-- **Agent Delegation** — Single `agent` tool; new `mm-agent` crate; Hermes via OpenAI-compatible API in a separate `agent/<run_id>` agentstream session; Pi via `mm-pi` RPC; turn-by-turn results, per-turn summaries for long content, `ContinueUntilDone` loop policy
-- **Personal Loop** — Prompt packet from being identity, user model, relationship, affect, memory continuity, topic tree, project work, recent operations, and active agents
-- **Live Inspector** — Dirty-section `StatusService` with revisions and coalesced SSE; right-hand rail with Status tab (topic, metamind, tasks, operations, variables) and Trace tab (turn-grouped agentstream viewer, summaries/raw, follow, cancel)
-- **Build Plan** — 10 phases from contracts and state stores through tools, agents, personal prompt, status service, inspector UI, trace viewer, and migration
-- **Acceptance** — Each original complaint mapped to a concrete design response and verification method
+### W. Conversation Manager v3 — Conversation, Data, and Metamind Tools with Inspector (`conversation_manager_agent_inspector_plan.md`)
+- **Diagnosis** — 69 CLI-shaped tools, silent coercion, mid-JSON truncation, 4-round cap, static prompt, no topic/depth/status state, no external work seam, no live inspector, no managed ontology data/search/schema catalog, and no first-class plan/think/action surface
+- **Tool Surface** — Fourteen tools in three bounded families: conversation (4: `agent.run`, `conversation.status/topic/depth`), data (7: `data.create/update/query/delete/search/schema/namespace`), metamind (3: `metamind.plan/think/act`); strict schemas, full envelopes, typed errors; admin catalog and raw SPARQL remain CLI-only
+- **Conversation State** — Revisioned `ConversationState`: one topic label, depth 0–7, bounded typed status dictionary; no topic tree and no work-item store
+- **Data Substrate** — One Oxigraph/RocksDB dataset, complete RDF/XML snapshot (`metamind.rdf`) plus lossless N-Quads backup, Tantivy full-text index, schema catalog, namespace registry, canonical `mmd:` identity IRIs, FOAF `Person`/`mm:User` mapping, typed RDF instances, soft delete/supersede, provenance
+- **Search Sync** — Every create/update/delete writes RDF then indexes Tantivy through a durable SQLite outbox; hit verification, startup rebuild, `mm-cli data verify/reindex`; RDF is authoritative
+- **Automatic Capture** — Durable prompt policy induces implicit data management (search before create, update instead of duplicate, correct/supersede, never store secrets); visible `[STATE].data` health; scenario evals
+- **Metamind Actions** — Durable versioned markdown/structured plans (`metamind.plan`), private read-only inner-thought sub-agent with evidence/gaps (`metamind.think`), allowlisted immediate/scheduled proactive actions (`metamind.act`)
+- **Always-Injected State** — Canonical `[STATE]` block rebuilt before every model call, including each tool round; conversation state lossless, data/plan/action projections bounded, over-cap writes rejected
+- **Agent Delegation** — `agent.run` only external door; `mm-agent` crate; Hermes via OpenAI-compatible API in `agent/<run_id>` agentstream; Pi via `mm-pi` RPC; one downstream turn per call, summaries, `ContinueUntilDone`
+- **Live Inspector** — Dirty-section `StatusService` with view/state/data revisions and coalesced SSE; Status/Knowledge/Plan/Trace rail covering topic, data health, schemas, plans, actions, operations, agents, and turn-grouped traces
+- **Build Plan** — 12 phases from contracts through conversation tools, data substrate/tools, metamind services, agents, state block/prompt, status service, inspector/trace UI, migration
+- **Acceptance** — Each original complaint plus the data/search/schema/identity/plan/think/act requirements mapped to concrete tests and evals
 
 ---
 
