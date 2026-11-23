@@ -144,8 +144,8 @@ impl UserRegistry {
     /// Every user, by name.
     ///
     /// Both canonical and legacy index entries are listed, deduplicated by the
-    /// stable user id. Subjects are visited in lexical order, so the canonical
-    /// entry wins whenever both spellings exist.
+    /// stable user id. The canonical entry wins whenever both spellings exist,
+    /// regardless of graph enumeration order.
     pub async fn list_users(&self) -> Result<Vec<UserRecord>> {
         let subjects = rdf::subjects_of_class(&self.engine, USER_INDEX_GRAPH, USER_CLASS).await?;
         let mut by_id: std::collections::BTreeMap<String, UserRecord> =
@@ -154,7 +154,17 @@ impl UserRegistry {
             if let Some(record) =
                 rdf::load_as::<UserRecord>(&self.engine, USER_INDEX_GRAPH, &subject).await?
             {
-                by_id.entry(record.user_id.clone()).or_insert(record);
+                let canonical = subject == user_iri(&record.user_id);
+                match by_id.entry(record.user_id.clone()) {
+                    std::collections::btree_map::Entry::Vacant(slot) => {
+                        slot.insert(record);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut slot) => {
+                        if canonical {
+                            slot.insert(record);
+                        }
+                    }
+                }
             }
         }
         let mut users = by_id.into_values().collect::<Vec<_>>();

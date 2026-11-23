@@ -425,8 +425,19 @@ impl AppState {
         );
         let table = RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
             .unwrap_or_default();
+        // Route every CM turn through the accounting facade so its calls are in
+        // `llm_calls`; the raw adapter records nothing.
+        let client: Arc<dyn LlmClient> =
+            match crate::controller::turn::service(self, Arc::clone(&client)) {
+                Some(service) => Arc::new(service),
+                None => client,
+            };
         let tool_client = Arc::clone(&client);
-        let model = config.defaults.default_model.clone();
+        let model = config
+            .defaults
+            .default_model
+            .clone()
+            .or_else(|| table.default_model.clone());
         let executor = TurnExecutor::with_llm(
             client,
             ConversationRouter::with_table(Arc::new(router), table),

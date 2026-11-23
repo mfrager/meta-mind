@@ -30,7 +30,7 @@
 | SHACL shape files | **11** | `ontology/shapes/*.ttl` |
 | Ontology triples loaded at boot | **1450** | `mm-cli doctor` |
 | Structured log event codes | **197** | `crates/mm-log/src/codes.rs` |
-| CLI subcommands | **42** plus `help` | `mm-cli --help` |
+| CLI subcommands | **43** plus `help` (baseline 42 + Phase 12 `data`) | `mm-cli --help` |
 | Test functions in the tree | **1776** `#[test]`/`#[tokio::test]` attributes | static count |
 | Tests executed by `cargo test --workspace` | **1747 passed, 0 failed, 0 ignored**, 152 test binaries | measured run |
 | Integration test files | **59** (`crates/*/tests/`, `modules/*/*/tests/`) | file count |
@@ -152,8 +152,8 @@ Test counts are the `#[test]`/`#[tokio::test]` functions in that crate; the exec
 
 #### `mm-cli` — operator CLI (Phase 1, 38 tests, 0 integration files)
 
-- **Purpose.** The single operator surface: 42 subcommands that open the kernel exactly as the runtime
-  does.
+- **Purpose.** The single operator surface: 43 subcommands that open the kernel exactly as the runtime
+  does (the Phase 12 addition is `data verify|reindex`).
 - **Can do.** Every capability of every phase is reachable here — see the command reference in the
   [user guide](./user-guide.md#7-command-reference). Global `--config`/`MM_CONFIG` and `--data-dir`; most
   commands accept `--json`; commands that consult a decision core accept `--core`/`--rules`/`--head`.

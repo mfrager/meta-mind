@@ -149,7 +149,7 @@ impl ProjectRegistry {
     /// Every project, by name.
     ///
     /// Canonical and legacy index entries are deduplicated by project id; the
-    /// canonical spelling wins because it sorts first.
+    /// canonical spelling wins regardless of graph enumeration order.
     pub async fn list_projects(&self) -> Result<Vec<ProjectRecord>> {
         let subjects =
             rdf::subjects_of_class(&self.engine, PROJECT_INDEX_GRAPH, PROJECT_CLASS).await?;
@@ -159,7 +159,17 @@ impl ProjectRegistry {
             if let Some(record) =
                 rdf::load_as::<ProjectRecord>(&self.engine, PROJECT_INDEX_GRAPH, &subject).await?
             {
-                by_id.entry(record.project_id.clone()).or_insert(record);
+                let canonical = subject == project_iri(&record.project_id);
+                match by_id.entry(record.project_id.clone()) {
+                    std::collections::btree_map::Entry::Vacant(slot) => {
+                        slot.insert(record);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut slot) => {
+                        if canonical {
+                            slot.insert(record);
+                        }
+                    }
+                }
             }
         }
         let mut projects = by_id.into_values().collect::<Vec<_>>();

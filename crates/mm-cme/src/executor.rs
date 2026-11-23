@@ -302,7 +302,7 @@ impl TurnExecutor {
             }
             None => "stub-model".to_owned(),
         };
-        turn.route_selected(speculative, model)?;
+        turn.route_selected(speculative, model.clone())?;
 
         // 3. Speculative pre-warm. The substrate has no pre-warm endpoint yet; the
         //    state is still entered and exited so the turn matches the design.
@@ -364,7 +364,8 @@ impl TurnExecutor {
                     if let Some(first) = messages.first_mut() {
                         *first = Message::system(prompt.text.clone());
                     }
-                    let request = self.llm_request(&plan, messages.clone(), tools.clone());
+                    let request =
+                        self.llm_request(&plan, messages.clone(), tools.clone(), &model);
                     if let Err(error) = budget.reserve_tokens(u64::from(request.max_tokens)) {
                         return self.fail(turn, error.to_string());
                     }
@@ -506,9 +507,11 @@ impl TurnExecutor {
         plan: &crate::turn::TurnPlan,
         messages: Vec<Message>,
         tools: Vec<ToolSchema>,
+        model: &str,
     ) -> LlmRequest {
-        let mut request =
-            LlmRequest::new(Purpose::Converse, messages).with_cache(mm_llm::CacheMode::Use);
+        let mut request = LlmRequest::new(Purpose::Converse, messages)
+            .with_cache(mm_llm::CacheMode::Use)
+            .with_model(model);
         if !tools.is_empty() {
             request = request.with_tools(tools);
         }

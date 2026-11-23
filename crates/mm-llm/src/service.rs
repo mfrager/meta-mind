@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use async_trait::async_trait;
 use mm_log::{codes, Level, LogRecord, Logger};
 use mm_store_graph::GraphHandle;
 use mm_store_sqlite::SqliteStore;
@@ -27,7 +28,9 @@ use crate::accounting::{
     StatsWindow,
 };
 use crate::cached::{self, CacheKey, CachedResponse, ExactCache, FileExactCache};
-use crate::client::{CacheMode, LlmClient, LlmRequest, LlmResponse, Role, SchemaId, Usage};
+use crate::client::{
+    CacheMode, DecoderKind, LlmClient, LlmRequest, LlmResponse, Role, SchemaId, Usage,
+};
 use crate::config::LlmConfig;
 use crate::error::{LlmError, Result};
 use crate::grammar::{self, DecoderBackend, GrammarSpec};
@@ -65,6 +68,23 @@ impl std::fmt::Debug for LlmService {
             .field("models", &self.cfg.models.len())
             .field("cache_dir", &self.cache.dir())
             .finish_non_exhaustive()
+    }
+}
+
+/// A caller that expects an [`LlmClient`] gets the accounting facade instead of the
+/// raw adapter, so its calls land in `llm_calls` like every other call.
+#[async_trait]
+impl LlmClient for LlmService {
+    async fn complete(&self, req: &LlmRequest) -> Result<LlmResponse> {
+        self.call(req.clone()).await
+    }
+
+    fn provider(&self) -> &str {
+        self.client.provider()
+    }
+
+    fn decoder(&self) -> DecoderKind {
+        self.client.decoder()
     }
 }
 

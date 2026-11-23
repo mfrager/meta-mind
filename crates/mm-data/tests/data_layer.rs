@@ -80,6 +80,22 @@ async fn registries_mint_canonical_iris_and_read_legacy_rows() {
     .await
     .expect("legacy row");
 
+    // A stale legacy row for a user that also has a canonical row must not win
+    // the list projection.
+    let mut stale = old.clone();
+    stale.user_id = user.user_id.clone();
+    stale.name = "Stale Name".to_owned();
+    mm_data::rdf::upsert(
+        &data.engine,
+        mm_data::rdf::USER_INDEX_GRAPH,
+        &mm_data::rdf::legacy_user_iri(&stale.user_id),
+        mm_data::users::USER_CLASS,
+        Some(&stale.name),
+        &serde_json::to_value(&stale).expect("payload"),
+    )
+    .await
+    .expect("duplicate legacy row");
+
     let found = data
         .users
         .get_user(&old.user_id)
@@ -87,7 +103,15 @@ async fn registries_mint_canonical_iris_and_read_legacy_rows() {
         .expect("get legacy user")
         .expect("legacy user present");
     assert_eq!(found.name, old.name);
-    assert_eq!(data.users.list_users().await.expect("list").len(), 2);
+    let listed = data.users.list_users().await.expect("list");
+    assert_eq!(listed.len(), 2);
+    assert_eq!(
+        listed
+            .iter()
+            .find(|record| record.user_id == user.user_id)
+            .map(|record| record.name.as_str()),
+        Some(user.name.as_str())
+    );
 
     let aliases = data
         .data_service
