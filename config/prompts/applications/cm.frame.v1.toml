@@ -1,0 +1,19 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.frame.v1"
+version = 1
+description = "Frame utterance with state and one frame step."
+fragments = ["identity", "contract", "state", "frame_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "frame_kind",
+  "frame_step",
+  "frame_attempt",
+  "frame_goal",
+  "tone",
+]

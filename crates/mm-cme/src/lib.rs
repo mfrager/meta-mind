@@ -49,6 +49,7 @@ pub mod dashboard;
 pub mod driver;
 pub mod error;
 pub mod executor;
+pub mod frames;
 pub mod hill_climb;
 pub mod improvement;
 pub mod memory;
@@ -56,6 +57,7 @@ pub mod observability;
 pub mod planner;
 pub mod plugins;
 pub mod preferences;
+pub mod prompt;
 pub mod regions;
 pub mod report;
 pub mod routing;
@@ -68,8 +70,10 @@ pub use dashboard::{Dashboard, Panel, PanelKind, ViewingContext};
 pub use driver::{DriverMessage, SessionDriver};
 pub use error::{CmeError, Result};
 pub use executor::{
-    ConfirmationHandler, DenyUnconfirmed, ToolHandler, TurnExecutor, UnavailableTools,
+    ConfirmationHandler, DenyUnconfirmed, ToolHandler, TurnExecutor, TurnLoopPolicy,
+    UnavailableTools,
 };
+pub use frames::{FrameEngine, FrameError, FrameTimerView};
 pub use hill_climb::{climb, HillClimbConfig, HillClimbResult, HillClimbStep, Optimizable};
 pub use improvement::{
     default_critics, default_verifiers, CriterionResult, Critic, GovernanceConfig,
@@ -91,6 +95,7 @@ pub use preferences::{
     PlannerHooks, PreferenceConfig, PreferenceDimension, PreferenceLearner, PreferencePosterior,
     PreferenceUpdate,
 };
+pub use prompt::{CmePromptManager, PromptVariables, PromptingError, STANDARD_SLOTS};
 pub use regions::{
     improvement::{ImprovementEvent, ImprovementRegion, ImprovementState},
     memory::{MemoryEvent, MemoryRegion, MemoryState},

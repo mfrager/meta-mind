@@ -1,0 +1,14 @@
+schema = "mm.prompt.strategy.v1"
+id = "action.short_diversion.v1"
+version = 1
+description = "Generic prompt-backed internal action output."
+fragments = ["identity", "action_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "action_kind",
+  "action_input",
+  "recent_log",
+  "tone",
+]

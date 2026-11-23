@@ -1,0 +1,19 @@
+[package]
+name = "mm-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[package.metadata.metamind]
+owned_by_phase = 0
+capability = "mm:AgentDelegation"

@@ -1,0 +1,7 @@
+schema = "mm.prompt.fragment.v1"
+id = "style"
+version = 1
+text = """
+Style: {{tone}}. Keep replies short unless the task needs detail.
+Ask at most one clarifying question at a time.
+"""

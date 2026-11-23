@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "contract"
+version = 1
+text = """
+Use the typed tools for durable state, data, plans, memory, logs, and external work.
+A tool result is authoritative; never claim success before it arrives.
+Conversation state is the only working memory for topic, depth, and status. Keep it compact.
+"""

@@ -1,0 +1,50 @@
+# Append-only RDF log vocabulary (Phase 0).
+#
+# The log is a small operational engine, not a second agentstream. Entries carry
+# generic kind/source fields; no action-specific predicate exists.
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+@prefix mmg:  <https://metamind.dev/graph/> .
+
+mm:RdfLog a owl:Class ;
+    rdfs:label "RdfLog" ;
+    rdfs:comment "The per-session append-only operational log." .
+mm:LogEntry a owl:Class ;
+    rdfs:label "LogEntry" .
+
+mm:logEntryId a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logSession a owl:ObjectProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range mm:Session .
+mm:logTrace a owl:ObjectProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range mm:SessionTrace .
+mm:logLevel a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logKind a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logSource a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logMessage a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logTag a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logRef a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:string .
+mm:logAt a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:integer .
+mm:sequence a owl:DatatypeProperty ;
+    rdfs:domain mm:LogEntry ;
+    rdfs:range xsd:integer .

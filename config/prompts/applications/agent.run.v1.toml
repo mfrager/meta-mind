@@ -1,0 +1,14 @@
+schema = "mm.prompt.strategy.v1"
+id = "agent.run.v1"
+version = 1
+description = "Bounded external-agent turn."
+fragments = ["identity", "contract", "agent_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "agent_kind",
+  "agent_workspace",
+  "agent_input",
+  "tone",
+]

@@ -1,0 +1,13 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.tutorial.v1"
+version = 1
+description = "Tutorial walkthrough."
+fragments = ["identity", "contract", "tutorial", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "tutorial_topic",
+  "tutorial_step",
+  "tone",
+]

@@ -1,3 +1,4 @@
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 # Metamind ontology v0 (T-Box).
 #
 # Design §87: the vocabulary the whole system speaks. Phase 1 declares it and
@@ -554,3 +555,80 @@ mm:hardProhibition a owl:DatatypeProperty ;
 #
 # `prov:` terms are used on instance data (Phase 6 onward); this ontology only
 # declares the namespace so those IRIs resolve.
+
+# ------------------------------------------------- conversation manager (Phase 0)
+#
+# Shared T-Box for the CM. Session-, log-, data-, plan-, and action-specific
+# declarations live in session.ttl, log.ttl, and the Phase 0 data/plan/action
+# vocabulary below. No instance data is asserted here.
+
+mm:Being rdfs:subClassOf foaf:Agent .
+mm:User rdfs:subClassOf foaf:Person .
+
+mm:DataEntity a owl:Class ;
+    rdfs:label "DataEntity" ;
+    rdfs:comment "One typed RDF entity managed by DataBroker." .
+mm:Plan a owl:Class ;
+    rdfs:label "Plan" ;
+    rdfs:comment "A durable, ordered, acyclic plan." .
+mm:PlanVersion a owl:Class ;
+    rdfs:label "PlanVersion" ;
+    rdfs:comment "An immutable plan revision snapshot." .
+mm:PlanStep a owl:Class ;
+    rdfs:label "PlanStep" .
+mm:Thought a owl:Class ;
+    rdfs:label "Thought" ;
+    rdfs:comment "A private, read-only inner thought; never a chat turn." .
+mm:ScheduledAction a owl:Class ;
+    rdfs:label "ScheduledAction" ;
+    rdfs:comment "A durable scheduled row for a registered internal action kind." .
+mm:PlanRegistry a owl:Class ;
+    rdfs:label "PlanRegistry" .
+mm:Schema a owl:Class ;
+    rdfs:label "Schema" .
+mm:Namespace a owl:Class ;
+    rdfs:label "Namespace" .
+mm:WorkItem a owl:Class ;
+    rdfs:label "WorkItem" .
+mm:ConversationFrame a owl:Class ;
+    rdfs:label "ConversationFrame" .
+mm:FrameUtterance a owl:Class ;
+    rdfs:label "FrameUtterance" .
+mm:AgentRun a owl:Class ;
+    rdfs:label "AgentRun" .
+mm:ConversationState a owl:Class ;
+    rdfs:label "ConversationState" .
+mm:StatusVariable a owl:Class ;
+    rdfs:label "StatusVariable" .
+
+# --- conversation-manager properties ----------------------------------------
+mm:revision a owl:DatatypeProperty ;
+    rdfs:range xsd:integer .
+mm:kind a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:schemaId a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:schemaPrefix a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:prefix a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:namespace a owl:DatatypeProperty ;
+    rdfs:range xsd:string .
+mm:planId a owl:DatatypeProperty ;
+    rdfs:domain mm:Plan ;
+    rdfs:range xsd:string .
+mm:planStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:Plan ;
+    rdfs:range xsd:string .
+mm:planGoal a owl:DatatypeProperty ;
+    rdfs:domain mm:Plan ;
+    rdfs:range xsd:string .
+mm:stepId a owl:DatatypeProperty ;
+    rdfs:domain mm:PlanStep ;
+    rdfs:range xsd:string .
+mm:stepStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:PlanStep ;
+    rdfs:range xsd:string .
+mm:actionStatus a owl:DatatypeProperty ;
+    rdfs:domain mm:ScheduledAction ;
+    rdfs:range xsd:string .

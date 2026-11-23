@@ -1,0 +1,17 @@
+schema = "mm.frame.template.v1"
+id = "frame.intro"
+version = 1
+kind = "intro"
+step = "connect"
+strategy = "cm.frame.v1"
+text = "Open the session: greet the user and learn what they want to work on. Frame {{frame_kind}} at {{frame_step}}."
+slots = ["frame_kind", "frame_step"]
+[transitions]
+work = "frame.work"
+tutorial = "frame.tutorial_offer"
+goodbye = "frame.goodbye"
+[utterance]
+delay_ms = 4500
+jitter = 0.25
+max_attempts = 2
+backoff = 3

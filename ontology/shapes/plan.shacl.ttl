@@ -1,0 +1,66 @@
+# Plan and action shapes (Phase 0).
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+mm:PlanShape a sh:NodeShape ;
+    sh:targetClass mm:Plan ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:planId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:planStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:planGoal ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:PlanStepShape a sh:NodeShape ;
+    sh:targetClass mm:PlanStep ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:stepId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:stepStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:ScheduledActionShape a sh:NodeShape ;
+    sh:targetClass mm:ScheduledAction ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:kind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:actionStatus ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

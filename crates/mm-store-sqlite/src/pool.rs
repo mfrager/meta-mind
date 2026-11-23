@@ -182,7 +182,7 @@ mod tests {
         store.migrate().await.unwrap();
         assert_eq!(
             store.applied_migrations().await.unwrap(),
-            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
         );
         for table in ["events", "audit_log", "store_checkpoints", "facts"] {
             assert_eq!(
@@ -366,8 +366,8 @@ mod tests {
         assert_eq!(store.row_count("budgets").await.unwrap(), 4);
         // One row per phase: kernel (1), code index (2), LLM ledger (3), being (4),
         // memory (5), epistemic (6), library (7), metacog (8), decision firewall (9),
-        // tools (10), self-engineering (11), autonomy (12).
-        assert_eq!(store.row_count("schema_versions").await.unwrap(), 12);
+        // tools (10), self-engineering (11), autonomy (12), data substrate (13).
+        assert_eq!(store.row_count("schema_versions").await.unwrap(), 13);
     }
 
     #[tokio::test]

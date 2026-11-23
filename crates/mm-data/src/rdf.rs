@@ -43,6 +43,10 @@ pub const PROV_NS: &str = "http://www.w3.org/ns/prov#";
 pub const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 /// XSD namespace.
 pub const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
+/// RDFS namespace.
+pub const RDFS_NS: &str = "http://www.w3.org/2000/01/rdf-schema#";
+/// OWL namespace.
+pub const OWL_NS: &str = "http://www.w3.org/2002/07/owl#";
 
 /// `rdf:type`.
 pub const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -63,6 +67,29 @@ pub fn session_graph(session_id: &str) -> String {
 
 /// The graph for the session index.
 pub const AGENTSTREAM_INDEX_GRAPH: &str = "https://metamind.dev/agentstream/index";
+
+/// The graph for a session's durable lifecycle/work/frame state.
+pub fn session_state_graph(session_id: &str) -> String {
+    format!("https://metamind.dev/graph/session/{session_id}")
+}
+
+/// The graph for a session's materialized conversation state.
+pub fn conversation_graph(session_id: &str) -> String {
+    format!("https://metamind.dev/graph/conversation/{session_id}")
+}
+
+/// The paginated session index.
+pub const SESSION_INDEX_GRAPH: &str = "https://metamind.dev/graph/session-index";
+
+/// A trace manifest IRI.
+pub fn trace_iri(id: &str) -> String {
+    format!("urn:metamind:trace:{id}")
+}
+
+/// A frame-stack IRI.
+pub fn frame_stack_iri(session_id: &str) -> String {
+    format!("urn:metamind:frames:{session_id}")
+}
 
 /// The graph for one compressed segment.
 pub fn segment_graph(segment_id: &str) -> String {
@@ -186,6 +213,11 @@ pub fn next_revision() -> u64 {
 /// A simple string literal.
 pub fn lit(value: impl Into<String>) -> Term {
     Term::Literal(Literal::new_simple_literal(value))
+}
+
+/// An IRI term.
+pub fn iri(value: impl Into<String>) -> Term {
+    Term::NamedNode(NamedNode::new_unchecked(value))
 }
 
 /// A typed literal; `datatype` is a full IRI.

@@ -56,7 +56,7 @@ pub const PROV: &str = "http://www.w3.org/ns/prov#";
 /// `/selfeng` because the two answer different questions — `/selfeng` is the lineage of
 /// accepted changes, `/self` is the being's measurement of *itself* — and it was added
 /// by migration `0012_loop.sql`, which is what the rule above requires of a new graph.
-pub const NAMED_GRAPHS: [&str; 11] = [
+pub const NAMED_GRAPHS: [&str; 16] = [
     "being",
     "memory",
     "epistemic",
@@ -68,6 +68,14 @@ pub const NAMED_GRAPHS: [&str; 11] = [
     "tools",
     "selfeng",
     "self",
+    // Phase 3 data substrate: the catalog and the durable stores that the
+    // seven `data.*` tools and later phases write. Added by migration
+    // `0013_data_metamind.sql`.
+    "schema",
+    "plan",
+    "action",
+    "session",
+    "log",
 ];
 
 /// The instance IRI of an entity: `https://metamind.dev/data/{ulid}`.

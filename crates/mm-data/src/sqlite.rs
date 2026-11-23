@@ -91,6 +91,9 @@ impl SqliteStore {
         )
         .execute(&self.pool)
         .await?;
+        for statement in crate::data::outbox::DDL {
+            sqlx::query(statement).execute(&self.pool).await?;
+        }
         sqlx::query(
             "INSERT INTO data_meta (key, value) VALUES ('schema_version', '1')
              ON CONFLICT(key) DO NOTHING",

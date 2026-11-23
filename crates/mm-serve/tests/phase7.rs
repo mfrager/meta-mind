@@ -228,48 +228,57 @@ async fn five_sessions_keep_their_own_state_and_counters() {
 }
 
 #[tokio::test]
-async fn cme_exposes_and_runs_the_controller_tool_catalog() {
+async fn cme_exposes_the_conversation_tool_contract() {
     let (_dir, state, app) = boot_cme().await;
     let mock = Arc::new(mm_llm::MockClient::script(vec![
         mm_llm::ScriptedResponse::text("").with_tool_calls(vec![mm_llm::ProviderToolCall {
-            id: "call-guide".into(),
-            name: "guide.list".into(),
-            arguments: "{}".into(),
+            id: "call-topic".into(),
+            name: "conversation.topic".into(),
+            arguments: r#"{"action":"set","topic":"the guide","expected_revision":1}"#.into(),
         }]),
-        mm_llm::ScriptedResponse::text("The guide is available."),
+        mm_llm::ScriptedResponse::text("The topic is recorded."),
     ]));
     *state.controller_model.lock().unwrap() = ControllerModel::Scripted(mock.clone());
 
     let session_id = state.ids.next_string();
     state.chat.create_session(session_id.clone()).unwrap();
     let response = app
-        .oneshot(chat_request(&session_id, "list the guide"))
+        .oneshot(chat_request(&session_id, "set the topic"))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let raw = String::from_utf8(body_bytes(response).await).unwrap();
     assert!(raw.contains(r#""type":"tool_call""#), "{raw}");
-    assert!(raw.contains(r#""name":"guide.list""#), "{raw}");
+    assert!(raw.contains(r#""name":"conversation.topic""#), "{raw}");
     assert!(raw.contains(r#""type":"tool_result""#), "{raw}");
     assert!(raw.contains(r#""success":true"#), "{raw}");
-    assert!(raw.contains("The guide is available."), "{raw}");
+    assert!(raw.contains("The topic is recorded."), "{raw}");
 
     let seen = mock.seen();
     assert!(seen.len() >= 2, "the model sees the tool result");
     assert!(
-        seen[0].tools.iter().any(|tool| tool.name == "guide.list"),
-        "the full catalog is advertised"
+        seen[0]
+            .tools
+            .iter()
+            .any(|tool| tool.name == "conversation.topic"),
+        "the conversation surface is advertised"
     );
-    assert!(
-        seen[0].tools.len() > 50,
-        "expected the controller catalog, saw {}",
-        seen[0].tools.len()
+    assert_eq!(
+        seen[0].tools.len(),
+        17,
+        "the CM sees exactly the seventeen reviewed schemas"
     );
     assert!(
         seen[1].messages.iter().any(|message| {
-            message.role == mm_llm::Role::Tool && message.name.as_deref() == Some("guide.list")
+            message.role == mm_llm::Role::Tool
+                && message.name.as_deref() == Some("conversation.topic")
         }),
         "the tool result is fed back to the model"
+    );
+    let state_bundle = state.state_service.load(&session_id).await.unwrap();
+    assert_eq!(
+        state_bundle.conversation.topic.as_deref(),
+        Some("the guide")
     );
 
     let events = state.agentstream.events(&session_id).await.unwrap();

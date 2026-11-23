@@ -1,0 +1,87 @@
+# Default interjection policy. Precedence is instance -> user -> kind ->
+# service -> this global policy. A user preference may narrow delivery but
+# cannot force a safety-suppressed item.
+schema = "mm.interjections.v1"
+version = 1
+
+[global]
+id = "global.default"
+enabled = true
+when_working = "queue"
+when_idle = "deliver"
+presence = "present_or_away"
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 0
+expires_after_ms = 900000
+
+[global.quiet_hours]
+start_hour = 22
+end_hour = 8
+
+[services.internal_action]
+id = "internal.default"
+enabled = true
+when_working = "suppress"
+when_idle = "deliver"
+presence = "present_or_away"
+allowed_frames = ["work", "resume", "custom"]
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 3
+expires_after_ms = 900000
+
+[services.scheduled_action]
+id = "scheduled.default"
+enabled = true
+when_working = "badge"
+when_idle = "deliver"
+presence = "present_or_away"
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 2
+expires_after_ms = 900000
+
+[services.agent_result]
+id = "agent.result"
+enabled = true
+when_working = "queue"
+when_idle = "deliver"
+presence = "present_or_away"
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 6
+expires_after_ms = 900000
+
+[services.frame_utterance]
+id = "frame.utterance"
+enabled = true
+when_working = "suppress"
+when_idle = "deliver"
+presence = "present_or_away"
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 1
+expires_after_ms = 900000
+
+[services.plan_monitor]
+id = "plan.monitor"
+enabled = false
+when_working = "suppress"
+when_idle = "suppress"
+presence = "any"
+min_gap_ms = 60000
+max_per_hour = 1
+priority = 0
+expires_after_ms = 900000
+
+[services.introspection]
+id = "introspection.default"
+enabled = true
+when_working = "suppress"
+when_idle = "deliver"
+presence = "present"
+min_gap_ms = 60000
+max_per_hour = 6
+priority = 7
+expires_after_ms = 900000

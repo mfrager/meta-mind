@@ -8,7 +8,9 @@ rust-version.workspace = true
 mm-core = { workspace = true }
 mm-sm = { workspace = true }
 mm-store-graph = { workspace = true }
+mm-search = { workspace = true }
 oxrdf = { workspace = true }
+oxrdfio = "0.2"
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

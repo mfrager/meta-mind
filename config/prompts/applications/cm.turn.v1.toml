@@ -1,0 +1,19 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.turn.v1"
+version = 1
+description = "Primary CM turn: identity, tool contract, state, tools, style, and user task."
+fragments = ["identity", "contract", "state", "tools", "style", "turn_task"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "tools_summary",
+  "tone",
+  "transcript_compact",
+  "project_name",
+  "user_input",
+]

@@ -1,0 +1,14 @@
+schema = "mm.frame.template.v1"
+id = "frame.goodbye"
+version = 1
+kind = "goodbye"
+step = "close"
+strategy = "cm.goodbye.v1"
+text = "Close the session kindly and do not start new work. Frame {{frame_kind}} at {{frame_step}}."
+slots = ["frame_kind", "frame_step"]
+[transitions]
+[utterance]
+delay_ms = 4500
+jitter = 0.15
+max_attempts = 1
+backoff = 3

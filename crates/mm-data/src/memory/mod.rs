@@ -14,6 +14,7 @@ pub mod aggregator;
 pub mod compressed;
 pub mod compressor;
 pub mod continuity;
+pub mod contract;
 pub mod cross_project;
 pub mod episodic;
 pub mod model;

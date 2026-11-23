@@ -1,0 +1,89 @@
+# Session shapes (Phase 0).
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+mm:SessionShape a sh:NodeShape ;
+    sh:targetClass mm:Session ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:sessionId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:userId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:lifecycle ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:SessionTraceShape a sh:NodeShape ;
+    sh:targetClass mm:SessionTrace ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:traceId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:traceKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:agentstreamId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:ConversationStateShape a sh:NodeShape ;
+    sh:targetClass mm:ConversationState ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:depth ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:topic ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:StatusVariableShape a sh:NodeShape ;
+    sh:targetClass mm:StatusVariable ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:statusKey ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:statusValue ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

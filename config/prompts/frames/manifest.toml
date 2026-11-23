@@ -1,0 +1,11 @@
+schema = "mm.frame.manifest.v1"
+version = 1
+root = "frame.intro"
+templates = [
+  "frame.intro",
+  "frame.resume",
+  "frame.work",
+  "frame.tutorial_offer",
+  "frame.tutorial",
+  "frame.goodbye",
+]

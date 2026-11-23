@@ -1,0 +1,11 @@
+schema = "mm.prompt.fragment.v1"
+id = "turn_task"
+version = 1
+text = """
+[TRANSCRIPT]
+{{transcript_compact}}
+[/TRANSCRIPT]
+Project: {{project_name}}
+User request:
+{{user_input}}
+"""

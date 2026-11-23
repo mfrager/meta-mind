@@ -46,3 +46,15 @@ mm:BeingShape a sh:NodeShape ;
         sh:class mm:Identity ;
         sh:severity sh:Violation ;
     ] .
+
+# A user is a person-shaped agent with a stable display name (Phase 0 contract).
+mm:UserShape a sh:NodeShape ;
+    sh:targetClass mm:User ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

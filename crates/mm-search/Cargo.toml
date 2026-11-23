@@ -1,0 +1,25 @@
+[package]
+name = "mm-search"
+description = "Metamind lexical search: Tantivy schema, documents, and a bounded query parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[package.metadata.metamind]
+owned_by_phase = 3
+capability = "mm:SearchIndex"
+
+[lints]
+workspace = true
+
+[dependencies]
+mm-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tantivy = "0.27"
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

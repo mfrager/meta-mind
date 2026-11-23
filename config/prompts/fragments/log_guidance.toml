@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "log_guidance"
+version = 1
+text = """
+Log query: {{log_query}}
+Entries:
+{{log_entries}}
+The RDF log is append-only. Do not invent entries or rewrite history.
+"""

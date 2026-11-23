@@ -43,6 +43,34 @@ pub enum EventType {
     ModalitySwitch,
     /// A session lifecycle event.
     Lifecycle,
+    /// Conversation topic changed.
+    TopicUpdated,
+    /// Conversation depth changed.
+    DepthUpdated,
+    /// Conversation status variables changed.
+    StatusUpdated,
+    /// A durable session was opened.
+    SessionOpened,
+    /// An ended session was resumed into a new epoch.
+    SessionResumed,
+    /// A session ended normally.
+    SessionEnded,
+    /// A session was soft-deleted or purged.
+    SessionDeleted,
+    /// The lazy session directory was created.
+    SessionDirectoryCreated,
+    /// A trace manifest was registered.
+    TraceRegistered,
+    /// Presence changed.
+    PresenceChanged,
+    /// A work item changed.
+    WorkItemChanged,
+    /// A frame was pushed.
+    FramePushed,
+    /// A frame was replaced or updated.
+    FrameUpdated,
+    /// A frame was popped.
+    FramePopped,
     /// Anything else.
     Custom,
 }
@@ -59,6 +87,20 @@ impl EventType {
             Self::BargeIn => "barge_in",
             Self::ModalitySwitch => "modality_switch",
             Self::Lifecycle => "lifecycle",
+            Self::TopicUpdated => "topic_updated",
+            Self::DepthUpdated => "depth_updated",
+            Self::StatusUpdated => "status_updated",
+            Self::SessionOpened => "session_opened",
+            Self::SessionResumed => "session_resumed",
+            Self::SessionEnded => "session_ended",
+            Self::SessionDeleted => "session_deleted",
+            Self::SessionDirectoryCreated => "session_directory_created",
+            Self::TraceRegistered => "trace_registered",
+            Self::PresenceChanged => "presence_changed",
+            Self::WorkItemChanged => "work_item_changed",
+            Self::FramePushed => "frame_pushed",
+            Self::FrameUpdated => "frame_updated",
+            Self::FramePopped => "frame_popped",
             Self::Custom => "custom",
         }
     }

@@ -1,0 +1,66 @@
+# DataBroker shapes (Phase 0). Only the validator's enforced fragment is used.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+mm:DataEntityShape a sh:NodeShape ;
+    sh:targetClass mm:DataEntity ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:iri ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:revision ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:status ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:SchemaShape a sh:NodeShape ;
+    sh:targetClass mm:Schema ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:schemaId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:schemaPrefix ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .
+
+mm:NamespaceShape a sh:NodeShape ;
+    sh:targetClass mm:Namespace ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:prefix ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:namespace ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] .

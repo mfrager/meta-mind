@@ -1,0 +1,13 @@
+schema = "mm.prompt.strategy.v1"
+id = "metamind.log.v1"
+version = 1
+description = "RDF log read/append."
+fragments = ["identity", "log_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "log_query",
+  "log_entries",
+  "tone",
+]

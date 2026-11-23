@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "memory_guidance"
+version = 1
+text = """
+Memory query: {{memory_query}}
+Known context:
+{{memory_context}}
+Recall before asking the user to repeat themselves. Remember only stable, useful facts.
+"""

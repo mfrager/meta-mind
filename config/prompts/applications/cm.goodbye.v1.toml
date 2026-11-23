@@ -1,0 +1,13 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.goodbye.v1"
+version = 1
+description = "Session close."
+fragments = ["identity", "contract", "goodbye", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "goodbye_reason",
+  "session_summary",
+  "tone",
+]

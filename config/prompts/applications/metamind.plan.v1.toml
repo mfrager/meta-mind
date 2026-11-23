@@ -1,0 +1,13 @@
+schema = "mm.prompt.strategy.v1"
+id = "metamind.plan.v1"
+version = 1
+description = "Plan creation/refinement."
+fragments = ["identity", "contract", "plan_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "plan_goal",
+  "plan_state",
+  "tone",
+]

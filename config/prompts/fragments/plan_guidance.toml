@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "plan_guidance"
+version = 1
+text = """
+Plan goal: {{plan_goal}}
+Current plan state:
+{{plan_state}}
+Return a small, ordered plan. Each step must be independently checkable. Do not execute steps here.
+"""

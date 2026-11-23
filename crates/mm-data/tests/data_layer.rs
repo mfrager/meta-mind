@@ -16,6 +16,30 @@ fn init_config(temp: &tempfile::TempDir) -> InitConfig {
 }
 
 #[tokio::test]
+async fn phase0_shapes_parse_and_validate_an_empty_graph() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data = initialize_data_layer(init_config(&temp))
+        .await
+        .expect("initialize");
+    let shapes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ontology/shapes");
+    for name in [
+        "mm-shapes.ttl",
+        "data.shacl.ttl",
+        "plan.shacl.ttl",
+        "session.shacl.ttl",
+        "log.shacl.ttl",
+    ] {
+        let report = data
+            .engine
+            .store()
+            .validate_with("world", &shapes_dir.join(name))
+            .await
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert!(report.conforms, "{name}: {:?}", report.violations);
+    }
+}
+
+#[tokio::test]
 async fn full_init_sequence_and_memory_pipeline() {
     let temp = tempfile::tempdir().expect("tempdir");
     let data = initialize_data_layer(init_config(&temp))

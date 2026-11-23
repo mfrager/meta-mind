@@ -9,11 +9,14 @@
 
 pub mod actor;
 pub mod graphs;
+pub mod rdfxml;
 pub mod shacl;
 
 pub use actor::{
-    ensure_read_query, graph_iri, map_shacl_report, GraphHandle, GraphStore, MAILBOX_CAPACITY,
+    ensure_read_query, graph_iri, map_shacl_report, BatchReport, GraphBatch, GraphHandle,
+    GraphStore, MAILBOX_CAPACITY,
 };
+pub use rdfxml::{dump_quads_rdfxml, dump_store_nquads, parse_rdfxml, parse_rdfxml_into};
 
 /// The Oxigraph release this binary actually links against.
 ///

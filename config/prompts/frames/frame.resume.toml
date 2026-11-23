@@ -1,0 +1,16 @@
+schema = "mm.frame.template.v1"
+id = "frame.resume"
+version = 1
+kind = "resume"
+step = "reconnect"
+strategy = "cm.frame.v1"
+text = "Reconnect to the previous session without pretending it is still live. Frame {{frame_kind}} at {{frame_step}}."
+slots = ["frame_kind", "frame_step"]
+[transitions]
+work = "frame.work"
+goodbye = "frame.goodbye"
+[utterance]
+delay_ms = 4500
+jitter = 0.2
+max_attempts = 2
+backoff = 3

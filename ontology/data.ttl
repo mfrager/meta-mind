@@ -1,0 +1,129 @@
+# The data substrate: typed entities, the schema catalog, and namespaces.
+
+@prefix mm:     <https://metamind.dev/ontology#> .
+@prefix mmd:    <https://metamind.dev/data/> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+mm:DataEntity a owl:Class ;
+    rdfs:label "Managed data entity" ;
+    rdfs:comment "The shape every entity written through data.* has: one typed subject in one authoritative graph." .
+
+mm:Schema a owl:Class ;
+    rdfs:label "Schema catalog entry" ;
+    rdfs:comment "A registered vocabulary: prefix, namespace, version, classes, properties, shapes, imports." .
+
+mm:Namespace a owl:Class ;
+    rdfs:label "Namespace binding" ;
+    rdfs:comment "A prefix and the namespace IRI it owns. Built-ins are immutable." .
+
+mm:revision a owl:DatatypeProperty ;
+    rdfs:domain mm:DataEntity ;
+    rdfs:range xsd:unsignedLong ;
+    rdfs:label "revision" .
+
+mm:status a owl:DatatypeProperty ;
+    rdfs:domain mm:DataEntity ;
+    rdfs:range xsd:string ;
+    rdfs:label "status" .
+
+mm:createdAt a owl:DatatypeProperty ;
+    rdfs:domain mm:DataEntity ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "created at" .
+
+mm:updatedAt a owl:DatatypeProperty ;
+    rdfs:domain mm:DataEntity ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "updated at" .
+
+mm:deletedAt a owl:DatatypeProperty ;
+    rdfs:label "deleted at" .
+
+mm:deletedBy a owl:DatatypeProperty ;
+    rdfs:label "deleted by" .
+
+mm:recordedBy a owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:comment "user | cm | agent | system" .
+
+mm:sourceGraph a owl:DatatypeProperty ;
+    rdfs:label "source graph" ;
+    rdfs:comment "Carried by the portable RDF/XML snapshot, which has no graph syntax." .
+
+mm:searchable a owl:DatatypeProperty ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "false excludes the entity from the lexical index." .
+
+mm:confidence a owl:DatatypeProperty ;
+    rdfs:range xsd:double .
+
+mm:supersedes a owl:ObjectProperty ;
+    rdfs:label "supersedes" .
+
+mm:schemaId a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string .
+
+mm:schemaPrefix a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string .
+
+mm:schemaNamespace a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:anyURI .
+
+mm:schemaVersion a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string .
+
+mm:schemaSource a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string .
+
+mm:schemaActive a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:boolean .
+
+mm:schemaEtag a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string .
+
+mm:schemaLoadedAt a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:dateTime .
+
+mm:schemaBody a owl:DatatypeProperty ;
+    rdfs:domain mm:Schema ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Capped at 64 KiB; the portable copy of a registered document." .
+
+mm:schemaClass a owl:ObjectProperty ;
+    rdfs:domain mm:Schema .
+
+mm:schemaProperty a owl:ObjectProperty ;
+    rdfs:domain mm:Schema .
+
+mm:schemaShape a owl:ObjectProperty ;
+    rdfs:domain mm:Schema .
+
+mm:owlImports a owl:ObjectProperty ;
+    rdfs:domain mm:Schema .
+
+mm:namespacePrefix a owl:DatatypeProperty ;
+    rdfs:domain mm:Namespace ;
+    rdfs:range xsd:string .
+
+mm:namespaceIri a owl:DatatypeProperty ;
+    rdfs:domain mm:Namespace ;
+    rdfs:range xsd:anyURI .
+
+mm:builtin a owl:DatatypeProperty ;
+    rdfs:domain mm:Namespace ;
+    rdfs:range xsd:boolean .
+
+mm:current-user a mm:Identity ;
+    rdfs:label "current user alias" ;
+    rdfs:comment "Context alias, never stored as a person; resolves to the active operator's canonical IRI." .

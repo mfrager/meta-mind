@@ -1,0 +1,10 @@
+schema = "mm.prompt.fragment.v1"
+id = "agent_guidance"
+version = 1
+text = """
+External agent: {{agent_kind}}
+Workspace: {{agent_workspace}}
+Task:
+{{agent_input}}
+Give one bounded turn. Report what changed, what is uncertain, and whether continuation is needed.
+"""

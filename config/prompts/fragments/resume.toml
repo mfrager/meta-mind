@@ -1,0 +1,10 @@
+schema = "mm.prompt.fragment.v1"
+id = "resume"
+version = 1
+text = """
+Previous session summary:
+{{previous_summary}}
+Topics: {{previous_topics}}
+Last topic: {{last_topic}}
+Reconnect briefly, then ask what the user wants next. Do not pretend the old session is still live.
+"""

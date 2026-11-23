@@ -1,0 +1,20 @@
+schema = "mm.prompt.strategy.v1"
+id = "data.turn.v1"
+version = 1
+description = "Data-tool turn with typed entity context."
+fragments = ["identity", "contract", "state", "data_guidance", "tools", "style", "turn_task"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "entity_summary",
+  "tools_summary",
+  "tone",
+  "transcript_compact",
+  "project_name",
+  "user_input",
+]

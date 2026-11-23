@@ -20,6 +20,7 @@ use tokio::sync::broadcast;
 use mm_cme::{ChunkKind, SessionSnapshot};
 
 use crate::chat::validate_attachments;
+use crate::cme::CONSOLE_USER;
 use crate::dto::chat::{ChatFrame, Phase};
 use crate::error::AppError;
 use crate::routes::chat::{sse_response, OpenChat};
@@ -47,6 +48,11 @@ pub async fn open(
     state
         .chat
         .begin(request_id.clone(), session_id.clone(), body.query.clone())?;
+    state
+        .state_service
+        .ensure_session(&session_id, CONSOLE_USER, mm_data::rdf::now_ms())
+        .await
+        .map_err(|error| AppError::Internal(format!("conversation state: {error}")))?;
 
     let executor = state.cme_executor();
     let outcome = match state

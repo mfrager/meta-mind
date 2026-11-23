@@ -1,0 +1,10 @@
+schema = "mm.prompt.fragment.v1"
+id = "action_guidance"
+version = 1
+text = """
+Registered action: {{action_kind}}
+Input: {{action_input}}
+Recent output (use it to avoid repeating yourself):
+{{recent_log}}
+Produce one short, self-contained message. Do not schedule or invoke another action.
+"""

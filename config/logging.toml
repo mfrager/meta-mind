@@ -1,0 +1,23 @@
+# RDF log retention and caps. The log is append-only; retention removes whole
+# segments, never individual evidence selected by the model.
+schema = "mm.logging.v1"
+version = 1
+
+[rdf_log]
+enabled = true
+retention_days = 30
+max_entries_per_session = 20000
+max_message_bytes = 4096
+max_tags = 8
+max_refs = 16
+source_default = "system"
+
+[caps]
+max_query_entries = 200
+max_export_entries = 5000
+max_segment_bytes = 1048576
+
+[redaction]
+enabled = true
+redact_secrets = true
+redact_paths_outside_workspace = true

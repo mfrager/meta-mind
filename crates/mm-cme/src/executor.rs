@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mm_llm::{LlmClient, LlmRequest, Message, ProviderToolCall, Purpose, ToolSchema};
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::chunk::{Chunk, ChunkEvent, ChunkKind, ChunkState};
@@ -23,9 +24,31 @@ use crate::voice::VoiceTurnConfig;
 
 /// Bounds a model-tool exchange. A model that keeps asking for tools cannot
 /// hold a turn open indefinitely.
-const MAX_TOOL_ROUNDS: usize = 4;
+const MAX_TOOL_ROUNDS: usize = 32;
 /// Tool steps allowed in one turn.
-const MAX_TOOL_STEPS: usize = 8;
+const MAX_TOOL_STEPS: usize = 32;
+
+/// How the executor treats a model that keeps requesting tools.
+///
+/// The conversation manager uses [`TurnLoopPolicy::ContinueUntilDone`]: a
+/// tool result is appended to the transcript and the model gets another round
+/// until it answers, subject to the hard round/step caps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnLoopPolicy {
+    /// Continue model/tool rounds until the model returns a final answer.
+    #[default]
+    ContinueUntilDone,
+}
+
+impl TurnLoopPolicy {
+    /// The stable wire name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ContinueUntilDone => "continue_until_done",
+        }
+    }
+}
 
 /// Runs a tool call and advertises the catalog to the model.
 #[async_trait]
@@ -38,6 +61,18 @@ pub trait ToolHandler: Send + Sync {
 
     /// Run `name` with provider-supplied JSON arguments.
     async fn call(&self, name: &str, arguments: &str) -> Result<String>;
+
+    /// Run a tool in the context of a specific session. Stateless handlers use
+    /// the default; session-bound handlers (the CM conversation tools) override
+    /// this so the executor does not need a second dispatch path.
+    async fn call_for_session(
+        &self,
+        _session_id: &str,
+        name: &str,
+        arguments: &str,
+    ) -> Result<String> {
+        self.call(name, arguments).await
+    }
 }
 
 /// A handler that refuses every call.
@@ -80,6 +115,7 @@ pub struct TurnExecutor {
     tools: Arc<dyn ToolHandler>,
     confirm: Arc<dyn ConfirmationHandler>,
     observer: Option<ObserverHandle>,
+    loop_policy: TurnLoopPolicy,
 }
 
 impl std::fmt::Debug for TurnExecutor {
@@ -107,6 +143,7 @@ impl TurnExecutor {
             tools: Arc::new(UnavailableTools),
             confirm: Arc::new(DenyUnconfirmed),
             observer: None,
+            loop_policy: TurnLoopPolicy::default(),
         }
     }
 
@@ -119,6 +156,7 @@ impl TurnExecutor {
             tools: Arc::new(UnavailableTools),
             confirm: Arc::new(DenyUnconfirmed),
             observer: None,
+            loop_policy: TurnLoopPolicy::default(),
         }
     }
 
@@ -137,6 +175,17 @@ impl TurnExecutor {
     pub fn with_confirmation_handler(mut self, confirm: Arc<dyn ConfirmationHandler>) -> Self {
         self.confirm = confirm;
         self
+    }
+
+    /// Select the model/tool continuation policy.
+    pub fn with_loop_policy(mut self, loop_policy: TurnLoopPolicy) -> Self {
+        self.loop_policy = loop_policy;
+        self
+    }
+
+    /// The continuation policy in force.
+    pub fn loop_policy(&self) -> TurnLoopPolicy {
+        self.loop_policy
     }
 
     /// Run a turn to completion. A model or tool failure marks the turn failed and
@@ -356,7 +405,11 @@ impl TurnExecutor {
                         chunk.dispatch(ChunkEvent::ToolCall)?;
                     }
                 }
-                let result = match self.tools.call(&call.name, &call.arguments).await {
+                let result = match self
+                    .tools
+                    .call_for_session(turn.session_id.as_str(), &call.name, &call.arguments)
+                    .await
+                {
                     Ok(result) => {
                         let ok = tool_result_ok(&result);
                         (result, ok)

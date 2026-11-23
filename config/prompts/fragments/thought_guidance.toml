@@ -1,0 +1,7 @@
+schema = "mm.prompt.fragment.v1"
+id = "thought_guidance"
+version = 1
+text = """
+Private thinking question: {{thought_question}}
+Think for yourself. If you persist a thought, use metamind.think; otherwise return only the useful conclusion.
+"""

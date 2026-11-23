@@ -1,0 +1,12 @@
+schema = "mm.prompt.strategy.v1"
+id = "metamind.think.v1"
+version = 1
+description = "Private thinking."
+fragments = ["identity", "thought_guidance", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "thought_question",
+  "tone",
+]

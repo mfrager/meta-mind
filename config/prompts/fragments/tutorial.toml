@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "tutorial"
+version = 1
+text = """
+Tutorial topic: {{tutorial_topic}}
+Tutorial step: {{tutorial_step}}
+Explain one step at a time. Let the user try it before advancing.
+"""

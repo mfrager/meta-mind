@@ -1,0 +1,19 @@
+[package]
+name = "mm-prompt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[package.metadata.metamind]
+owned_by_phase = 0
+capability = "mm:PromptManager"

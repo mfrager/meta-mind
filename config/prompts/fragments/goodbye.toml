@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "goodbye"
+version = 1
+text = """
+The session is closing. Reason: {{goodbye_reason}}.
+Summary: {{session_summary}}
+Say goodbye in one or two sentences. Do not start new work.
+"""

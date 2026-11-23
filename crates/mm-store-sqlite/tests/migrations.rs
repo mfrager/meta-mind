@@ -11,6 +11,8 @@ use sqlx::Executor;
 /// schema in reverse dependency order. `migrate()` applies them all, so a down
 /// script that reversed only the newest would leave the kernel tables behind.
 const DOWN_SCRIPT: &str = concat!(
+    include_str!("../migrations_down/0013_data_metamind.sql"),
+    "\n",
     include_str!("../migrations_down/0012_loop.sql"),
     "\n",
     include_str!("../migrations_down/0011_self_engineering.sql"),
@@ -149,9 +151,13 @@ async fn up_down_up_is_byte_identical_and_leaves_no_user_tables() {
     assert!(after_up.contains("CREATE INDEX idx_gc_actions_finding"));
     assert!(after_up.contains("CREATE INDEX idx_module_loads_uri"));
     assert!(after_up.contains("CREATE INDEX idx_design_revisions_changeset"));
+    assert!(after_up.contains("CREATE TABLE data_graphs"));
+    assert!(after_up.contains("CREATE TABLE data_outbox"));
+    assert!(after_up.contains("CREATE TRIGGER data_outbox_tombstone_has_no_doc"));
+    assert!(after_up.contains("CREATE INDEX data_outbox_pending"));
     assert_eq!(
         store.applied_migrations().await.unwrap(),
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     );
 
     // Down: drop every kernel object and clear the migration ledger.
@@ -185,7 +191,7 @@ async fn up_down_up_is_byte_identical_and_leaves_no_user_tables() {
     );
     assert_eq!(
         store.applied_migrations().await.unwrap(),
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     );
     store.close().await;
 }

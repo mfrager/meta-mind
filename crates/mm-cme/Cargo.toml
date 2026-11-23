@@ -8,6 +8,7 @@ rust-version.workspace = true
 mm-core = { workspace = true }
 mm-sm = { workspace = true }
 mm-data = { workspace = true }
+mm-prompt = { workspace = true }
 mm-llm = { workspace = true }
 mm-being = { workspace = true }
 tokio = { workspace = true }

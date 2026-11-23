@@ -1,0 +1,37 @@
+# RDF log shapes (Phase 0).
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mm:   <https://metamind.dev/ontology#> .
+
+mm:LogEntryShape a sh:NodeShape ;
+    sh:targetClass mm:LogEntry ;
+    sh:severity sh:Violation ;
+    sh:property [
+        sh:path mm:logEntryId ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:logKind ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:logMessage ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mm:logAt ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:severity sh:Violation ;
+    ] .

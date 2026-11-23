@@ -13,7 +13,9 @@ use std::sync::Arc;
 use mm_core::store::{Graph, ShaclReport, ShaclViolation};
 use mm_core::MmError;
 use oxigraph::io::{RdfFormat, RdfParser};
-use oxigraph::model::{GraphName, GraphNameRef, NamedNode, NamedOrBlankNode, Quad};
+use oxigraph::model::{
+    GraphName, GraphNameRef, NamedNode, NamedOrBlankNode, NamedOrBlankNodeRef, Quad,
+};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use serde_json::{Map, Value};
@@ -35,6 +37,15 @@ enum GraphCmd {
         turtle: String,
         ack: oneshot::Sender<Result<usize, MmError>>,
     },
+    InsertRdfXml {
+        graph: String,
+        rdfxml: String,
+        ack: oneshot::Sender<Result<usize, MmError>>,
+    },
+    ApplyBatch {
+        batch: GraphBatch,
+        ack: oneshot::Sender<Result<BatchReport, MmError>>,
+    },
     ClearGraph {
         graph: String,
         ack: oneshot::Sender<Result<usize, MmError>>,
@@ -54,6 +65,28 @@ enum GraphCmd {
     Shutdown {
         ack: oneshot::Sender<()>,
     },
+}
+
+/// A transactional delete-then-insert batch.
+///
+/// The deletes are concrete quads rather than patterns: the caller already read
+/// the entity it is replacing, so the writer never has to guess which quads were
+/// meant. Both halves commit together or not at all.
+#[derive(Debug, Clone, Default)]
+pub struct GraphBatch {
+    /// Quads to remove first.
+    pub deletes: Vec<Quad>,
+    /// Quads to insert after the deletes.
+    pub inserts: Vec<Quad>,
+}
+
+/// What one [`GraphBatch`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BatchReport {
+    /// Quads removed.
+    pub deleted: usize,
+    /// Quads inserted.
+    pub inserted: usize,
 }
 
 /// A cloneable write handle to the graph store.
@@ -85,6 +118,27 @@ impl GraphHandle {
             ack,
         })
         .await?;
+        rx.await
+            .map_err(|e| MmError::Graph(format!("graph actor dropped the ack: {e}")))?
+    }
+
+    /// Parse an RDF/XML document and insert it into `graph`.
+    pub async fn insert_rdfxml(&self, graph: &str, rdfxml: &str) -> Result<usize, MmError> {
+        let (ack, rx) = oneshot::channel();
+        self.send(GraphCmd::InsertRdfXml {
+            graph: graph.to_string(),
+            rdfxml: rdfxml.to_string(),
+            ack,
+        })
+        .await?;
+        rx.await
+            .map_err(|e| MmError::Graph(format!("graph actor dropped the ack: {e}")))?
+    }
+
+    /// Apply a delete-then-insert batch in one transaction.
+    pub async fn apply_batch(&self, batch: GraphBatch) -> Result<BatchReport, MmError> {
+        let (ack, rx) = oneshot::channel();
+        self.send(GraphCmd::ApplyBatch { batch, ack }).await?;
         rx.await
             .map_err(|e| MmError::Graph(format!("graph actor dropped the ack: {e}")))?
     }
@@ -166,6 +220,12 @@ fn writer_loop(store: Arc<Store>, mut rx: mpsc::Receiver<GraphCmd>) {
             GraphCmd::InsertTurtle { graph, turtle, ack } => {
                 let _ = ack.send(parse_and_insert(&store, &graph, &turtle));
             }
+            GraphCmd::InsertRdfXml { graph, rdfxml, ack } => {
+                let _ = ack.send(insert_rdfxml(&store, &graph, &rdfxml));
+            }
+            GraphCmd::ApplyBatch { batch, ack } => {
+                let _ = ack.send(apply_batch(&store, batch));
+            }
             GraphCmd::ClearGraph { graph, ack } => {
                 let _ = ack.send(clear_graph(&store, &graph));
             }
@@ -204,6 +264,43 @@ fn parse_and_insert(store: &Store, graph: &str, turtle: &str) -> Result<usize, M
         n += 1;
     }
     Ok(n)
+}
+
+/// Parse RDF/XML and insert every triple into `graph`.
+fn insert_rdfxml(store: &Store, graph: &str, rdfxml: &str) -> Result<usize, MmError> {
+    let name = named_graph(graph)?;
+    let quads = crate::rdfxml::parse_rdfxml_into(&name, rdfxml.as_bytes())?;
+    let mut tx = store
+        .start_transaction()
+        .map_err(|e| MmError::Graph(format!("cannot start rdf/xml batch: {e}")))?;
+    for quad in &quads {
+        tx.insert(quad.as_ref());
+    }
+    tx.commit()
+        .map_err(|e| MmError::Graph(format!("rdf/xml commit failed: {e}")))?;
+    Ok(quads.len())
+}
+
+/// Apply a delete-then-insert batch in one transaction.
+///
+/// The transaction is what makes replace semantics atomic: a reader that races
+/// the batch sees either the old entity or the new one, never the gap between.
+fn apply_batch(store: &Store, batch: GraphBatch) -> Result<BatchReport, MmError> {
+    let mut tx = store
+        .start_transaction()
+        .map_err(|e| MmError::Graph(format!("cannot start batch: {e}")))?;
+    for quad in &batch.deletes {
+        tx.remove(quad.as_ref());
+    }
+    for quad in &batch.inserts {
+        tx.insert(quad.as_ref());
+    }
+    tx.commit()
+        .map_err(|e| MmError::Graph(format!("batch commit failed: {e}")))?;
+    Ok(BatchReport {
+        deleted: batch.deletes.len(),
+        inserted: batch.inserts.len(),
+    })
 }
 
 /// Remove every quad in a named graph.
@@ -444,6 +541,73 @@ impl GraphStore {
                 .map_err(map_store)?;
             String::from_utf8(bytes)
                 .map_err(|e| MmError::Codec(format!("turtle dump is not UTF-8: {e}")))
+        })
+        .await
+        .map_err(|e| MmError::Internal(format!("read task failed: {e}")))?
+    }
+
+    /// Serialize one named graph as RDF/XML.
+    pub async fn dump_rdfxml(&self, graph: &str) -> Result<String, MmError> {
+        let name = named_graph(graph)?;
+        let quads = self.quads(graph).await?;
+        crate::rdfxml::dump_quads_rdfxml(quads.into_iter().map(Ok))
+            .map_err(|e| MmError::Graph(format!("rdf/xml dump of <{}> failed: {e}", name.as_str())))
+    }
+
+    /// Serialize the whole store, graph names included, as N-Quads.
+    ///
+    /// This is the lossless backup: unlike RDF/XML it keeps each quad's graph,
+    /// so importing it into an empty store cannot fold two graphs together.
+    pub async fn dump_nquads(&self) -> Result<String, MmError> {
+        let store = Arc::clone(&self.reader);
+        tokio::task::spawn_blocking(move || {
+            crate::rdfxml::dump_store_nquads(store.iter().map(|quad| quad.map_err(map_store)))
+        })
+        .await
+        .map_err(|e| MmError::Internal(format!("read task failed: {e}")))?
+    }
+
+    /// Every quad of one named graph.
+    pub async fn quads(&self, graph: &str) -> Result<Vec<Quad>, MmError> {
+        let name = named_graph(graph)?;
+        let store = Arc::clone(&self.reader);
+        tokio::task::spawn_blocking(move || {
+            let mut quads = Vec::new();
+            for quad in store.quads_for_pattern(
+                None,
+                None,
+                None,
+                Some(GraphNameRef::NamedNode(name.as_ref())),
+            ) {
+                quads.push(quad.map_err(map_store)?);
+            }
+            Ok(quads)
+        })
+        .await
+        .map_err(|e| MmError::Internal(format!("read task failed: {e}")))?
+    }
+
+    /// Every quad whose subject is `subject` in one named graph.
+    pub async fn quads_for_subject(
+        &self,
+        graph: &str,
+        subject: &str,
+    ) -> Result<Vec<Quad>, MmError> {
+        let name = named_graph(graph)?;
+        let subject = NamedNode::new(subject)
+            .map_err(|e| MmError::Graph(format!("invalid subject {subject:?}: {e}")))?;
+        let store = Arc::clone(&self.reader);
+        tokio::task::spawn_blocking(move || {
+            let mut quads = Vec::new();
+            for quad in store.quads_for_pattern(
+                Some(NamedOrBlankNodeRef::NamedNode(subject.as_ref())),
+                None,
+                None,
+                Some(GraphNameRef::NamedNode(name.as_ref())),
+            ) {
+                quads.push(quad.map_err(map_store)?);
+            }
+            Ok(quads)
         })
         .await
         .map_err(|e| MmError::Internal(format!("read task failed: {e}")))?

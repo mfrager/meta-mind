@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "state"
+version = 1
+text = """
+[STATE]
+{{state_json}}
+[/STATE]
+The state revision is {{revision}}. The current topic is {{topic}} at depth {{depth}}.
+"""

@@ -1,0 +1,14 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.resume.v1"
+version = 1
+description = "Welcome-back frame."
+fragments = ["identity", "contract", "resume", "style"]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "previous_summary",
+  "previous_topics",
+  "last_topic",
+  "tone",
+]

@@ -1,0 +1,16 @@
+schema = "mm.frame.template.v1"
+id = "frame.work"
+version = 1
+kind = "work"
+step = "task"
+strategy = "cm.frame.v1"
+text = "Work the current task. Frame {{frame_kind}} at {{frame_step}}."
+slots = ["frame_kind", "frame_step"]
+[transitions]
+tutorial = "frame.tutorial_offer"
+goodbye = "frame.goodbye"
+[utterance]
+delay_ms = 4500
+jitter = 0.25
+max_attempts = 2
+backoff = 3

@@ -1,0 +1,3 @@
+schema = "mm.prompt.manifest.v1"
+version = 1
+description = "Reviewed CM prompt tree. Plain text only; no includes or expressions."

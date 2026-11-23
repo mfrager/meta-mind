@@ -29,6 +29,7 @@ path = "src/main.rs"
 mm-core = { workspace = true }
 mm-cme = { workspace = true }
 mm-data = { workspace = true }
+mm-prompt = { workspace = true }
 mm-being = { workspace = true }
 mm-log = { workspace = true }
 mm-selfeng = { workspace = true }

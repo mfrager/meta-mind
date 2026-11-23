@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "tools"
+version = 1
+text = """
+Available tools:
+{{tools_summary}}
+Prefer one precise tool call over several speculative ones. Read before writing when a revision matters.
+"""

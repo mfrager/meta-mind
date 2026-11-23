@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "data_guidance"
+version = 1
+text = """
+Data context:
+{{entity_summary}}
+Use data.create/update/query/delete/search for typed entities. Use data.schema/namespace only for catalog management. Never emit raw SPARQL or SQL.
+"""

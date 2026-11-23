@@ -1,0 +1,32 @@
+# Session automation defaults. One supervisor per active session; every timer
+# is generic and every scheduled row remains durable in RDF.
+schema = "mm.automation.v1"
+version = 1
+
+[supervisor]
+enabled = true
+tick_secs = 30
+max_sessions = 32
+grace_ms = 5000
+
+[presence]
+heartbeat_ms = 30000
+present_window_ms = 120000
+away_window_ms = 900000
+idle_expiry_ms = 1800000
+
+[frames]
+enabled = true
+max_depth = 8
+default_delay_ms = 4500
+default_jitter = 0.25
+default_max_attempts = 2
+default_backoff = 3
+goodbye_hold_ms = 3000
+
+[actions]
+enabled = true
+max_scheduled_per_session = 64
+tick_jitter_ms = 1500
+immediate_timeout_ms = 30000
+schedule_timeout_ms = 5000

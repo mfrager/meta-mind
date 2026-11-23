@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::rdf::{MMD_NS, MM_NS};
+use crate::rdf::MM_NS;
 
 /// A named graph alias and the IRI it resolves to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,8 +37,15 @@ impl Default for GraphAliases {
             "selfeng",
             "metacog",
             "code",
+            "world",
+            "users/index",
+            "schema",
+            "plan",
+            "action",
+            "session",
+            "log",
         ] {
-            aliases.insert(name.to_owned(), format!("{MMD_NS}graph/{name}"));
+            aliases.insert(name.to_owned(), store_graph(name));
         }
         aliases.insert(
             "ontology".to_owned(),
@@ -62,7 +69,7 @@ impl GraphAliases {
         self.aliases
             .get(name)
             .cloned()
-            .unwrap_or_else(|| format!("{MMD_NS}graph/{name}"))
+            .unwrap_or_else(|| store_graph(name))
     }
 
     /// Every alias, sorted.
@@ -77,9 +84,21 @@ impl GraphAliases {
     }
 }
 
+/// Resolve a caller-supplied graph: an alias maps to the kernel graph IRI and a
+/// full IRI passes through.
+pub fn resolve_graph(name: &str) -> String {
+    if name.starts_with("http") || name.starts_with("urn:") {
+        name.to_string()
+    } else {
+        store_graph(name)
+    }
+}
+
 /// The graph holding semantic instance data for one store alias.
 pub fn store_graph(alias: &str) -> String {
-    format!("{MMD_NS}graph/{alias}")
+    // The kernel's named-graph namespace is `https://metamind.dev/graph/`, not
+    // the instance namespace. `mm_core::iri::graph` is the one spelling.
+    mm_core::iri::graph(alias)
 }
 
 /// The ontology classes that describe a graph, for documentation and tools.

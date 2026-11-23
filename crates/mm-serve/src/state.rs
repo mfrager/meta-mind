@@ -24,6 +24,7 @@ use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
 
 use crate::chat::ChatCatalog;
+use crate::cm_tools::CmTools;
 use crate::cme::CmeRuntime;
 use crate::controller::{ControllerModel, SELF_DESCRIPTION};
 use crate::docs::FocusCatalog;
@@ -32,6 +33,7 @@ use crate::dto::{
 };
 use crate::error::AppError;
 use crate::feature_flags::FeatureFlags;
+use crate::state_service::StateService;
 use crate::trees::TreeCatalog;
 
 /// Everything the request handlers share.
@@ -80,6 +82,8 @@ pub struct AppState {
     pub features: FeatureFlags,
     /// Conversation-engine sessions and their drivers.
     pub cme: Arc<CmeRuntime>,
+    /// Phase 1/2 conversation state and session operations.
+    pub state_service: Arc<StateService>,
 }
 
 impl AppState {
@@ -172,6 +176,19 @@ impl AppState {
         let rdf_engine = Arc::clone(&data.engine);
         let agentstream = Arc::clone(&data.agentstream);
         let cme = Arc::new(CmeRuntime::new(Arc::clone(&memory_system), features));
+        let prompts = mm_prompt::PromptStore::load(Config::repo_root().join("config/prompts"))
+            .map_err(|error| MmError::Internal(format!("prompt tree failed: {error}")))?;
+        let state_service = Arc::new(
+            StateService::new(
+                Arc::clone(&rdf_engine),
+                Arc::clone(&agentstream),
+                Arc::new(prompts),
+                data.base_dir.clone(),
+            )
+            .map_err(|error| {
+                MmError::Internal(format!("conversation state service failed: {error}"))
+            })?,
+        );
 
         logger
             .emit(
@@ -205,6 +222,7 @@ impl AppState {
             agentstream,
             features,
             cme,
+            state_service,
         })
     }
 
@@ -233,9 +251,11 @@ impl AppState {
             client,
             ConversationRouter::with_table(Arc::new(router), table),
         )
-        .with_tools(Arc::new(crate::cme_tools::ConsoleTools::new(
-            Arc::downgrade(self),
-        )))
+        .with_tools(Arc::new(
+            CmTools::new(Arc::clone(&self.state_service))
+                .with_data(Arc::clone(&self.data.data_service)),
+        ))
+        .with_loop_policy(mm_cme::TurnLoopPolicy::ContinueUntilDone)
     }
 
     /// The `GET /api/health` envelope (plan `09` §1).

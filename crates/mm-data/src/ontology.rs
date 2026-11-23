@@ -21,6 +21,9 @@ pub const ONTOLOGY_FILES: &[&str] = &[
     "ontology/tools.ttl",
     "ontology/selfeng.ttl",
     "ontology/self_model.ttl",
+    "ontology/session.ttl",
+    "ontology/log.ttl",
+    "ontology/data.ttl",
 ];
 
 /// Load every available ontology document and shape file.

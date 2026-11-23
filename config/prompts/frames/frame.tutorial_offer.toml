@@ -1,0 +1,17 @@
+schema = "mm.frame.template.v1"
+id = "frame.tutorial_offer"
+version = 1
+kind = "tutorial_offer"
+step = "offer"
+strategy = "cm.frame.v1"
+text = "Offer a short tutorial without pressuring the user. Frame {{frame_kind}} at {{frame_step}}."
+slots = ["frame_kind", "frame_step"]
+[transitions]
+tutorial = "frame.tutorial"
+work = "frame.work"
+goodbye = "frame.goodbye"
+[utterance]
+delay_ms = 4500
+jitter = 0.2
+max_attempts = 1
+backoff = 3

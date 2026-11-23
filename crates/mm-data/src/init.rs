@@ -20,6 +20,7 @@ use crate::apps::AppRegistry;
 use crate::config::{
     create_directory_structure, load_or_create_config, resolve_base_dir, DataConfig, InitConfig,
 };
+use crate::data::DataService;
 use crate::datasets::DatasetCatalog;
 use crate::engine::RdfEngine;
 use crate::error::Result;
@@ -46,6 +47,9 @@ pub struct InitResult {
     pub datasets: DatasetCatalog,
     /// Tabular store.
     pub sqlite: SqliteStore,
+    /// The managed-data service: RDF instance writes, outbox, schema catalog,
+    /// namespaces, and the lexical index.
+    pub data_service: Arc<DataService>,
     /// Unified memory. Shared with the server and conversation engine.
     pub memory_system: Arc<MemorySystem>,
     /// The configuration actually in force.
@@ -126,6 +130,16 @@ pub async fn initialize_data_layer(init: InitConfig) -> Result<InitResult> {
         &base_dir,
         config.memory.clone(),
     )?);
+    // Phase 3: the single managed-data seam. It bootstraps the schema catalog
+    // and namespaces, opens the Tantivy index, imports a snapshot into an empty
+    // store, and reconciles any pending outbox rows from the previous run.
+    let data_service = Arc::new(
+        DataService::open(Arc::clone(&engine), &sqlite, &base_dir)
+            .await
+            .map_err(|error| {
+                crate::error::DataError::Config(format!("data service failed to open: {error}"))
+            })?,
+    );
     let quads = engine.quad_count().await?;
     let graphs = engine.named_graphs().await?.len();
     for graph in [USER_INDEX_GRAPH, PROJECT_INDEX_GRAPH, APP_INDEX_GRAPH] {
@@ -147,6 +161,7 @@ pub async fn initialize_data_layer(init: InitConfig) -> Result<InitResult> {
         apps,
         datasets,
         sqlite,
+        data_service,
         memory_system,
         config,
         base_dir,

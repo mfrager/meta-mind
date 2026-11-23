@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "frame_guidance"
+version = 1
+text = """
+Frame: {{frame_kind}} · step {{frame_step}} · attempt {{frame_attempt}}
+Goal: {{frame_goal}}
+Speak as one natural step in this frame. Do not expose frame internals or stack mechanics.
+"""

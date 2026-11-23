@@ -41,9 +41,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod actions;
 pub mod agentstream;
 pub mod apps;
 pub mod config;
+pub mod conversation;
+pub mod data;
 pub mod datasets;
 pub mod engine;
 pub mod error;
@@ -52,11 +55,19 @@ pub mod init;
 pub mod memory;
 pub mod migrate;
 pub mod ontology;
+pub mod plan;
 pub mod projects;
 pub mod rdf;
+pub mod session;
+pub mod session_directory;
 pub mod sqlite;
 pub mod users;
 
+pub use actions::{
+    ActionContext, ActionError, ActionOrigin, ActionReceipt, FormField, FormFieldKind, FormSchema,
+    FormValue, FormValues, InternalActionRegistry, InternalActionSpec, OutputChannel, ScheduleSpec,
+    ScheduledActionSpec, ScheduledActionStatus,
+};
 pub use agentstream::{
     AgentstreamEvent, AgentstreamStore, EventProvenance, EventType, SessionFilter, SessionMetadata,
     SessionRecord,
@@ -67,9 +78,26 @@ pub use config::{
     DataConfig, EngineConfig, EpisodicConfig, InitConfig, MemoryConfig, ProjectMemoryConfig,
     SegmentConfig, SyncConfig, UserMemoryConfig, VectorIndexConfig,
 };
+pub use conversation::{
+    reserved_status_type, validate_status_key, ConversationError, ConversationEvent,
+    ConversationEventKind, ConversationState, ConversationStore, RefKind, ReservedStatusType,
+    StateOrigin, StatusRef, StatusValue,
+};
+pub use data::{
+    DataBroker, DataCreateRequest, DataDeleteMode, DataDeleteRequest, DataEntity, DataFilter,
+    DataMutationResult, DataOutbox, DataPatch, DataQuery, DataQueryResult, DataSearchRequest,
+    DataService, DataStatus, DataUpdateMode, DataUpdateRequest, DataValue, EntityStatus,
+    IndexHealth, NamespaceBinding, NamespaceRegistry, SchemaCatalog, SchemaDetail, SchemaInclude,
+    SchemaSpec, SchemaSummary, SearchHit, SearchResult as DataSearchResult, ShaclViolation,
+    ValidationTarget,
+};
 pub use datasets::{DatasetCatalog, DatasetFile, DatasetRecord, DatasetSpec, DatasetVersion};
 pub use engine::RdfEngine;
 pub use error::{DataError, Result};
+pub use memory::contract::{
+    ForgetRequest, ForgetSelector, MemoryContractError, MemoryKind, MemoryRecord, MemoryScope,
+    MemoryScopeCount, MemoryService, MemoryStatus, RecallQuery, RecallResult, RememberRequest,
+};
 pub use memory::{
     ArtifactKind, ArtifactRef, ArtifactStatus, Commitment, CommitmentStatus, CompressedSegment,
     DecisionRecord, DecisionStatus, EntityId, EpisodicStore, EpisodicTurn, GoalProgress,
@@ -78,7 +106,19 @@ pub use memory::{
     SearchResult, SegmentId, SegmentStore, SessionContext, SessionId, Timestamp, Turn, TurnId,
     UiChannel, UiMessage, UserId, UserMemory, UserMemoryStore,
 };
+pub use plan::{
+    Plan, PlanCancellation, PlanControl, PlanControlReceipt, PlanControlRequest, PlanError,
+    PlanRegistry, PlanStatus, PlanStep, PlanStepStatus, PlanStore,
+};
 pub use projects::{ProjectRecord, ProjectRegistry, ProjectSpec};
+pub use session::{
+    ConversationFrame, DeleteMode, FrameKind, FrameStack, FrameStatus, FrameUtterance, Presence,
+    RdfSessionStore, ResumeMetadata, SessionBundle, SessionError,
+    SessionFilter as ConversationSessionFilter, SessionLifecycle, SessionPage, SessionState,
+    SessionStore, SessionSummary, SessionTrace, TraceKind, TracePage, WorkCatalog, WorkItem,
+    WorkKind, WorkStatus,
+};
+pub use session_directory::{SessionDirectoryError, SessionDirectoryService};
 pub use sqlite::SqliteStore;
 pub use users::{UserRecord, UserRegistry, UserSpec};
 
