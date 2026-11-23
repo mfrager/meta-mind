@@ -1,6 +1,7 @@
 "use client";
 
 import { ArtifactView } from "@/agentgui/components/workspace/artifact-view";
+import { StateView } from "@/agentgui/components/workspace/state-view";
 import { Badge } from "@/agentgui/components/ui/badge";
 import { Button } from "@/agentgui/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import { useWorkspaceStore } from "@/agentgui/lib/store/workspace-store";
 import { cn, downloadText, formatRelative } from "@/agentgui/lib/utils";
 import type { ArtifactKind } from "@/agentgui/types/workspace";
 import {
+  ActivityIcon,
   BracesIcon,
   ChartColumnIcon,
   CheckIcon,
@@ -29,12 +31,12 @@ import {
   EyeIcon,
   FileTextIcon,
   FolderTreeIcon,
-  LayersIcon,
   ListChecksIcon,
   LoaderCircleIcon,
   Maximize2Icon,
   Minimize2Icon,
   PanelRightCloseIcon,
+  ScrollTextIcon,
   TableIcon,
   TerminalIcon,
   XIcon,
@@ -52,6 +54,7 @@ const kindMeta: Record<
   terminal: { icon: TerminalIcon, label: "Terminal" },
   plan: { icon: ListChecksIcon, label: "Plan" },
   files: { icon: FolderTreeIcon, label: "Files" },
+  trace: { icon: ScrollTextIcon, label: "Log" },
   preview: { icon: EyeIcon, label: "Preview" },
 };
 
@@ -72,9 +75,9 @@ export function WorkspacePane() {
     (state) => state.setActiveArtifact
   );
   const closeArtifact = useWorkspaceStore((state) => state.closeArtifact);
-  const openArtifact = useWorkspaceStore((state) => state.openArtifact);
   const paneLayout = useWorkspaceStore((state) => state.paneLayout);
   const setPaneLayout = useWorkspaceStore((state) => state.setPaneLayout);
+  const activeSessionId = useWorkspaceStore((state) => state.activeSessionId);
 
   const tabs = openArtifactIds
     .map((id) => artifacts[id])
@@ -84,11 +87,38 @@ export function WorkspacePane() {
   const active = activeArtifactId ? artifacts[activeArtifactId] : undefined;
   const meta = active ? kindMeta[active.kind] : undefined;
   const ActiveIcon = meta?.icon;
+  const showingState = !active;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="pane-header flex h-11 shrink-0 items-stretch gap-1 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1.5">
+          <div
+            className={cn(
+              "relative flex h-full shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[13px] transition-all",
+              showingState
+                ? "border-primary/20 bg-surface shadow-elev-1"
+                : "border-transparent text-muted-foreground hover:bg-surface-muted/70 hover:text-foreground"
+            )}
+            data-tab="state"
+          >
+            <button
+              className="flex min-w-0 items-center gap-1.5 py-1"
+              onClick={() => setActiveArtifact(null)}
+              type="button"
+            >
+              <ActivityIcon
+                className={cn(
+                  "size-3.5 shrink-0",
+                  showingState ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+              <span className="truncate">State</span>
+            </button>
+            {showingState && (
+              <span className="absolute inset-x-2 top-0 h-[1.5px] rounded-full bg-[linear-gradient(90deg,var(--primary),oklch(0.63_0.12_169))]" />
+            )}
+          </div>
           {tabs.map((tab) => {
             const Icon = kindMeta[tab.kind].icon;
             const isActive = tab.id === activeArtifactId;
@@ -144,11 +174,6 @@ export function WorkspacePane() {
             );
           })}
 
-          {tabs.length === 0 && (
-            <span className="px-1 font-mono text-[11.5px] text-muted-foreground">
-              no artifacts open
-            </span>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5 py-1.5">
@@ -289,45 +314,7 @@ export function WorkspacePane() {
           </div>
         </>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto p-6">
-          <div className="surface-raised flex size-12 items-center justify-center rounded-2xl text-muted-foreground">
-            <LayersIcon className="size-5" />
-          </div>
-          <div className="max-w-xs text-center">
-            <p className="text-[13px] font-medium">No artifact open</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-              Artifacts the agent produces — reports, code, tables, traces —
-              open here in tabs.
-            </p>
-          </div>
-
-          <div className="grid w-full max-w-sm gap-1">
-            {Object.values(artifacts)
-              .filter((artifact) => artifact.kind !== "files")
-              .slice(0, 5)
-              .map((artifact) => {
-                const Icon = kindMeta[artifact.kind].icon;
-                return (
-                  <button
-                    className="flex items-center gap-2 rounded-lg border border-border/70 bg-surface px-2.5 py-1.5 text-left transition-colors hover:border-primary/25 hover:bg-surface-muted/60"
-                    key={artifact.id}
-                    onClick={() =>
-                      openArtifact(artifact, { activate: true })
-                    }
-                    type="button"
-                  >
-                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-[12px]">
-                      {artifact.title}
-                    </span>
-                    <span className="font-mono text-[9.5px] text-muted-foreground">
-                      {kindMeta[artifact.kind].label}
-                    </span>
-                  </button>
-                );
-              })}
-          </div>
-        </div>
+        <StateView sessionId={activeSessionId} />
       )}
     </div>
   );

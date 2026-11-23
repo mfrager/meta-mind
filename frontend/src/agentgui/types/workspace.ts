@@ -56,6 +56,7 @@ export type ArtifactKind =
   | "terminal"
   | "plan"
   | "files"
+  | "trace"
   | "preview";
 
 export type ArtifactSyncStatus = "ready" | "generating" | "synced" | "failed";
@@ -68,8 +69,11 @@ export interface Artifact {
   content: string;
   dirty?: boolean;
   status: ArtifactSyncStatus;
-  origin: "agent" | "user" | "file";
+  origin: "agent" | "user" | "file" | "server";
   sessionId?: string;
+  /** Trace artifact: which agentstream log this tab shows. */
+  traceId?: string;
+  agentstreamId?: string;
   updatedAt?: string;
 }
 

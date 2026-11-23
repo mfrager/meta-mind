@@ -761,6 +761,14 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Decisions** — Resolves source contradictions: corrected tool-scope matrix, staged Verify writes, no `mm-metacog` dependency inversion, action-based tool schema compatibility, structured-output boundary
 - **Completeness** — Traceability matrix maps every section of both source documents to a phase and acceptance test; explicit non-goals and open questions with decision points
 
+#### W.4 Three-Pass Chat UI Plan (`three_pass_chat_ui_plan.md`)
+- **Diagnosis** — The chat shell is not wired to the three-pass turn: both flags are off by default, `cme::open` awaits the whole turn before building pass frames, `openChat` buffers the SSE body with `res.text()`, and `eventsForFrame` drops every `pass_*`/`verification` frame while `AgentEvent` has no pass part
+- **Contract** — Additive `ChatFrame` evolution: extend `pass_start`/`pass_token`/`pass_complete`/`verification` with `attempt`/`round`/`channel`, add `pass_round`, `pass_round_end`, `pass_retry`, attribute `tool_call`/`tool_result` with `pass`/`attempt`/`round`; no renames, `wireVersion: 1` stays
+- **Live pipeline** — Opt-in `LlmClient::complete_stream` with non-streaming default, a no-op-by-default `PassObserver` in `mm-cme`, and a `mm-serve` sink that appends each frame to `ChatStore` before streaming it, so `?from=<seq>` replays exactly
+- **One turn, nested phases** — One assistant message per turn; `PassPart` sections for Interpret/Process/Verify (with rounds, streamed prose, tools, checks, retry notes) render above a single final `text` reply from `final_response` only
+- **UI** — `PassBlock` reuses the reasoning/trace visual language: collapsed headline per pass, open while running, per-round LLM-call headers with usage, inline tool cards with input/result, verification chips, retry dividers; final answer never rendered from phase prose
+- **Plan** — P0 contract/observer, P1 incremental SSE + renderer on fixtures, P2 real provider deltas + cancel/usage, P3 retries/verification/fast path/subagent nesting, P4 history reconstruction and rollout; acceptance, Rust/TS/e2e tests, risks, and decisions included
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*

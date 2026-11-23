@@ -66,7 +66,7 @@ interface WorkspaceState {
   openArtifact: (artifact: Artifact, options?: { activate?: boolean }) => void;
   closeArtifact: (id: string) => void;
   closeOtherArtifacts: (id: string) => void;
-  setActiveArtifact: (id: string) => void;
+  setActiveArtifact: (id: string | null) => void;
   updateArtifactContent: (id: string, content: string) => void;
   saveArtifact: (id: string) => void;
   renameArtifact: (id: string, title: string) => void;
@@ -228,7 +228,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           activeArtifactId,
           paneLayout:
-            get().paneLayout === "chat" ? "two" : get().paneLayout,
+            activeArtifactId !== null && get().paneLayout === "chat"
+              ? "two"
+              : get().paneLayout,
         }),
       updateArtifactContent: (id, content) =>
         set((state) => {

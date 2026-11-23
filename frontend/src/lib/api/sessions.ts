@@ -1,5 +1,10 @@
 import { ApiError, fetchJson, withQuery } from "@/lib/api/client.ts";
-import type { SessionPage, SessionTrace, TracePage } from "@/lib/wire/inspector.ts";
+import type {
+  ConversationStateView,
+  SessionPage,
+  SessionTrace,
+  TracePage,
+} from "@/lib/wire/inspector.ts";
 
 export type SessionListParams = {
   cursor?: string | null;
@@ -75,6 +80,12 @@ export async function deleteConsoleSession(
       { method: "DELETE" },
     );
   }
+}
+
+export function fetchConversation(sessionId: string): Promise<ConversationStateView> {
+  return fetchJson<ConversationStateView>(
+    `/api/console/sessions/${encodeURIComponent(sessionId)}/state`,
+  );
 }
 
 export function fetchTraces(

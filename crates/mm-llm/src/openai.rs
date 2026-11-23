@@ -13,6 +13,7 @@
 //! hard-coded fallback would mean a misconfigured kernel silently sends prompts to
 //! somebody else's server; a test scans this crate's sources to prove there is none.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,17 +21,41 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::client::{DecoderKind, LlmClient, LlmRequest, LlmResponse, Usage};
+use crate::client::{DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Usage};
 use crate::config::{LlmConfig, ProviderEnv};
 use crate::error::{LlmError, Result};
 use crate::replay::NetworkGuard;
 use crate::schema::SchemaRegistry;
+
+/// Receives server-sent event payloads from a streaming transport.
+///
+/// A named trait rather than `FnMut` keeps the transport object-safe and avoids
+/// higher-ranked lifetime friction at the call boundary.
+pub trait SseHandler: Send {
+    /// Accept one `data:` payload.
+    fn data(&mut self, data: &str);
+}
 
 /// How a request reaches an endpoint.
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// POST `body` as JSON to `url` and return the parsed response body.
     async fn post_json(&self, url: &str, body: &Value) -> Result<Value>;
+
+    /// POST `body` and report each server-sent event's `data:` payload.
+    ///
+    /// Returns `false` when the transport cannot stream, so the adapter can fall
+    /// back to an ordinary call. A transport that starts a request and then
+    /// discovers the endpoint answered with plain JSON must also return `false`
+    /// rather than half-reporting.
+    async fn post_sse(
+        &self,
+        _url: &str,
+        _body: &Value,
+        _handler: &mut dyn SseHandler,
+    ) -> Result<bool> {
+        Ok(false)
+    }
 }
 
 /// The built-in transport: HTTP/1.1 over TCP, no TLS.
@@ -74,9 +99,10 @@ impl TcpTransport {
     }
 }
 
-#[async_trait]
-impl Transport for TcpTransport {
-    async fn post_json(&self, url: &str, body: &Value) -> Result<Value> {
+impl TcpTransport {
+    /// Open a socket and write one request, returning the connected stream so the
+    /// caller can read the answer incrementally.
+    async fn send(&self, url: &str, body: &Value) -> Result<(tokio::net::TcpStream, String)> {
         let (scheme, host, port, path) = split_url(url)?;
         if scheme != "http" {
             return Err(LlmError::Transport(format!(
@@ -101,6 +127,7 @@ impl Transport for TcpTransport {
         };
         let head = format!(
             "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\n\
+             Accept: text/event-stream\r\n\
              {auth}Content-Length: {}\r\nConnection: close\r\n\r\n",
             payload.len()
         );
@@ -123,13 +150,302 @@ impl Transport for TcpTransport {
         .map_err(|_| LlmError::Timeout(self.timeout_ms))?
         .map_err(|e| LlmError::Transport(format!("cannot write the request: {e}")))?;
 
+        Ok((stream, host))
+    }
+
+    /// Read one socket chunk. The timeout is per read, not per stream, because a
+    /// long completion is allowed to take longer than one request timeout overall.
+    async fn read_chunk(
+        &self,
+        stream: &mut tokio::net::TcpStream,
+        buf: &mut [u8],
+    ) -> Result<usize> {
+        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        tokio::time::timeout(budget, stream.read(buf))
+            .await
+            .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+            .map_err(|e| LlmError::Transport(format!("cannot read the response: {e}")))
+    }
+}
+
+#[async_trait]
+impl Transport for TcpTransport {
+    async fn post_json(&self, url: &str, body: &Value) -> Result<Value> {
+        let (mut stream, host) = self.send(url, body).await?;
         let mut raw = Vec::new();
+        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
         tokio::time::timeout(budget, stream.read_to_end(&mut raw))
             .await
             .map_err(|_| LlmError::Timeout(self.timeout_ms))?
-            .map_err(|e| LlmError::Transport(format!("cannot read the response: {e}")))?;
-
+            .map_err(|e| LlmError::Transport(format!("cannot read a response from {host}: {e}")))?;
         parse_http_response(&raw)
+    }
+
+    async fn post_sse(
+        &self,
+        url: &str,
+        body: &Value,
+        on_data: &mut dyn SseHandler,
+    ) -> Result<bool> {
+        let (mut stream, _) = self.send(url, body).await?;
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8_192];
+
+        // Headers first, so a non-2xx answer is an error rather than an empty
+        // stream that looks like a model with nothing to say.
+        let header_end = loop {
+            if let Some(index) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                break index;
+            }
+            if raw.len() > 64 * 1024 {
+                return Err(LlmError::Transport(
+                    "malformed HTTP response: header block is too large".into(),
+                ));
+            }
+            let n = self.read_chunk(&mut stream, &mut buf).await?;
+            if n == 0 {
+                return Err(LlmError::Transport(
+                    "malformed HTTP response: no header terminator".into(),
+                ));
+            }
+            raw.extend_from_slice(&buf[..n]);
+        };
+        let head = String::from_utf8_lossy(&raw[..header_end]).to_string();
+        let status: u16 = head
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|code| code.parse().ok())
+            .ok_or_else(|| LlmError::Transport("malformed HTTP response: no status line".into()))?;
+        let body_start = header_end + 4;
+        let mut rest: Vec<u8> = raw.split_off(body_start);
+        if !(200..300).contains(&status) {
+            while let Ok(n) = self.read_chunk(&mut stream, &mut buf).await {
+                if n == 0 {
+                    break;
+                }
+                rest.extend_from_slice(&buf[..n]);
+                if rest.len() > 4_096 {
+                    break;
+                }
+            }
+            return Err(LlmError::Transport(format!(
+                "endpoint answered HTTP {status}: {}",
+                String::from_utf8_lossy(&rest)
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
+            )));
+        }
+
+        let chunked = head.to_ascii_lowercase().contains("transfer-encoding: chunked");
+        // A JSON content type means the endpoint ignored `stream`; report that so
+        // the adapter can make one ordinary call instead of parsing nothing.
+        if !chunked && head.to_ascii_lowercase().contains("content-type: application/json") {
+            return Ok(false);
+        }
+        let length = content_length(&head);
+        let mut parser = SseParser::default();
+        let mut delivered = 0usize;
+        let mut chunk_buffer = ChunkedDecoder::default();
+
+        loop {
+            if !rest.is_empty() {
+                let bytes = if chunked {
+                    let bytes = match chunk_buffer.push(&rest) {
+                        Some(bytes) => bytes,
+                        None => return Ok(false),
+                    };
+                    rest.clear();
+                    bytes
+                } else {
+                    let take = length
+                        .map(|length| length.saturating_sub(delivered).min(rest.len()))
+                        .unwrap_or(rest.len());
+                    delivered += take;
+                    rest.drain(..take).collect()
+                };
+                parser.feed(&bytes, on_data);
+                if chunk_buffer.finished
+                    || length.is_some_and(|length| delivered >= length)
+                {
+                    break;
+                }
+            }
+            let n = self.read_chunk(&mut stream, &mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            rest.extend_from_slice(&buf[..n]);
+        }
+        parser.flush(on_data);
+        Ok(true)
+    }
+}
+
+fn content_length(head: &str) -> Option<usize> {
+    head.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.trim()
+            .eq_ignore_ascii_case("content-length")
+            .then(|| value.trim().parse().ok())
+            .flatten()
+    })
+}
+
+/// Incremental decoder for `Transfer-Encoding: chunked` bodies.
+#[derive(Debug, Default)]
+struct ChunkedDecoder {
+    buffer: Vec<u8>,
+    finished: bool,
+}
+
+impl ChunkedDecoder {
+    /// Decode as much of `bytes` as forms complete chunks. `None` means the body
+    /// was not chunked after all (or was malformed); the caller falls back.
+    fn push(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
+        self.buffer.extend_from_slice(bytes);
+        let mut out = Vec::new();
+        loop {
+            if self.finished {
+                break;
+            }
+            let Some(line_end) = self.buffer.windows(2).position(|w| w == b"\r\n") else {
+                break;
+            };
+            let size_text = String::from_utf8_lossy(&self.buffer[..line_end]).to_string();
+            let size_text = size_text.split(';').next().unwrap_or("").trim();
+            let Ok(size) = usize::from_str_radix(size_text, 16) else {
+                return None;
+            };
+            if self.buffer.len() < line_end + 2 + size + 2 {
+                break;
+            }
+            out.extend_from_slice(&self.buffer[line_end + 2..line_end + 2 + size]);
+            self.buffer.drain(..line_end + 2 + size + 2);
+            if size == 0 {
+                self.finished = true;
+                break;
+            }
+        }
+        Some(out)
+    }
+}
+
+/// Incremental `text/event-stream` parser. It only cares about `data:` lines,
+/// which is all an OpenAI-compatible endpoint sends.
+#[derive(Debug, Default)]
+struct SseParser {
+    line_buffer: Vec<u8>,
+    data: String,
+}
+
+impl SseParser {
+    fn feed(&mut self, bytes: &[u8], on_data: &mut dyn SseHandler) {
+        self.line_buffer.extend_from_slice(bytes);
+        while let Some(index) = self.line_buffer.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = self.line_buffer.drain(..=index).collect();
+            let line = String::from_utf8_lossy(&line[..line.len() - 1])
+                .trim_end_matches('\r')
+                .to_string();
+            if line.is_empty() {
+                if !self.data.is_empty() {
+                    let payload = std::mem::take(&mut self.data);
+                    on_data.data(payload.trim_end_matches('\n'));
+                }
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix("data:") {
+                self.data.push_str(rest.strip_prefix(' ').unwrap_or(rest));
+                self.data.push('\n');
+            }
+        }
+    }
+
+    fn flush(&mut self, on_data: &mut dyn SseHandler) {
+        if !self.data.is_empty() {
+            let payload = std::mem::take(&mut self.data);
+            on_data.data(payload.trim_end_matches('\n'));
+        }
+    }
+}
+
+/// Accumulates an OpenAI-compatible stream into a final response while
+/// forwarding each content delta to the caller's sink.
+struct StreamAccumulator<'a> {
+    sink: &'a mut dyn DeltaSink,
+    text: &'a mut String,
+    tool_calls: &'a mut BTreeMap<usize, (String, String, String)>,
+    tokens_in: &'a mut u32,
+    tokens_out: &'a mut u32,
+    answered_model: &'a mut String,
+    failure: &'a mut Option<LlmError>,
+}
+
+impl SseHandler for StreamAccumulator<'_> {
+    fn data(&mut self, data: &str) {
+        if data.trim() == "[DONE]" {
+            return;
+        }
+        let value: Value = match serde_json::from_str(data) {
+            Ok(value) => value,
+            Err(error) => {
+                self.failure.get_or_insert_with(|| {
+                    LlmError::Transport(format!("malformed SSE event: {error}"))
+                });
+                return;
+            }
+        };
+        if let Some(name) = value.get("model").and_then(Value::as_str) {
+            *self.answered_model = name.to_string();
+        }
+        if let Some(usage) = value.get("usage") {
+            *self.tokens_in = usage
+                .get("prompt_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(u64::from(*self.tokens_in)) as u32;
+            *self.tokens_out = usage
+                .get("completion_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(u64::from(*self.tokens_out)) as u32;
+        }
+        let Some(choice) = value.get("choices").and_then(|c| c.get(0)) else {
+            return;
+        };
+        let delta = match choice.get("delta") {
+            Some(delta) => delta,
+            None => match choice.get("message") {
+                Some(message) => message,
+                None => return,
+            },
+        };
+        if let Some(content) = delta.get("content").and_then(Value::as_str) {
+            if !content.is_empty() {
+                self.text.push_str(content);
+                self.sink.delta(content);
+            }
+        }
+        if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array) {
+            for (position, call) in calls.iter().enumerate() {
+                let index = call
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .map(|index| index as usize)
+                    .unwrap_or(position);
+                let entry = self.tool_calls.entry(index).or_default();
+                if let Some(id) = call.get("id").and_then(Value::as_str) {
+                    entry.0 = id.to_string();
+                }
+                if let Some(function) = call.get("function") {
+                    if let Some(name) = function.get("name").and_then(Value::as_str) {
+                        entry.1.push_str(name);
+                    }
+                    if let Some(arguments) = function.get("arguments").and_then(Value::as_str) {
+                        entry.2.push_str(arguments);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -463,6 +779,107 @@ impl LlmClient for OpenAiClient {
         let body = self.request_body(req, &model)?;
         let answer = self.transport.post_json(&self.endpoint(), &body).await?;
         self.parse_response(&answer, &model)
+    }
+
+    async fn complete_stream(
+        &self,
+        req: &LlmRequest,
+        sink: &mut dyn DeltaSink,
+    ) -> Result<LlmResponse> {
+        // Structured output is validated as a whole and never shown while it is
+        // half-written, so it does not stream.
+        if req.schema.is_some() {
+            return self.complete(req).await;
+        }
+        let model = req
+            .model
+            .clone()
+            .or_else(|| self.config.defaults.default_model.clone())
+            .ok_or_else(|| {
+                LlmError::Config("no model was requested and no default_model is configured".into())
+            })?;
+        NetworkGuard::attempt(&self.env.base_url)?;
+        let mut body = self.request_body(req, &model)?;
+        body["stream"] = json!(true);
+        body["stream_options"] = json!({ "include_usage": true });
+
+        let mut text = String::new();
+        let mut tool_calls: BTreeMap<usize, (String, String, String)> = BTreeMap::new();
+        let mut tokens_in = 0u32;
+        let mut tokens_out = 0u32;
+        let mut answered_model = model.clone();
+        let mut failure: Option<LlmError> = None;
+
+        let streamed = {
+            let mut accumulator = StreamAccumulator {
+                sink,
+                text: &mut text,
+                tool_calls: &mut tool_calls,
+                tokens_in: &mut tokens_in,
+                tokens_out: &mut tokens_out,
+                answered_model: &mut answered_model,
+                failure: &mut failure,
+            };
+            self.transport
+                .post_sse(&self.endpoint(), &body, &mut accumulator)
+                .await?
+        };
+
+        if !streamed {
+            let response = self.complete(req).await?;
+            if !response.text.is_empty() {
+                sink.delta(&response.text);
+            }
+            return Ok(response);
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+
+        let calls: Vec<crate::client::ProviderToolCall> = tool_calls
+            .into_values()
+            .filter(|(_, name, _)| !name.is_empty())
+            .map(|(id, name, arguments)| crate::client::ProviderToolCall {
+                id: if id.is_empty() { "call".into() } else { id },
+                name,
+                arguments: if arguments.is_empty() {
+                    "{}".into()
+                } else {
+                    arguments
+                },
+            })
+            .collect();
+        // Some proxies ignore `stream` without changing the content type. One
+        // ordinary call is the honest recovery; it still reports one delta.
+        if text.is_empty() && calls.is_empty() {
+            let response = self.complete(req).await?;
+            if !response.text.is_empty() {
+                sink.delta(&response.text);
+            }
+            return Ok(response);
+        }
+
+        let cost_micros = self
+            .config
+            .model(&answered_model)
+            .or_else(|| self.config.model(&model))
+            .map(|spec| spec.cost_micros(tokens_in, tokens_out))
+            .unwrap_or(0);
+        Ok(LlmResponse {
+            call_id: crate::accounting::new_call_id(),
+            text,
+            model: answered_model,
+            usage: Usage {
+                tokens_in,
+                tokens_out,
+                cost_micros,
+                latency_ms: 0,
+            },
+            cached: false,
+            schema_valid: true,
+            decoder: DecoderKind::ProviderNative,
+            tool_calls: calls,
+        })
     }
 
     fn provider(&self) -> &str {

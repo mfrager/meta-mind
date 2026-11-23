@@ -57,6 +57,30 @@ export function openFileInWorkspace(
   useWorkspaceStore.getState().selectFile(file.id);
 }
 
+export function openTraceInWorkspace(input: {
+  sessionId: string;
+  traceId: string;
+  agentstreamId?: string;
+}): void {
+  const short = input.traceId.length > 12 ? `${input.traceId.slice(0, 8)}…` : input.traceId;
+  const artifact: Artifact = {
+    id: `trace:${input.sessionId}:${input.traceId}`,
+    title: `log ${short}`,
+    kind: "trace",
+    content: "",
+    origin: "server",
+    status: "synced",
+    sessionId: input.sessionId,
+    traceId: input.traceId,
+    agentstreamId: input.agentstreamId,
+    updatedAt: new Date().toISOString(),
+  };
+  const store = useWorkspaceStore.getState();
+  store.openArtifact(artifact, { activate: true });
+  // `openArtifact` does not reveal a hidden pane; activating the tab does.
+  store.setActiveArtifact(artifact.id);
+}
+
 export function openArtifactById(id: string) {
   const { artifacts, openArtifact } = useWorkspaceStore.getState();
   const artifact = artifacts[id];

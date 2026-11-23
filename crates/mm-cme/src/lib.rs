@@ -56,6 +56,7 @@ pub mod hill_climb;
 pub mod improvement;
 pub mod memory;
 pub mod observability;
+pub mod observer;
 pub mod pass_scope;
 pub mod planner;
 pub mod plugins;
@@ -100,6 +101,9 @@ pub use memory::{MemoryBridge, MemoryBridgeConfig, MemoryCycle, SessionResume};
 pub use observability::{
     ChunkSnapshot, Observability, PreferencesView, RegionView, SessionSnapshot, SmObserver,
     SmTransitionEvent, TurnSnapshot, VoiceView,
+};
+pub use observer::{
+    NoopObserver, ObserverDeltaSink, PassObserver, PassSummary, RoundSummary,
 };
 pub use pass_scope::{PassScope, CONTROL_TOOLS, WORK_TOOLS};
 pub use planner::{ResponseModality, ToolPolicy, TurnBudget, TurnContext, TurnPlanner};

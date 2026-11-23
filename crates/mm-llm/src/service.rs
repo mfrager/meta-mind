@@ -29,7 +29,7 @@ use crate::accounting::{
 };
 use crate::cached::{self, CacheKey, CachedResponse, ExactCache, FileExactCache};
 use crate::client::{
-    CacheMode, DecoderKind, LlmClient, LlmRequest, LlmResponse, Role, SchemaId, Usage,
+    CacheMode, DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Role, SchemaId, Usage,
 };
 use crate::config::LlmConfig;
 use crate::error::{LlmError, Result};
@@ -77,6 +77,14 @@ impl std::fmt::Debug for LlmService {
 impl LlmClient for LlmService {
     async fn complete(&self, req: &LlmRequest) -> Result<LlmResponse> {
         self.call(req.clone()).await
+    }
+
+    async fn complete_stream(
+        &self,
+        req: &LlmRequest,
+        sink: &mut dyn DeltaSink,
+    ) -> Result<LlmResponse> {
+        self.call_stream(req.clone(), sink).await
     }
 
     fn provider(&self) -> &str {
@@ -193,6 +201,32 @@ impl LlmService {
         req: LlmRequest,
         routing: RoutingRequest,
     ) -> Result<LlmResponse> {
+        self.call_routed_with(req, routing, &mut None).await
+    }
+
+    /// Make a call whose text is also reported while it is produced.
+    ///
+    /// Routing, caching, accounting, and logging are the same as an ordinary
+    /// call; only the provider invocation differs, and a cache hit is replayed as
+    /// one delta so a stream never has to know where the text came from.
+    pub async fn call_stream(
+        &self,
+        req: LlmRequest,
+        sink: &mut dyn DeltaSink,
+    ) -> Result<LlmResponse> {
+        let routing = RoutingRequest::new(req.purpose);
+        self.call_routed_with(req, routing, &mut Some(sink)).await
+    }
+
+    /// The shared body of [`call_routed`](Self::call_routed) and
+    /// [`call_stream`](Self::call_stream).
+    async fn call_routed_with(
+        &self,
+        req: LlmRequest,
+        routing: RoutingRequest,
+        sink: &mut Option<&mut dyn DeltaSink>,
+    ) -> Result<LlmResponse> {
+        let sink = &mut *sink;
         let provider = self.client.provider().to_string();
         let decoder = self.client.decoder();
         let call_id = accounting::new_call_id();
@@ -282,7 +316,7 @@ impl LlmService {
                         .with_field("layer", "exact"),
                 )
                 .await?;
-                return self
+                let response = self
                     .finish_cached(
                         call_id,
                         &resolved,
@@ -293,7 +327,9 @@ impl LlmService {
                         "exact",
                         &hit,
                     )
-                    .await;
+                    .await?;
+                replay_cached(sink, &response);
+                return Ok(response);
             }
         }
         if matches!(
@@ -313,7 +349,7 @@ impl LlmService {
 
         // ---- semantic cache (opt-in) ---------------------------------------
         if let Some(hit) = self.semantic_lookup(&resolved) {
-            return self
+            let response = self
                 .finish_cached(
                     call_id,
                     &resolved,
@@ -324,11 +360,13 @@ impl LlmService {
                     "semantic",
                     &hit,
                 )
-                .await;
+                .await?;
+            replay_cached(sink, &response);
+            return Ok(response);
         }
 
         // ---- provider ------------------------------------------------------
-        let response = match self.client.complete(&resolved).await {
+        let response = match complete_provider(&self.client, &resolved, sink).await {
             Ok(response) => response,
             Err(e) => {
                 let mut account =
@@ -770,6 +808,32 @@ impl LlmService {
 
 fn elapsed_ms(started: Instant) -> u32 {
     started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32
+}
+
+/// Report a cached answer as one delta, so a streaming caller sees the same
+/// text whether it came from a cache or from a provider.
+fn replay_cached(sink: &mut Option<&mut dyn DeltaSink>, response: &LlmResponse) {
+    if let Some(sink) = sink {
+        if !response.text.is_empty() {
+            sink.delta(&response.text);
+        }
+    }
+}
+
+/// Ask the provider, streaming only when the request is ordinary prose and the
+/// caller supplied a sink. A structured request is validated whole and never
+/// streamed.
+async fn complete_provider(
+    client: &Arc<dyn LlmClient>,
+    request: &LlmRequest,
+    sink: &mut Option<&mut dyn DeltaSink>,
+) -> Result<LlmResponse> {
+    match sink {
+        Some(sink) if request.schema.is_none() => {
+            client.complete_stream(request, &mut **sink).await
+        }
+        _ => client.complete(request).await,
+    }
 }
 
 fn cache_mode_name(mode: CacheMode) -> &'static str {

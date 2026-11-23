@@ -7,6 +7,7 @@ import { FilesView } from "@/agentgui/components/workspace/files-view";
 import { PlanView } from "@/agentgui/components/workspace/plan-view";
 import { PreviewView } from "@/agentgui/components/workspace/preview-view";
 import { TerminalView } from "@/agentgui/components/workspace/terminal-view";
+import { TraceLogView } from "@/agentgui/components/workspace/trace-log-view";
 import type { Artifact } from "@/agentgui/types/workspace";
 
 export function ArtifactView({ artifact }: { artifact: Artifact }) {
@@ -26,6 +27,8 @@ export function ArtifactView({ artifact }: { artifact: Artifact }) {
       return <PlanView artifact={artifact} />;
     case "files":
       return <FilesView artifact={artifact} />;
+    case "trace":
+      return <TraceLogView artifact={artifact} />;
     case "preview":
       return <PreviewView artifact={artifact} />;
     default:

@@ -239,6 +239,16 @@ export type TracePage = {
   hasMore: boolean;
 };
 
+export type ConversationStateView = {
+  sessionId: string;
+  revision: number;
+  topic: string | null;
+  depth: number;
+  status: Record<string, StatusValue>;
+  updatedAt: number;
+  updatedBy: string;
+};
+
 export type FileTreeEntry = {
   name: string;
   kind: "dir" | "trace" | "log" | "file";

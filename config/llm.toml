@@ -20,7 +20,7 @@ timeout_ms = 30000
 max_tokens = 1024
 
 [[model]]
-name = "gemini/gemini-2.5-flash"
+name = "nvidia/nemotron-3.5-lightning-30b-a3b"
 input_cost_micros_per_1k = 150
 output_cost_micros_per_1k = 600
 typical_latency_ms = 400

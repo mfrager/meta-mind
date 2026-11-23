@@ -388,6 +388,28 @@ pub struct LlmResponse {
     pub tool_calls: Vec<ProviderToolCall>,
 }
 
+/// Receives the text of a completion while it is still being produced.
+///
+/// A sink is deliberately the narrowest surface a stream needs: it cannot fail,
+/// cannot reorder, and cannot see anything except the text the model emitted. A
+/// caller that wants the final answer reads it from [`LlmResponse::text`], which
+/// is the concatenation of every delta; the sink is for display only.
+pub trait DeltaSink: Send {
+    /// Accept one fragment of completion text, in order.
+    fn delta(&mut self, delta: &str);
+}
+
+/// Collects deltas into a string. Useful for a caller that wants a streamed call
+/// but only cares about the assembled text.
+#[derive(Debug, Default, Clone)]
+pub struct CollectSink(pub String);
+
+impl DeltaSink for CollectSink {
+    fn delta(&mut self, delta: &str) {
+        self.0.push_str(delta);
+    }
+}
+
 /// A provider adapter.
 ///
 /// A client knows one provider. It does not cache, route, account, or log — those
@@ -397,6 +419,24 @@ pub struct LlmResponse {
 pub trait LlmClient: Send + Sync {
     /// Complete a request.
     async fn complete(&self, req: &LlmRequest) -> Result<LlmResponse>;
+
+    /// Complete a request, reporting text deltas as they arrive.
+    ///
+    /// The default is correct but not live: it performs the ordinary call and
+    /// offers the whole answer as one delta. Adapters that can stream override it;
+    /// callers can therefore depend on the method everywhere without requiring
+    /// every provider to support it.
+    async fn complete_stream(
+        &self,
+        req: &LlmRequest,
+        sink: &mut dyn DeltaSink,
+    ) -> Result<LlmResponse> {
+        let response = self.complete(req).await?;
+        if !response.text.is_empty() {
+            sink.delta(&response.text);
+        }
+        Ok(response)
+    }
 
     /// The provider's name, recorded in the ledger.
     fn provider(&self) -> &str;
