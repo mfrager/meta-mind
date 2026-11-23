@@ -1,558 +1,784 @@
-# Three-Pass Turn Sequence for the Conversation Manager
+# Three-Pass Turn Sequence: Interpret → Process → Verify
 
-> **Status:** proposed design · **Date:** 2026-11-23 · **Scope:** `mm-cme`, `mm-serve`, `mm-data`, `mm-prompt`
+> **Status:** proposed design · **Date:** 2026-11-23 · **Scope:** `mm-cme`, `mm-serve`, `mm-data`, `mm-prompt`, `mm-agent`
 >
-> This document defines a restructuring of the conversation manager's core turn execution from a monolithic loop into three explicit, testable passes. It builds on the architecture in `conversation_manager_agent_inspector_plan.md` (§10.3) and the existing `TurnExecutor` in `mm-cme`.
+> This document defines a three-pass LLM-driven turn architecture where each pass is a separate model call with its own tailored prompt, tool set, and agentstream context. The passes are: **Interpret** (analyze request, plan verification), **Process** (execute with full internal tools + `agent.run`), **Verify** (run checks, update state, approve/retry).
 
 ---
 
-## 1. Motivation
+## 1. Architecture Overview
 
-The current `TurnExecutor::execute()` (≈170 lines) performs all turn work in a single async function:
+### 1.1 Pass Flow
 
-1. Build `TurnPlan` via `TurnPlanner`
-2. Route to a model via `ConversationRouter`
-3. (Optional) speculative pre-warm
-4. Enter the model/tool loop: render prompt → call model → run tools → reload state → re-render → check budget
-5. Pre-final checks (pending work, active agent runs, index health)
-6. Stream final text
-7. Persist prompt instance, turn outcome, state/session/frame/data/plan/action revisions
-8. Emit status events
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        USER TURN (one request → one reply)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PASS 1: INTERPRET                                                            │
+│ ┌─────────────────────────────────────────────────────────────────────────┐ │
+│ │ LLM Call 1: Analyze user request + conversation state                   │ │
+│ │ Tools: metamind.verify() [add checks], metamind.approve(success=true)   │ │
+│ │ Output: VerifyCheck[] + ProcessContext + (optional fast-path reply)     │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+│        │                    │                                                │
+│        │ fast-path         │ normal                                         │
+│        ▼                    ▼                                                │
+│   Return reply         PASS 2: PROCESS                                     │
+│   (turn done)       ┌─────────────────────────────────────────────────┐   │
+│                     │ LLM Call 2: Execute with full internal tools    │   │
+│                     │ Tools: 16 internal + agent.run() [external]     │   │
+│                     │ Output: User-facing reply text + tool emissions │   │
+│                     └─────────────────────────────────────────────────┘   │
+│                                      │                                    │
+│                                      ▼                                    │
+│                          PASS 3: VERIFY                                   │
+│                     ┌─────────────────────────────────────────────────┐   │
+│                     │ For each VerifyCheck: run verification backend  │   │
+│                     │ LLM Call 3a: Update state/memory/db from result │   │
+│                     │ LLM Call 3b: Review → metamind.approve()        │   │
+│                     │ On failure: retry Process (max 5) with error    │   │
+│                     └─────────────────────────────────────────────────┘   │
+│                                      │                                    │
+│                                      ▼                                    │
+│                          Return final reply to user                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-**Problems with the monolithic structure:**
+### 1.2 Key Principles
 
-| Problem | Impact |
-|---------|--------|
-| **No clear phase boundaries** | Hard to test planning vs. execution vs. commit independently; bugs in one phase leak into another |
-| **State reloads implicit** | `refresh_variables()` called mid-loop but not visibly tied to a phase; observers can't distinguish "pre-tool" vs "post-tool" state |
-| **Budget enforcement scattered** | Reservations happen before model calls, settlements after, caps checked in the loop — no single budget accounting point |
-| **Prompt instance lifecycle unclear** | New `PromptInstance` rendered each round but not explicitly versioned per pass; audit trail is implicit |
-| **Error recovery opaque** | A tool failure, budget exhaustion, or prompt failure all exit through `fail()` without a structured phase result |
-| **Observer granularity** | `SmObserver` sees state-machine transitions but not "pass complete" boundaries; inspector cannot show pass-level progress |
-| **Concurrency model fragile** | The entire turn holds the session's outcome mutex; a long model call blocks the session from barge-in or status queries |
-
-**The three-pass design makes each phase:**
-
-- **Explicit** — a named function with a typed input/output
-- **Testable** — each pass can be unit-tested with mocked dependencies
-- **Observable** — each pass emits a `PassEvent` the inspector can display
-- **Recoverable** — a failure in Pass 2 can return a structured `Pass2Result::Paused` that Pass 3 commits honestly
-- **Budget-accountable** — Pass 1 reserves the budget; Pass 2 spends it; Pass 3 settles and reports
+| Principle | Implementation |
+|-----------|----------------|
+| **One agentstream session** | All three passes append to the same session; contexts are carefully constructed per pass |
+| **Clean conversation log** | A separate "clean" log tracks only user messages + final replies for coherent context |
+| **Pass-specific tool sets** | Interpret: `metamind.verify`, `metamind.approve(true)` | Process: 16 internal + `agent.run` | Verify: internal tools + `metamind.approve(false, error)` |
+| **Structured verification** | Abstract `VerificationBackend` trait; LLM-as-judge is first implementation |
+| **Retry with error feedback** | Verify failure → prepend error to Process context → retry (max 5) |
+| **Streaming aggregation** | UI streams all passes concatenated; appears as one message |
+| **Sub-agent thinking** | `metamind.think()` spawns a sub-agent with its own full 3-pass cycle |
 
 ---
 
-## 2. Pass Definitions
+## 2. Agentstream Context Construction
 
-### Pass 1: OBSERVE — Plan & Prepare
+### 2.1 Clean Conversation Log
 
-**Input:** `TurnExecutor`, `Turn` (in `Planning` state), `SessionContext`, optional `VoiceTurnConfig`
+Maintained separately from the full agentstream. Contains only:
+- User messages (original requests)
+- Final assistant replies (from Process pass, or Interpret fast-path)
 
-**Output:** `ObserveResult`
+This log is included in **every pass's context** so each LLM sees a coherent conversation history.
+
+### 2.2 Per-Pass Context Assembly
+
+Each pass receives a `PromptInstance` rendered from a pass-specific strategy with a tailored context:
+
+| Pass | Strategy | Key Context Components |
+|------|----------|------------------------|
+| **Interpret** | `cm.interpret.v1` | Clean log, current `[STATE]`, user request, available verification backends, `metamind.verify` tool schema, `metamind.approve(true)` tool schema |
+| **Process** | `cm.process.v1` | Clean log, current `[STATE]`, user request, **Interpret's output** (VerifyCheck[], ProcessContext), full 17-tool schemas (16 internal + `agent.run`) |
+| **Verify** | `cm.verify.v1` | Clean log, current `[STATE]`, user request, **Process output** (reply text, tool emissions), **Interpret's VerifyCheck[]**, verification results, internal tool schemas, `metamind.approve(false, error)` tool schema |
+
+### 2.3 Context Isolation
+
+- **Interpret** sees: user request + conversation state. Does NOT see Process/Verify internals.
+- **Process** sees: user request + Interpret's plan. Does NOT see verification logic.
+- **Verify** sees: user request + Process output + Interpret's checks + verification results. Does NOT re-plan.
+
+---
+
+## 3. Pass 1: INTERPRET
+
+### 3.1 Purpose
+Analyze the user's request to determine:
+1. Is this pure conversation (fast-path) or an action request?
+2. What verification checks are needed?
+3. What context does the Process pass need?
+
+### 3.2 Tools Available (Only These Two)
+
+| Tool | Schema | Purpose |
+|------|--------|---------|
+| `metamind.verify` | `{ checks: VerifyCheckInput[] }` | Register verification checks for Verify pass |
+| `metamind.approve` | `{ success: true, reply: string }` | Fast-path: pure conversation, return reply immediately |
+
+### 3.3 VerifyCheckInput Schema
 
 ```rust
-pub struct ObserveResult {
-    pub turn_plan: TurnPlan,
-    pub state_view: StateView,
-    pub prompt_instance: PromptInstance,
-    pub model: String,
+#[derive(Serialize, Deserialize)]
+pub struct VerifyCheckInput {
+    /// Unique label for this check
+    pub label: String,
+    /// Optional human-readable description of what is being verified
+    pub description: Option<String>,
+    /// Optional additional details for the verification backend
+    pub details: Option<String>,
+    /// Verification backend to use (currently only "llm_judge")
+    pub backend: String, // "llm_judge" | "jev_decision" | ...
+    /// Backend-specific parameters
+    #[serde(flatten)]
+    pub backend_params: serde_json::Value,
+    /// Confidence threshold to accept (0.0000-1.0000, default 0.5)
+    pub confidence_threshold: Option<f64>,
+}
+```
+
+### 3.4 LLM Judge Backend Params
+
+```json
+{
+  "backend": "llm_judge",
+  "backend_params": {
+    "evaluation_prompt": "string - the prompt template for the judge LLM",
+    "expected_output_schema": "json_schema - structured output schema for judge result"
+  }
+}
+```
+
+### 3.5 Default Verification Check
+
+If Interpret determines an action is requested and adds no explicit checks, a **default LLM judge check** is implicitly added:
+
+```json
+{
+  "label": "default_action_verification",
+  "description": "Verify the Process pass reply correctly fulfills the user's request",
+  "backend": "llm_judge",
+  "backend_params": {
+    "evaluation_prompt": "The user asked: {{user_request}}\n\nThe assistant replied: {{process_reply}}\n\nEvaluate whether the reply correctly and completely fulfills the request. Return pass/fail, reasoning, and confidence (0.0000-1.0000).",
+    "expected_output_schema": {
+      "type": "object",
+      "properties": {
+        "pass": { "type": "boolean" },
+        "reasoning": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["pass", "reasoning", "confidence"]
+    }
+  },
+  "confidence_threshold": 0.5
+}
+```
+
+### 3.6 Interpret Output
+
+```rust
+pub enum InterpretResult {
+    FastPath {
+        reply: String,           // User-facing reply from Interpret
+        prompt_instance_id: String,
+    },
+    Normal {
+        verify_checks: Vec<VerifyCheck>,
+        process_context: ProcessContext,  // Instructions/context for Process pass
+        prompt_instance_id: String,
+    },
+}
+
+pub struct ProcessContext {
+    /// High-level task description for Process pass
+    pub task: String,
+    /// Any specific constraints or requirements
+    pub constraints: Vec<String>,
+    /// Suggested tools to use (subset of 17)
+    pub suggested_tools: Option<Vec<String>>,
+    /// Budget guidance
+    pub budget_hint: BudgetClass,
+}
+```
+
+### 3.7 Prompt Strategy: `cm.interpret.v1`
+
+Key fragments:
+- `identity/character` — Metamind voice
+- `state/ownership` — Read `[STATE]`, understand conversation
+- `tools/interpret_contract` — Only `metamind.verify` and `metamind.approve(true)` available
+- `verification/guide` — How to design good verification checks
+- `fast_path/criteria` — When to use fast-path (pure conversation, no action needed)
+
+---
+
+## 4. Pass 2: PROCESS
+
+### 4.1 Purpose
+Execute the task using all internal tools plus `agent.run` for external work. Generate the **user-facing reply**.
+
+### 4.2 Tools Available (17 Total)
+
+| Family | Tools | Available in Process? |
+|--------|-------|----------------------|
+| Conversation | `conversation.topic`, `conversation.depth`, `conversation.status`, `conversation.frame`, `agent.run` | **YES** (only pass with `agent.run`) |
+| Data | `data.create`, `data.update`, `data.query`, `data.delete`, `data.search`, `data.schema`, `data.namespace` | YES |
+| Metamind | `metamind.plan`, `metamind.think`, `metamind.memory`, `metamind.log`, `metamind.act` | YES |
+| **Verify-only** | `metamind.verify`, `metamind.approve` | **NO** |
+
+### 4.3 Process Loop
+
+The Process pass runs a **model/tool loop** (like current `TurnExecutor`):
+
+1. Render prompt with `cm.process.v1` strategy + Interpret's `ProcessContext`
+2. Call model with 17 tool schemas
+3. While model requests tools:
+   - Execute tool (strict JSON validation)
+   - Append result to transcript
+   - Re-render prompt with updated state
+   - Check budget caps
+4. When model returns final text → **this is the user-facing reply**
+
+### 4.4 Special Tools
+
+| Tool | Behavior |
+|------|----------|
+| `agent.run` | Starts/continues Hermes/Pi sub-agent in user workspace; returns compact summary; max 1 downstream turn per call |
+| `metamind.think` | Spawns a **sub-agent with its own full 3-pass cycle**; useful for deep research, multi-step analysis; returns structured findings |
+| `metamind.verify` | **NOT available** — only in Interpret |
+| `metamind.approve` | **NOT available** — only in Interpret (true) and Verify (false) |
+
+### 4.5 Process Output
+
+```rust
+pub struct ProcessResult {
+    pub reply_text: String,           // Final user-facing text
+    pub tool_emissions: Vec<ToolCallEmission>,
+    pub prompt_instance_ids: Vec<String>,  // One per model round
     pub budget_ledger: BudgetLedger,
-    pub tool_schemas: Vec<ToolSchema>,
 }
 ```
 
-**Steps:**
+### 4.6 Prompt Strategy: `cm.process.v1`
 
-1. **Planning** — Call `TurnPlanner::build_plan()` with the user query and `SessionContext`. Produces `TurnPlan` with modality, detail level, chunks, tool policy, budget class, and metadata.
-2. **StateView assembly** — Load the complete `StateView` from stores:
-   - Conversation state (topic, depth, status variables, revision)
-   - Session state (lifecycle, presence, work catalog, frame stack, expiry)
-   - Current user (canonical IRI, preferences, workspace, relationship)
-   - Active agent runs (summaries, last turn results)
-   - Data health (revision, entity count, index lag, schemas)
-   - Plan registry (active plan header, monitor state)
-   - Action service (scheduled/running/cron counts)
-   - Memory service (counts, last recall, project sync)
-   - Budget ledger snapshot (class, rounds/steps/tokens/wall remaining)
-   - Interjection preferences (delivery policy, quiet hours, rate state)
-3. **Prompt rendering** — `PromptManager` selects `cm.turn.v1` (variant `standard`/`pending`/`resume`/`repair` per planner) and renders a `PromptInstance` with the `StateView` as the `[STATE]` system message.
-4. **Model routing** — `ConversationRouter::choose()` selects the model; record in `TurnPlan`.
-5. **Budget reservation** — `BudgetLedger::reserve_initial()` for the selected budget class (rounds, steps, tokens, wall time).
-6. **Tool schemas** — Collect exactly 17 schemas from the `ToolHandler` (conversation 5 + data 7 + metamind 5).
-7. **Turn state advance** — `turn.plan_ready()` → `turn.route_selected()`.
-
-**Failure modes:**
-
-| Error | Handling |
-|-------|----------|
-| Planner error | `ObserveError::Planning` — turn fails immediately |
-| State store unavailable | `ObserveError::StateUnavailable(reason)` — render `[STATE unavailable: reason]` block, continue |
-| Prompt unavailable | `ObserveError::PromptUnavailable(reason)` — turn fails closed (`PROMPT_UNAVAILABLE`) |
-| No model available | `ObserveError::NoModel` — use deterministic executor path |
-| Budget reservation denied | `ObserveError::BudgetExhausted` — turn fails with `BUDGET` |
-
-**Observability:** Emits `PassEvent::ObserveComplete { turn_id, plan, model, budget_class, prompt_hash }`.
+Key fragments:
+- `identity/character` — Metamind voice
+- `state/ownership` — Maintain `[STATE]` automatically
+- `tools/full_contract` — All 17 tools with exact schemas
+- `tools/selection` — Choose by job family
+- `process/execution` — Continue until task complete; use `agent.run` for external work; use `metamind.think` for deep analysis
+- `budget/contract` — Spend budget wisely
 
 ---
 
-### Pass 2: DELIBERATE — Execute & Iterate
+## 5. Pass 3: VERIFY
 
-**Input:** `ObserveResult`, mutable `Turn` (in `Streaming` state), `TurnExecutor` (with `LlmClient`, `ToolHandler`, `ConfirmationHandler`)
+### 5.1 Purpose
+1. Run all verification checks registered by Interpret
+2. Update conversation state, memory, database from Process output
+3. Review and approve/reject the turn
+4. On rejection: retry Process with error context (max 5 attempts)
 
-**Output:** `DeliberateResult`
+### 5.2 Verification Backend Interface
 
 ```rust
-pub enum DeliberateResult {
-    Completed {
-        final_text: String,
-        tool_calls: Vec<ToolCallEmission>,
-        prompt_instances: Vec<PromptInstance>, // one per round
-        budget_ledger: BudgetLedger,
-    },
-    Paused {
-        reason: PauseReason,
-        partial_text: String,
-        tool_calls: Vec<ToolCallEmission>,
-        prompt_instances: Vec<PromptInstance>,
-        budget_ledger: BudgetLedger,
-    },
-    Failed(String),
+#[async_trait]
+pub trait VerificationBackend: Send + Sync {
+    /// Unique backend identifier (e.g., "llm_judge", "jev_decision")
+    fn id(&self) -> &'static str;
+
+    /// Run a single verification check
+    async fn verify(
+        &self,
+        check: &VerifyCheck,
+        process_output: &ProcessResult,
+        context: &VerifyContext,
+    ) -> Result<VerificationResult>;
+
+    /// Validate check configuration at registration time
+    fn validate_config(&self, params: &serde_json::Value) -> Result<()>;
 }
 
-pub enum PauseReason {
-    BudgetExhausted,
-    MaxToolRoundsReached,
-    MaxToolStepsReached,
-    AgentRunStillActive,
-    BlockingPendingWork,
-    IndexPending,
+pub struct VerifyCheck {
+    pub label: String,
+    pub description: Option<String>,
+    pub details: Option<String>,
+    pub backend: String,
+    pub backend_params: serde_json::Value,
+    pub confidence_threshold: f64,  // Default 0.5
+}
+
+pub struct VerificationResult {
+    pub check_label: String,
+    pub pass: bool,
+    pub reasoning: String,
+    pub confidence: f64,  // 0.0000-1.0000, clamped to 1.0 if > 1
+    pub backend: String,
+}
+
+pub struct VerifyContext {
+    pub clean_log: Vec<ConversationTurn>,  // User + final replies only
+    pub current_state: StateView,
+    pub user_request: String,
+    pub interpret_checks: Vec<VerifyCheck>,
 }
 ```
 
-**Steps:**
+### 5.3 LLM Judge Backend Implementation
 
-1. **Enter streaming** — `turn.dispatch(TurnEvent::LlmStreamStart)` → `turn.spawn_chunks()`.
-2. **Loop** (while budget allows):
-   a. **Reserve round** — `budget_ledger.reserve_round()`.
-   b. **Refresh variables** — `refresh_variables()` reloads `StateView` from stores (critical for tool-side writes).
-   c. **Re-render prompt** — `PromptManager::render()` with refreshed variables → new `PromptInstance`.
-   d. **Update turn prompt** — `turn.set_prompt()` with new instance.
-   e. **Call model** — `LlmClient::complete()` with messages + 17 tool schemas.
-   f. **Settle tokens** — `budget_ledger.settle_tokens(provider_usage)`.
-   g. **If no tool calls** — break with `final_text = response.text`.
-   h. **If tool calls** — `run_tool_calls()`:
-      - Validate strict JSON; unknown fields → `INVALID_ARGUMENTS`
-      - For each call: `confirm()` if `ToolPolicy::Confirm`, then `tool_handler.call_for_session()`
-      - Append `ToolCallEmission` to turn; build `Message::tool()` results
-      - `budget_ledger.reserve_steps()` per call
-      - Check per-family quotas (data, metamind, agent)
-   i. **Append to transcript** — typed envelope for each tool result.
-   j. **Check caps** — `MAX_TOOL_ROUNDS` (32), `MAX_TOOL_STEPS` (32), budget rounds/steps/tokens/wall.
-3. **Post-loop pre-commit checks** (honesty rules):
-   - If an `agent.run` started this turn is still running → `PauseReason::AgentRunStillActive`
-   - If blocking `pending` work remains and no tool was called this round → force one extra round (max 2)
-   - If a data write returned `indexPending` → `PauseReason::IndexPending`
-4. **Return result** — `Completed` if loop exited naturally; `Paused` with reason if checks triggered.
-
-**Failure modes:**
-
-| Error | Handling |
-|-------|----------|
-| Model call error | `DeliberateResult::Failed(detail)` |
-| Tool validation error | Record `INVALID_ARGUMENTS` emission, continue loop |
-| Tool execution error | Record failed emission with error text, continue loop |
-| Confirmation denied | Record denied emission, continue loop |
-| Budget cap hit | Return `Paused { reason: BudgetExhausted }` |
-| Prompt render error | Return `Failed("PROMPT_UNAVAILABLE: ...")` |
-
-**Observability:** Emits `PassEvent::DeliberateRound { turn_id, round, model, tokens_used, tool_calls_count, budget_remaining }` per round; `PassEvent::DeliberateComplete { turn_id, outcome: Completed|Paused, rounds, total_tokens }` on exit.
-
----
-
-### Pass 3: COMMIT — Finalize & Persist
-
-**Input:** `DeliberateResult`, mutable `Turn`, `SessionContext`, `AppState` (for persistence services)
-
-**Output:** `CommitResult` (the final `TurnOutcome` returned to the caller)
+First (and initially only) backend: `LlmJudgeBackend`
 
 ```rust
-pub struct CommitResult {
-    pub outcome: TurnOutcome,
-    pub persisted_revisions: PersistedRevisions,
+pub struct LlmJudgeBackend {
+    client: Arc<dyn LlmClient>,
+    prompt_store: Arc<PromptStore>,
 }
 
-pub struct PersistedRevisions {
-    pub conversation_state_rev: u64,
-    pub session_rev: u64,
-    pub frame_rev: u64,
-    pub data_revision: Option<u64>,
-    pub plan_revision: Option<u64>,
-    pub action_revision: Option<u64>,
-    pub prompt_instance_ids: Vec<String>,
-}
-```
+#[async_trait]
+impl VerificationBackend for LlmJudgeBackend {
+    fn id(&self) -> &'static str { "llm_judge" }
 
-**Steps:**
+    async fn verify(&self, check, process_output, context) -> Result<VerificationResult> {
+        // 1. Build judge prompt from check.backend_params.evaluation_prompt
+        //    Template variables: {{user_request}}, {{process_reply}}, {{check_details}}, {{state_summary}}
+        // 2. Call model with structured output schema from check.backend_params.expected_output_schema
+        // 3. Parse result → VerificationResult
+        // 4. Clamp confidence: if > 1.0 → 1.0
+        // 5. Compare confidence against check.confidence_threshold
+    }
 
-1. **Final text handling**
-   - If `DeliberateResult::Completed { final_text }` → stream via `stream_text()` + `flush_structured()` + `flush_audio()`.
-   - If `DeliberateResult::Paused { partial_text, reason }` → stream `partial_text` + honest pause notice (e.g., *"I've used my budget for this turn. Remaining: [pending items]. Shall I continue?"*).
-   - If `DeliberateResult::Failed(detail)` → stream error notice.
-2. **Finalize turn state machine** — `turn.finalize()` (dispatches `AllChunksDone` → `Finalized` → `Completed`).
-3. **Persist all revisions** (transactional where possible):
-   - Conversation state (topic, depth, status, `pending` projection) → `ConversationStore::save()` with expected revision
-   - Session (lifecycle, presence, work catalog, frame stack) → `SessionStore::save()`
-   - Frame stack → `FrameEngine::persist()`
-   - Data writes already committed in Pass 2; record `data_revision`
-   - Plan versions → `PlanStore::save()`
-   - Action records → `ActionStore::save()`
-   - Prompt instances → `PromptInstanceAudit::write()` (redacted, 0600)
-   - Agentstream events for the turn (already logged during Pass 2; ensure completion)
-4. **Emit status events** — `StatusService::mark_dirty()` for all affected sections; SSE broadcasts `ConversationStatusView` revision.
-5. **Budget settlement** — Final `BudgetLedger` snapshot attached to `TurnOutcome`.
-6. **Return `TurnOutcome`** — includes all chunks, tool calls, prompt instance IDs, model, budget snapshot.
-
-**Failure modes:**
-
-| Error | Handling |
-|-------|----------|
-| Persistence conflict (revision mismatch) | Retry once with fresh read; on second failure, `TurnOutcome::Failed` with `CONCURRENCY_CONFLICT` |
-| Prompt audit write error | Log warning, continue (audit is best-effort) |
-| Status broadcast error | Log warning, continue (SSE is best-effort) |
-
-**Observability:** Emits `PassEvent::CommitComplete { turn_id, outcome_state, revisions, prompt_instances_count }`.
-
----
-
-## 3. TurnExecutor Restructuring
-
-### 3.1 New Public API
-
-```rust
-impl TurnExecutor {
-    /// Execute Pass 1: OBSERVE
-    pub async fn pass1_observe(
-        &mut self,
-        turn: &mut Turn,
-        session: &SessionContext,
-        voice: Option<VoiceTurnConfig>,
-    ) -> Result<ObserveResult>;
-
-    /// Execute Pass 2: DELIBERATE
-    pub async fn pass2_deliberate(
-        &mut self,
-        observe: ObserveResult,
-        turn: &mut Turn,
-    ) -> Result<DeliberateResult>;
-
-    /// Execute Pass 3: COMMIT
-    pub async fn pass3_commit(
-        &mut self,
-        deliberate: DeliberateResult,
-        turn: &mut Turn,
-        session: &SessionContext,
-        state: &Arc<AppState>, // for persistence services
-    ) -> Result<CommitResult>;
-
-    /// Convenience: run all three passes in sequence (preserves existing execute() behavior)
-    pub async fn execute(
-        &mut self,
-        turn: &mut Turn,
-        session: &SessionContext,
-        voice: Option<VoiceTurnConfig>,
-        state: &Arc<AppState>,
-    ) -> Result<TurnOutcome> {
-        let observe = self.pass1_observe(turn, session, voice).await?;
-        let deliberate = self.pass2_deliberate(observe, turn).await?;
-        let commit = self.pass3_commit(deliberate, turn, session, state).await?;
-        Ok(commit.outcome)
+    fn validate_config(&self, params) -> Result<()> {
+        // Require evaluation_prompt and expected_output_schema
     }
 }
 ```
 
-### 3.2 Internal Method Changes
-
-| Current Method | New Location | Notes |
-|----------------|--------------|-------|
-| `planner.build_plan()` | `pass1_observe` | Unchanged |
-| `router.choose()` | `pass1_observe` | Unchanged |
-| `refresh_variables()` | `pass2_deliberate` (loop top) | Called every round |
-| `render_prompt()` | `pass1_observe` (initial) + `pass2_deliberate` (each round) | Now returns `PromptInstance` explicitly |
-| `llm_request()` / `client.complete()` | `pass2_deliberate` | Unchanged |
-| `run_tool_calls()` | `pass2_deliberate` | Unchanged |
-| `stream_text()` / `flush_structured()` / `flush_audio()` | `pass3_commit` | Unchanged |
-| `turn.finalize()` | `pass3_commit` | Unchanged |
-| Persistence (agentstream, state, session, etc.) | `pass3_commit` | Moved from `CmeRuntime::run_turn` / `log_turn_frames` |
-
-### 3.3 State Machine Integration
-
-The turn state machine (`turn_machine()`) already has the right states. The passes map to state transitions:
-
-| Pass | Entry State | Exit State | Key Transitions |
-|------|-------------|------------|-----------------|
-| OBSERVE | `Planning` | `Streaming` | `PlanReady` → `RouteSelected` → (optional `SpeculativeWarm`) → `LlmStreamStart` → `spawn_chunks()` |
-| DELIBERATE | `Streaming` | `Streaming` / `Finalizing` | Loop: `ToolCall` ↔ `ToolResult` → `AllChunksDone` |
-| COMMIT | `Finalizing` | `Completed` | `Finalized` |
-
-**No state machine changes required.** The passes are an execution-layer decomposition; the SM remains the source of truth for legality.
-
----
-
-## 4. Budget Accounting per Pass
-
-| Pass | Budget Action |
-|------|---------------|
-| OBSERVE | `reserve_initial(class)` — reserves rounds, steps, tokens, wall time for the whole turn |
-| DELIBERATE | `reserve_round()` before each model call; `settle_tokens(usage)` after; `reserve_steps(n)` per tool call; check caps |
-| COMMIT | `snapshot()` — attach final ledger to `TurnOutcome`; no new reservations |
-
-**Key invariant:** Pass 1 reserves the *entire* turn budget up front. Pass 2 spends against it. Pass 3 only reports. This prevents mid-turn budget top-ups and makes "budget exhausted" a single, well-defined transition.
-
----
-
-## 5. Prompt Instance Versioning
-
-Each pass produces prompt instances that are explicitly tracked:
-
-| Pass | Instances Produced | Variant |
-|------|-------------------|---------|
-| OBSERVE | 1 (initial) | `standard` / `pending` / `resume` / `repair` |
-| DELIBERATE | 1 per model round | Same as initial (re-rendered with refreshed state) |
-| COMMIT | 0 | — |
-
-All instances are collected in `DeliberateResult.prompt_instances` and persisted in `CommitResult.persisted_revisions.prompt_instance_ids`. The agentstream `PromptBuilt` event is emitted for each.
-
----
-
-## 6. Error Handling & Recovery
-
-### 6.1 Structured Error Types
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum Pass1Error {
-    #[error("planning failed: {0}")]
-    Planning(String),
-    #[error("state unavailable: {0}")]
-    StateUnavailable(String),
-    #[error("prompt unavailable: {0}")]
-    PromptUnavailable(String),
-    #[error("no model available")]
-    NoModel,
-    #[error("budget exhausted: {0}")]
-    BudgetExhausted(String),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Pass2Error {
-    #[error("model call failed: {0}")]
-    ModelCall(String),
-    #[error("prompt unavailable: {0}")]
-    PromptUnavailable(String),
-    #[error("budget cap: {0}")]
-    BudgetCap(String),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Pass3Error {
-    #[error("persistence conflict: {0}")]
-    ConcurrencyConflict(String),
-    #[error("prompt audit write failed: {0}")]
-    AuditWrite(String),
+**Structured Output Schema (required):**
+```json
+{
+  "type": "object",
+  "properties": {
+    "pass": { "type": "boolean" },
+    "reasoning": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "required": ["pass", "reasoning", "confidence"]
 }
 ```
 
-### 6.2 Recovery Strategies
+### 5.4 Verify Pass Steps
 
-| Failure Point | Recovery |
-|---------------|----------|
-| Pass 1 (Observe) | Turn fails immediately; `TurnOutcome::Failed` with error; no model called |
-| Pass 2 (Deliberate) model error | Return `DeliberateResult::Failed`; Pass 3 streams error, persists nothing |
-| Pass 2 (Deliberate) budget cap | Return `DeliberateResult::Paused { reason: BudgetExhausted }`; Pass 3 commits honest pause |
-| Pass 2 (Deliberate) tool error | Record emission, continue loop (per-tool failure ≠ turn failure) |
-| Pass 3 (Commit) persistence conflict | Retry once with fresh read; on second failure, `TurnOutcome::Failed` with `CONCURRENCY_CONFLICT` |
-| Pass 3 (Commit) audit/SSE error | Log warning, continue (best-effort) |
+```
+VERIFY PASS:
+1. Run verification checks (parallel where possible)
+   For each check in InterpretResult.verify_checks:
+     - Look up backend by check.backend
+     - Call backend.verify(check, process_result, verify_context)
+     - Collect VerificationResult
+
+2. LLM Call: State Update & Review
+   - Prompt: cm.verify.v1
+   - Context: clean_log + [STATE] + user_request + process_result + verification_results
+   - Tools: All 16 internal tools (NO agent.run, NO metamind.verify)
+            PLUS metamind.approve(success=false, error=...)
+   - LLM reviews Process output + verification results
+   - LLM calls internal tools to update:
+       * Conversation state (topic, depth, status)
+       * Memory (metamind.memory remember/forget)
+       * Database (data.* if new facts learned)
+       * Plans/actions (metamind.plan/act if relevant)
+   - LLM then calls ONE of:
+       * metamind.approve(success=true) → turn complete
+       * metamind.approve(success=false, error="...") → retry
+
+3. On metamind.approve(success=false, error):
+   - If retry_count < MAX_RETRIES (default 5):
+       * Prepend error to ProcessContext: "Previous attempt failed: {error}. Please fix."
+       * Re-run Process pass (Pass 2) with augmented context
+       * Re-run Verify pass (Pass 3)
+   - Else:
+       * Return error to user: "I couldn't complete this after several attempts: {error}"
+       * Log failure
+```
+
+### 5.5 Verify Tools
+
+| Tool | Schema | Purpose |
+|------|--------|---------|
+| `metamind.approve` | `{ success: boolean, error?: string }` | Only tool that can end the turn. `success=true` → done. `success=false` → retry Process with error. |
+
+**Note:** `metamind.approve(success=true)` is **also** available in Interpret for fast-path. In Verify, only `success=false` triggers retry.
+
+### 5.6 Prompt Strategy: `cm.verify.v1`
+
+Key fragments:
+- `identity/character` — Metamind voice
+- `state/ownership` — Update `[STATE]` from Process output
+- `verification/review` — How to interpret verification results
+- `tools/verify_contract` — 16 internal tools + `metamind.approve(false, error)`
+- `verification/state_update` — Update memory, db, plans from Process output
+- `retry/guidance` — When to retry vs. give up; how to write helpful error messages
 
 ---
 
-## 7. Observability & Inspector Integration
+## 6. Fast-Path (Pure Conversation)
 
-### 7.1 Pass Events
+### 6.1 Trigger
+Interpret determines the user's message is **purely conversational** — no action, no fact-seeking, no task. Examples:
+- Greetings, pleasantries
+- "How are you?"
+- "Thanks"
+- Casual chat
+
+### 6.2 Fast-Path Flow
+
+```
+Interpret LLM call:
+  - Sees user message + clean log + [STATE]
+  - Determines: "This is pure conversation"
+  - Calls: metamind.approve(success=true, reply="Hey! I'm doing great...")
+  - Returns InterpretResult::FastPath { reply, prompt_instance_id }
+
+Turn complete. No Process pass. No Verify pass.
+```
+
+### 6.3 Fast-Path Criteria (in `cm.interpret.v1` fragment)
+
+> Use `metamind.approve(success=true)` **only** when:
+> - The user is greeting, thanking, saying goodbye, or chatting casually
+> - No tool use is needed (no data lookup, no memory recall, no planning, no external work)
+> - No verification is needed (nothing to verify)
+> - The reply can be generated directly from conversation context
+>
+> Do NOT fast-path if:
+> - User asks a question requiring data search / memory recall
+> - User requests an action (create, update, plan, delegate)
+> - User asks for analysis or reasoning
+> - Any fact could be wrong and needs verification
+
+---
+
+## 7. Sub-Agent Thinking: `metamind.think()`
+
+### 7.1 Purpose
+Enable deep, multi-step reasoning that doesn't clutter the main conversation. The sub-agent runs its **own full 3-pass cycle**.
+
+### 7.2 Interface
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PassEvent {
-    ObserveComplete {
-        turn_id: TurnId,
-        plan: TurnPlan,
-        model: String,
-        budget_class: BudgetClass,
-        prompt_hash: String,
-    },
-    DeliberateRound {
-        turn_id: TurnId,
-        round: usize,
-        model: String,
-        tokens_used: u32,
-        tool_calls_count: usize,
-        budget_remaining: BudgetSnapshot,
-    },
-    DeliberateComplete {
-        turn_id: TurnId,
-        outcome: DeliberateOutcome, // Completed | Paused(PauseReason) | Failed
-        rounds: usize,
-        total_tokens: u32,
-    },
-    CommitComplete {
-        turn_id: TurnId,
-        outcome_state: String, // "completed" | "paused" | "failed"
-        revisions: PersistedRevisions,
-        prompt_instances_count: usize,
-    },
+// Tool available in Process pass only
+pub struct ThinkInput {
+    pub question: String,
+    pub focus_entities: Option<Vec<String>>,  // Optional: entities to focus on
+    pub budget_class: Option<BudgetClass>,    // Default: "think" (4 rounds, 8 steps, 8k tokens)
+}
+
+pub struct ThinkOutput {
+    pub findings: String,        // Structured findings for main agent
+    pub evidence: Vec<String>,   // Citations/evidence
+    pub confidence: f64,         // 0.0000-1.0000
+    pub agentstream_session_id: String,  // Separate session for traceability
 }
 ```
 
-### 7.2 Inspector Status View Extensions
+### 7.3 Execution
 
-Add to `ConversationView` (§11.1 of main plan):
+1. Process LLM calls `metamind.think(question, ...)`
+2. System spawns a **sub-agent** (via `mm-agent`) with:
+   - Its own agentstream session (`think/<parent_turn_id>/<ulid>`)
+   - Read-only access to data tools (`data.query`, `data.search`, `data.schema`)
+   - Access to `agent.run` for web search via Hermes
+   - **Full 3-pass cycle**: Interpret → Process → Verify
+3. Sub-agent returns `ThinkOutput`
+4. Main Process LLM receives findings as tool result
+5. Main Process continues
 
-```rust
-pub struct ConversationView {
-    // ... existing fields ...
-    pub pass: Option<PassView>, // current/last pass
-}
+### 7.4 Use Cases
+- "Research the latest Rust async patterns" → sub-agent searches web via Hermes, synthesizes
+- "Analyze why the auth test is flaky" → sub-agent reads logs, code, memory, reasons deeply
+- "Compare these three design options" → sub-agent gathers data, structures comparison
 
-pub struct PassView {
-    pub name: String,           // "observe" | "deliberate" | "commit"
-    pub started_at: i64,
-    pub completed_at: Option<i64>,
-    pub rounds: Option<usize>,  // for deliberate
-    pub pause_reason: Option<String>,
-}
+---
+
+## 8. Budget Management
+
+Each pass has its own budget class. Sub-agents (`metamind.think`, `agent.run`) have independent budgets.
+
+| Pass | Default Budget Class | Rounds | Steps | Tokens | Wall Time |
+|------|---------------------|--------|-------|--------|-----------|
+| Interpret | `quick` | 8 | 24 | 32k | 120s |
+| Process | `standard` | 32 | 96 | 120k | 600s |
+| Verify | `quick` | 8 | 16 | 16k | 90s |
+| `metamind.think` sub-agent | `think` | 4 | 8 | 8k | 90s |
+| `agent.run` downstream turn | `summarize` | 1 | 1 | 8k | 30s |
+
+**Budget inheritance:** Parent Process budget reserves child budget upfront. Child cannot exceed parent's remaining budget.
+
+---
+
+## 9. Retry Logic
+
+### 9.1 Verify → Process Retry
+
+```
+Max retries: 5 (configurable via `MM_VERIFY_MAX_RETRIES`)
+
+On metamind.approve(success=false, error):
+  retry_count++
+  if retry_count <= max_retries:
+    augment ProcessContext:
+      "Previous attempt failed verification: {error}
+       Verification results: {verification_results}
+       Please address the issues and try again."
+    Re-run Process pass (new LLM call, new prompt instance)
+    Re-run Verify pass
+  else:
+    Return failure to user
 ```
 
-The SSE stream emits a `PassEvent` on each pass boundary; the inspector shows a pass timeline.
+### 9.2 Error Context Construction
+
+The error passed to retry includes:
+- The `error` string from `metamind.approve(success=false, error=...)`
+- All `VerificationResult` objects (pass/fail, reasoning, confidence)
+- Which checks failed and their thresholds
+
+This gives the Process LLM concrete feedback to fix.
 
 ---
 
-## 8. Testing Strategy
+## 10. UI Streaming & Aggregation
 
-### 8.1 Unit Tests per Pass
+### 10.1 Streaming Model
 
-| Pass | Test Cases |
-|------|------------|
-| OBSERVE | • Planner produces correct plan for each modality<br>• StateView assembles all projections<br>• PromptInstance hash stable for same inputs<br>• Model routing respects cost budget<br>• Budget reservation matches class table<br>• Prompt unavailable → fail closed |
-| DELIBERATE | • Single round, no tools → Completed<br>• Multiple tool rounds → Continues until model answers<br>• Tool validation error → INVALID_ARGUMENTS emission, loop continues<br>• Tool execution error → failed emission, loop continues<br>• Confirmation denied → denied emission, loop continues<br>• Budget round cap → Paused(BudgetExhausted)<br>• Budget step cap → Paused(BudgetExhausted)<br>• Budget token cap → Paused(BudgetExhausted)<br>• Budget wall cap → Paused(BudgetExhausted)<br>• Agent run still active → Paused(AgentRunStillActive)<br>• Blocking pending work, no tool called → extra round (max 2)<br>• Index pending → Paused(IndexPending)<br>• Prompt render error → Failed |
-| COMMIT | • Completed → streams text, persists all revisions, emits status<br>• Paused → streams partial + notice, persists revisions, emits status<br>• Failed → streams error, persists nothing<br>• Revision conflict → retry once, then Failed(CONCURRENCY_CONFLICT)<br>• Prompt audit write error → logs warning, continues |
+Each pass streams its text output to the UI via SSE:
 
-### 8.2 Integration Tests
+```
+Event: pass_start    { pass: "interpret", turn_id: "..." }
+Event: token         { pass: "interpret", token: "I" }
+Event: token         { pass: "interpret", token: " understand" }
+...
+Event: pass_complete { pass: "interpret", result: "fast_path" | "normal" }
 
-- **Full three-pass flow** with deterministic executor (no model) — verifies pass boundaries, state transitions, persistence.
-- **Full three-pass flow** with stub model that returns tool calls — verifies loop, budget, tool execution, prompt re-rendering.
-- **Barge-in during Pass 2** — verifies `Turn::barge_in()` interrupts loop, Pass 3 commits interrupted state.
-- **Concurrent turns on same session** — verifies outcome mutex serializes, revision conflicts handled.
+Event: pass_start    { pass: "process", turn_id: "..." }
+Event: token         { pass: "process", token: "Here's" }
+Event: token         { pass: "process", token: " what" }
+...
+Event: tool_call     { pass: "process", tool: "data.search", ... }
+Event: tool_result   { pass: "process", tool: "data.search", ... }
+Event: pass_complete { pass: "process", ... }
 
-### 8.3 Property Tests
+Event: pass_start    { pass: "verify", turn_id: "..." }
+Event: token         { pass: "verify", token: "Updating" }
+...
+Event: pass_complete { pass: "verify", approved: true, retries: 0 }
+```
 
-- **Prompt instance hash determinism** — same inputs → same hash across passes.
-- **Budget monotonicity** — rounds/steps/tokens/wall only decrease across Pass 2 rounds.
-- **State revision monotonicity** — conversation/session/frame revisions only increase across Pass 3 commits.
+### 10.2 UI Aggregation
 
----
+The frontend **concatenates all pass outputs** into a single message bubble:
 
-## 9. Migration Plan
+- Show "Interpret: ..." prefix (collapsible) for debug/transparency
+- Show "Process: ..." as main reply
+- Show "Verify: ✓ approved" or "Verify: ↻ retry 1/5" indicator
+- On retry: append "Retry 1: ..." to same bubble (or show as threaded)
 
-This is a **refactoring** of `TurnExecutor::execute()` — no external contract changes. The existing `execute()` method becomes a thin wrapper calling the three passes in sequence.
-
-### 9.1 Phase 1: Extract Pass Methods (no behavior change)
-
-1. Extract `pass1_observe()` from lines 267–312 of `executor.rs` (planning through `LlmStreamStart` + `spawn_chunks`).
-2. Extract `pass2_deliberate()` from lines 314–415 (the model/tool loop).
-3. Extract `pass3_commit()` from lines 417–432 (streaming, finalize, return outcome).
-4. Make `execute()` call the three passes sequentially.
-5. All existing tests pass.
-
-### 9.2 Phase 2: Add Structured Results & Error Types
-
-1. Define `ObserveResult`, `DeliberateResult`, `CommitResult`, `PassEvent`.
-2. Update pass signatures to return structured results.
-3. Emit `PassEvent` at each boundary (via observer).
-4. Add unit tests for each pass (see §8.1).
-
-### 9.3 Phase 3: Persistence & Status Integration
-
-1. Move persistence logic from `CmeRuntime::log_turn_frames()` and `StateService` into `pass3_commit()`.
-2. Ensure `ConversationStore`, `SessionStore`, `FrameEngine`, `PlanStore`, `ActionStore`, `PromptInstanceAudit` are called from Pass 3.
-3. `StatusService::mark_dirty()` called from Pass 3 with all affected sections.
-4. Integration tests (§8.2) pass.
-
-### 9.4 Phase 4: Inspector Pass Timeline
-
-1. Add `PassView` to `ConversationStatusView`.
-2. Frontend inspector renders pass timeline.
-3. Manual verification: watch a multi-round turn show Observe → Deliberate (round 1) → Deliberate (round 2) → Commit.
+**User sees one coherent reply.** Internally, three+ LLM calls occurred.
 
 ---
 
-## 10. Affected Files
+## 11. Prompt Strategies Summary
+
+| Strategy | Application | Pass | Key Fragments |
+|----------|-------------|------|---------------|
+| `cm.interpret.v1` | Interpret | 1 | `identity/*`, `state/ownership`, `tools/interpret_contract`, `verification/guide`, `fast_path/criteria` |
+| `cm.process.v1` | Process | 2 | `identity/*`, `state/ownership`, `tools/full_contract`, `tools/selection`, `process/execution`, `budget/contract` |
+| `cm.verify.v1` | Verify | 3 | `identity/*`, `state/ownership`, `verification/review`, `tools/verify_contract`, `verification/state_update`, `retry/guidance` |
+| `cm.think.v1` | Think sub-agent | All | `identity/*`, `state/ownership`, `tools/think_contract` (read-only data + agent.run), `think/deep_analysis` |
+| `agent.system.v1` | Agent (Hermes/Pi) | — | Downstream agent system prompt |
+| `agent.summarize.v1` | Agent summarizer | — | Summarize agent turn for CM |
+
+---
+
+## 12. Tool Visibility Matrix
+
+| Tool | Interpret | Process | Verify | Think Sub-Agent |
+|------|-----------|---------|--------|-----------------|
+| `conversation.topic` | ✗ | ✓ | ✓ | ✗ |
+| `conversation.depth` | ✗ | ✓ | ✓ | ✗ |
+| `conversation.status` | ✗ | ✓ | ✓ | ✗ |
+| `conversation.frame` | ✗ | ✓ | ✓ | ✗ |
+| `agent.run` | ✗ | ✓ | ✗ | ✓ |
+| `data.create` | ✗ | ✓ | ✓ | ✗ |
+| `data.update` | ✗ | ✓ | ✓ | ✗ |
+| `data.query` | ✗ | ✓ | ✓ | ✓ |
+| `data.delete` | ✗ | ✓ | ✓ | ✗ |
+| `data.search` | ✗ | ✓ | ✓ | ✓ |
+| `data.schema` | ✗ | ✓ | ✓ | ✓ |
+| `data.namespace` | ✗ | ✓ | ✓ | ✓ |
+| `metamind.plan` | ✗ | ✓ | ✓ | ✗ |
+| `metamind.think` | ✗ | ✓ | ✗ | ✗ |
+| `metamind.memory` | ✗ | ✓ | ✓ | ✓ |
+| `metamind.log` | ✗ | ✓ | ✓ | ✓ |
+| `metamind.act` | ✗ | ✓ | ✓ | ✗ |
+| `metamind.verify` | ✓ | ✗ | ✗ | ✗ |
+| `metamind.approve(true)` | ✓ | ✗ | ✗ | ✗ |
+| `metamind.approve(false)` | ✗ | ✗ | ✓ | ✗ |
+
+---
+
+## 13. Agentstream Logging
+
+All passes log to the **same agentstream session** (the conversation session). Each model call creates a `PromptBuilt` event. Tool calls create `ToolCall`/`ToolResult` events.
+
+**Clean log** (user messages + final replies) is maintained as a derived projection for context injection.
+
+Sub-agents (`metamind.think`, `agent.run`) create **separate agentstream sessions** linked via `parent_turn_id`.
+
+---
+
+## 14. Configuration
+
+```toml
+# config/three_pass.toml
+[interpret]
+budget_class = "quick"
+strategy = "cm.interpret.v1"
+
+[process]
+budget_class = "standard"
+strategy = "cm.process.v1"
+max_tool_rounds = 32
+max_tool_steps = 96
+
+[verify]
+budget_class = "quick"
+strategy = "cm.verify.v1"
+max_retries = 5
+
+[verification.backends.llm_judge]
+enabled = true
+model = "gpt-4o-mini"  # or configured default
+temperature = 0.0
+
+[think]
+budget_class = "think"
+strategy = "cm.think.v1"
+```
+
+---
+
+## 15. Migration from Current Architecture
+
+### 15.1 Phase 1: Verification Backend Infrastructure
+1. Add `VerificationBackend` trait in `mm-cme` or `mm-data`
+2. Implement `LlmJudgeBackend` in `mm-cme`
+3. Add `metamind.verify` and `metamind.approve` tools to `mm-serve/cm_tools.rs`
+4. Unit tests for backend interface
+
+### 15.2 Phase 2: Interpret Pass
+1. Create `cm.interpret.v1` strategy and fragments
+2. Implement `pass_interpret()` in `TurnExecutor` (new method)
+3. Tool handler for `metamind.verify` / `metamind.approve(true)`
+4. Fast-path logic
+
+### 15.3 Phase 3: Process Pass (Refactor Existing)
+1. Restructure current `execute()` → `pass_process()`
+2. Ensure only Process gets `agent.run` tool
+3. Add `metamind.think` tool handler (spawns sub-agent)
+
+### 15.4 Phase 4: Verify Pass
+1. Create `cm.verify.v1` strategy and fragments
+2. Implement `pass_verify()` with verification runner + retry loop
+3. Tool handler for `metamind.approve(false, error)`
+4. State update logic from Process output
+
+### 15.5 Phase 5: Orchestration & Streaming
+1. `execute_three_pass()` orchestrates Interpret → Process → Verify
+2. SSE streaming for each pass
+3. Clean log maintenance
+4. Inspector pass timeline
+
+### 15.6 Phase 6: Sub-Agents
+1. `metamind.think` full implementation
+2. `agent.run` integration with Hermes/Pi
+3. Agentstream session linking
+
+---
+
+## 16. Testing Strategy
+
+### 16.1 Unit Tests
+
+| Component | Tests |
+|-----------|-------|
+| `VerificationBackend` trait | Mock backend, verify interface compliance |
+| `LlmJudgeBackend` | Structured output parsing, confidence clamping, threshold comparison |
+| `metamind.verify` tool | Registers checks correctly, validates backend params |
+| `metamind.approve` tool | Fast-path in Interpret, retry in Verify |
+| Interpret pass | Pure conversation → fast-path; action request → checks + context |
+| Process pass | Tool loop, budget enforcement, `agent.run` delegation |
+| Verify pass | Runs checks, updates state, approves, retries on failure |
+| Retry logic | Max 5 retries, error context passed correctly |
+
+### 16.2 Integration Tests
+
+- **Fast-path conversation** — greetings, thanks → single Interpret call
+- **Action with default verification** — "create a note" → Interpret adds default check → Process creates → Verify approves
+- **Action with custom verification** — "write correct Rust code" → Interpret adds LLM judge check for compilation → Process writes → Verify runs check → retry on failure
+- **Multi-retry** — Process fails verification 3 times → succeeds on 4th
+- **Sub-agent think** — Process calls `metamind.think` → sub-agent runs 3-pass → returns findings
+- **Agent delegation** — Process calls `agent.run` → Hermes runs → summary returned
+
+### 16.3 Property Tests
+
+- **Budget monotonicity** — each pass spends from reserved budget; child budgets ≤ parent
+- **Clean log coherence** — user messages + final replies only; no internal passes
+- **Agentstream completeness** — all PromptBuilt, ToolCall, ToolResult events present
+- **Retry termination** — max 5 retries always respected
+
+---
+
+## 17. Affected Files
 
 | File | Change |
 |------|--------|
-| `crates/mm-cme/src/executor.rs` | Core restructuring: three pass methods, new result types, `execute()` wrapper |
-| `crates/mm-cme/src/turn.rs` | No SM changes; `Turn` may gain `pass` field for observability |
-| `crates/mm-cme/src/budget.rs` | `BudgetLedger::reserve_initial()`, `snapshot()` |
-| `crates/mm-cme/src/lib.rs` | Re-export new pass types |
-| `crates/mm-serve/src/cme.rs` | `CmeRuntime::run_turn()` calls `executor.execute()` (unchanged); `log_turn_frames()` logic moves to Pass 3 |
-| `crates/mm-serve/src/state.rs` | `AppState::cme_executor()` unchanged; persistence services accessible for Pass 3 |
-| `crates/mm-serve/src/status_service.rs` | `mark_dirty()` called from Pass 3 with full section list |
-| `crates/mm-prompt/src/lib.rs` | `PromptManager::render()` used by Pass 1 + Pass 2 (no change) |
-| `crates/mm-data/src/conversation.rs` | `ConversationStore::save()` with expected revision (Pass 3) |
-| `crates/mm-data/src/session.rs` | `SessionStore::save()` (Pass 3) |
-| `crates/mm-data/src/frame.rs` | `FrameEngine::persist()` (Pass 3) |
-| `crates/mm-data/src/plan.rs` | `PlanStore::save()` (Pass 3) |
-| `crates/mm-data/src/action.rs` | `ActionStore::save()` (Pass 3) |
-| `crates/mm-data/src/prompt_audit.rs` (new) | `PromptInstanceAudit::write()` (Pass 3) |
-| `frontend/src/components/inspector/` | Pass timeline display |
+| `crates/mm-cme/src/executor.rs` | New `pass_interpret`, `pass_process`, `pass_verify`, `execute_three_pass` |
+| `crates/mm-cme/src/verification.rs` (new) | `VerificationBackend` trait, `LlmJudgeBackend`, `VerifyCheck`, `VerificationResult` |
+| `crates/mm-cme/src/budget.rs` | Per-pass budget classes, child budget reservation |
+| `crates/mm-cme/src/lib.rs` | Re-export verification types |
+| `crates/mm-serve/src/cm_tools.rs` | `metamind.verify`, `metamind.approve`, `metamind.think` tool handlers |
+| `crates/mm-serve/src/cme.rs` | `CmeRuntime::run_turn` → calls `execute_three_pass` |
+| `crates/mm-serve/src/state.rs` | Clean log maintenance, per-pass context assembly |
+| `crates/mm-prompt/src/lib.rs` | Strategies `cm.interpret.v1`, `cm.process.v1`, `cm.verify.v1`, `cm.think.v1` |
+| `config/prompts/fragments/` | New fragments for each pass |
+| `config/prompts/applications/` | New strategy files |
+| `crates/mm-agent/src/lib.rs` | Sub-agent spawning for `metamind.think` and `agent.run` |
+| `crates/mm-data/src/agentstream.rs` | Clean log projection |
+| `frontend/src/components/chat/` | SSE pass streaming, aggregated message display |
+| `frontend/src/components/inspector/` | Pass timeline, verification results display |
 
 ---
 
-## 11. Rollback Plan
+## 18. Rollback Plan
 
-If issues arise:
-
-1. **Phase 1 only** — The three-pass structure is internal; `execute()` signature unchanged. Revert to monolithic `execute()` by inlining the three methods.
-2. **Phase 2+** — Feature flag `MM_THREE_PASS_TURN` (default `false`) guards the new path. When `false`, `execute()` uses the old monolithic code (kept as `execute_legacy()`). When `true`, uses three-pass.
+Feature flag: `MM_THREE_PASS_V2` (default `false`)
 
 ```rust
-// In executor.rs
-const THREE_PASS_ENABLED: bool = cfg!(feature = "three_pass_turn"); // or env var
-
 pub async fn execute(...) -> Result<TurnOutcome> {
-    if THREE_PASS_ENABLED {
-        self.execute_three_pass(...).await
+    if cfg!(feature = "three_pass_v2") || std::env::var("MM_THREE_PASS_V2").is_ok() {
+        self.execute_three_pass_v2(...).await
     } else {
-        self.execute_legacy(...).await
+        self.execute_legacy(...).await  // Current monolithic execute
     }
 }
 ```
 
 ---
 
-## 12. Open Questions
+## 19. Open Questions
 
-1. **Should Pass 1 include speculative pre-warm?** Currently yes (it's part of routing). If pre-warm becomes a real model call, it may belong in Pass 2.
-2. **Should `agent.run` delegation be a separate pass?** Currently it's a tool call within Pass 2. If delegation grows complex (multi-turn agent sessions), a Pass 2.5 "Delegate" might emerge.
-3. **Is the `PauseReason::IndexPending` check in Pass 2 or Pass 3?** Currently Pass 2 (pre-commit checks). Moving to Pass 3 would make it a commit-time gate.
-4. **Should `PromptInstanceAudit` be a separate crate or part of `mm-prompt`?** Currently `mm-data` owns agentstream; prompt audit is a new concern.
+1. **Should Interpret have access to `data.search`?** Currently no — but it might need to check facts before designing checks.
+2. **Can Verify pass call `metamind.think`?** Currently no — but deep verification might need it.
+3. **Should `metamind.approve(true)` in Interpret log the reply to clean log immediately?** Yes, for context in subsequent turns.
+4. **How to handle streaming tokens from Verify pass?** Verify mostly calls tools; final approve is instant. Stream minimal "Updating..." tokens.
+5. **Should verification results be cached?** For idempotent checks (e.g., "code compiles"), yes.
 
 ---
 
-## 13. References
+## 20. References
 
-- `conversation_manager_agent_inspector_plan.md` §10.3 (turn algorithm), §10.4 (budgets), §11.1 (status view)
-- `crates/mm-cme/src/executor.rs` (current `TurnExecutor::execute`)
-- `crates/mm-cme/src/turn.rs` (turn state machine)
-- `crates/mm-cme/src/budget.rs` (`BudgetLedger`)
-- `crates/mm-prompt/src/lib.rs` (`PromptManager`, `PromptInstance`)
-- `crates/mm-serve/src/cme.rs` (`CmeRuntime::run_turn`, `log_turn_frames`)
-- `crates/mm-serve/src/state_service.rs` (`StateService`)
-- `crates/mm-serve/src/status_service.rs` (`StatusService`)
+- `conversation_manager_agent_inspector_plan.md` — Overall CM v3 architecture
+- `crates/mm-cme/src/executor.rs` — Current `TurnExecutor::execute`
+- `crates/mm-cme/src/turn.rs` — Turn state machine
+- `crates/mm-prompt/src/lib.rs` — `PromptManager`, `PromptInstance`
+- `crates/mm-agent/src/lib.rs` — `AgentRuntime`, `TurnSummarizer`
+- `crates/mm-serve/src/cm_tools.rs` — Current 17-tool handler
