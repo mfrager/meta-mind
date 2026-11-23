@@ -751,6 +751,16 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Phase 12 Hardening** — `MM_CM_V3` is on by default with a one-flag rollback; canonical `mmd:` user/project IRIs with legacy `urn:metamind:*` `owl:sameAs` aliases and registry fallbacks; `mm-cli data verify`/`reindex` compares live RDF entities with Tantivy subjects and repairs missing/orphan documents; operator guide, dual-run template, and index runbook in `infodocs/`
 - **Acceptance** — Original complaints plus RDF sessions/traces/pagination, Files-tab log tree, no-mock frontend, session presence/working/expiry/resume, frame stack/intro/tutorials, interjection policy, prompt-strategy, budget, memory, log tool, plan-registry/control, introspection, generic internal-action scheduling, automation, current-user/workspace, data/search/schema/identity requirements mapped to concrete tests and evals
 
+#### W.3 Unified Five-Phase Turn + Process Plan (`five_phase_turn_process_plan.md`)
+- **Purpose** — Single ordered execution path that delivers both W.1 and W.2; supersedes their migration sections only
+- **Phase 1: Substrate** — `VerificationBackend` trait + LLM judge, 19-tool catalog (17 work + 2 control) with server-enforced pass scopes, four prompt strategies (`cm.interpret/process/verify/think.v1`), turn budget envelope with parent→child reservation, clean-log projection, pass events, config/flags (`MM_THREE_PASS_V2`, `MM_PROCESS_V1`)
+- **Phase 2: Interpret** — Interpret pass with 6-tool scope, fast path for pure conversation, default check injection, protocol repair, clean-log injection, interpret streaming
+- **Phase 3: Process** — Extracted reusable Process pass, 17-tool scope with `agent.run` confinement, retry error context, single reply identity, legacy parity fixtures
+- **Phase 4: Verify** — Parallel checks, review call, **staged writes committed only on approval**, retry loop (5), `VERIFY_EXHAUSTED`, three-pass orchestration, think recursion, inspector timeline, live dual-run record
+- **Phase 5: Process pipeline** — New `mm-process` crate: RDF templates/PROCESS.md, mm-sm instance states, durable queues with parallel/batch modes and leases, crash recovery, 4-pass plan builder, plan→process compilation, additive `metamind.plan`/`act` fields, expiry sweeps, sub-processes, versioning, analytics
+- **Decisions** — Resolves source contradictions: corrected tool-scope matrix, staged Verify writes, no `mm-metacog` dependency inversion, action-based tool schema compatibility, structured-output boundary
+- **Completeness** — Traceability matrix maps every section of both source documents to a phase and acceptance test; explicit non-goals and open questions with decision points
+
 ---
 
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*
