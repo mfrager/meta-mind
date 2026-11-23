@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "verify_repair"
+version = 1
+text = """
+Your previous Verify response did not follow the protocol. Finish with exactly one `metamind.approve`
+call. Use approve(true) only when every check passed; otherwise use approve(false) with a non-empty
+error under 2000 characters explaining what must change. Do not call another tool in the approval
+round.
+"""

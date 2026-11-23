@@ -9,27 +9,30 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mm_llm::{LlmClient, LlmRequest, Message, ProviderToolCall, Purpose, ToolSchema};
-use mm_prompt::{PromptInstance, PromptMessage, PromptRequest, PromptStore};
+use mm_data::CleanLog;
+use mm_llm::{LlmClient, ToolSchema};
+use mm_prompt::PromptStore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::budget::{BudgetClass, BudgetLedger};
-use crate::chunk::{Chunk, ChunkEvent, ChunkKind, ChunkState};
+use crate::budget::BudgetClass;
+use crate::chunk::ChunkKind;
 use crate::error::{CmeError, Result};
 use crate::observability::{ObserverHandle, SmObserver};
-use crate::planner::{ResponseModality, ToolPolicy, TurnContext, TurnPlanner};
+use crate::pass_scope::PassScope;
+use crate::planner::{ResponseModality, TurnContext, TurnPlanner};
+use crate::process::{ProcessPass, ProcessRequest};
 use crate::prompt::PromptVariables;
 use crate::routing::{ConversationRouter, ConversationRoutingRequest};
+use crate::runner::{
+    InterpretResult, PassContext, RetryContext, RetryFailure, ThreePassRunner, VerifyOutcome,
+};
 use crate::session::SessionContext;
-use crate::turn::{ToolCallEmission, Turn, TurnEvent, TurnOutcome, TurnState};
+use crate::turn::{Turn, TurnEvent, TurnOutcome, TurnState};
+use crate::verification::{
+    CommittedMutation, MutationJournal, ProcessMutation, ProcessResult, VerificationResult,
+};
 use crate::voice::VoiceTurnConfig;
-
-/// Bounds a model-tool exchange. A model that keeps asking for tools cannot
-/// hold a turn open indefinitely.
-const MAX_TOOL_ROUNDS: usize = 32;
-/// Tool steps allowed in one turn.
-const MAX_TOOL_STEPS: usize = 32;
 
 /// How the executor treats a model that keeps requesting tools.
 ///
@@ -62,6 +65,16 @@ pub trait ToolHandler: Send + Sync {
         Vec::new()
     }
 
+    /// The tools one pass may see. The default filters [`schemas`](Self::schemas)
+    /// through the scope; handlers with a reviewed catalog override this so the
+    /// control tools are included where the scope allows them.
+    fn schemas_for(&self, scope: PassScope) -> Vec<ToolSchema> {
+        self.schemas()
+            .into_iter()
+            .filter(|schema| scope.allows(&schema.name, None))
+            .collect()
+    }
+
     /// Run `name` with provider-supplied JSON arguments.
     async fn call(&self, name: &str, arguments: &str) -> Result<String>;
 
@@ -75,6 +88,31 @@ pub trait ToolHandler: Send + Sync {
         arguments: &str,
     ) -> Result<String> {
         self.call(name, arguments).await
+    }
+
+    /// Run a tool from the Verify pass. A handler that supports staged writes
+    /// validates mutating calls and appends them to `journal` instead of running
+    /// them. The default is immediate because a handler without staging has no
+    /// durable write surface to protect.
+    async fn call_staged_for_session(
+        &self,
+        session_id: &str,
+        name: &str,
+        arguments: &str,
+        _journal: &mut MutationJournal,
+    ) -> Result<String> {
+        self.call_for_session(session_id, name, arguments).await
+    }
+
+    /// Replay a journal after approval. Handlers without staging cannot commit.
+    async fn commit_staged_for_session(
+        &self,
+        _session_id: &str,
+        _journal: &MutationJournal,
+    ) -> Result<Vec<CommittedMutation>> {
+        Err(CmeError::Tool(
+            "this tool handler does not support staged writes".into(),
+        ))
     }
 }
 
@@ -123,6 +161,15 @@ pub trait PromptContextProvider: Send + Sync {
     ) -> std::result::Result<PromptVariables, String>;
 }
 
+/// Supplies the clean log for a session. The executor rebuilds it from the
+/// agentstream before Interpret, so a resumed session sees the same log it had
+/// in memory.
+#[async_trait]
+pub trait CleanLogProvider: Send + Sync {
+    /// The session's user messages and approved final replies.
+    async fn clean_log(&self, session_id: &str) -> std::result::Result<CleanLog, String>;
+}
+
 /// Executes turns.
 pub struct TurnExecutor {
     planner: TurnPlanner,
@@ -137,6 +184,8 @@ pub struct TurnExecutor {
     prompt_provider: Option<Arc<dyn PromptContextProvider>>,
     prompt_variant: Option<String>,
     budget_class: BudgetClass,
+    three_pass: Option<ThreePassRunner>,
+    clean_log_provider: Option<Arc<dyn CleanLogProvider>>,
 }
 
 impl std::fmt::Debug for TurnExecutor {
@@ -170,6 +219,8 @@ impl TurnExecutor {
             prompt_provider: None,
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
+            three_pass: None,
+            clean_log_provider: None,
         }
     }
 
@@ -188,6 +239,8 @@ impl TurnExecutor {
             prompt_provider: None,
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
+            three_pass: None,
+            clean_log_provider: None,
         }
     }
 
@@ -257,6 +310,24 @@ impl TurnExecutor {
         self
     }
 
+    /// Attach the Phase 2 three-pass runner. When absent, the executor uses the
+    /// legacy single-loop path unchanged.
+    pub fn with_three_pass(mut self, runner: ThreePassRunner) -> Self {
+        self.three_pass = Some(runner);
+        self
+    }
+
+    /// Attach the provider that rebuilds the clean log before Interpret.
+    pub fn with_clean_log_provider(mut self, provider: Arc<dyn CleanLogProvider>) -> Self {
+        self.clean_log_provider = Some(provider);
+        self
+    }
+
+    /// Whether the three-pass path is attached.
+    pub fn three_pass(&self) -> bool {
+        self.three_pass.is_some()
+    }
+
     /// Run a turn to completion. A model or tool failure marks the turn failed and
     /// is reported in the outcome; a state-machine violation is an error.
     pub async fn execute(
@@ -318,97 +389,49 @@ impl TurnExecutor {
 
         let reply = match &self.client {
             Some(client) => {
-                let mut budget = BudgetLedger::new(self.budget_class);
-                let mut variables = self
-                    .prompt_variables
-                    .clone()
-                    .unwrap_or_else(|| PromptVariables::for_turn(&plan, session));
-                let prompt = match self.render_prompt(&plan, &variables, budget.snapshot()) {
-                    Ok(prompt) => prompt,
-                    Err(error) => {
-                        return self.fail(turn, format!("PROMPT_UNAVAILABLE: {error}"));
-                    }
-                };
-                turn.set_prompt(
-                    prompt.instance_id.clone(),
-                    prompt.hash.clone(),
-                    prompt.variant.clone(),
-                );
-                let tools = if plan.tool_policy == ToolPolicy::None {
-                    Vec::new()
-                } else {
-                    self.tools.schemas()
-                };
-                let mut messages = messages_from_instance(&prompt);
-                let mut rounds = 0usize;
-                let mut tool_steps = 0usize;
-                loop {
-                    rounds += 1;
-                    if let Err(error) = budget.reserve_round() {
-                        return self.fail(turn, error.to_string());
-                    }
-                    // Rebuild before every model call, including every tool
-                    // round, and after any tool-side state/data/frame write.
-                    variables = self.refresh_variables(&plan, &mut variables).await;
-                    let prompt = match self.render_prompt(&plan, &variables, budget.snapshot()) {
-                        Ok(prompt) => prompt,
-                        Err(error) => {
-                            return self.fail(turn, format!("PROMPT_UNAVAILABLE: {error}"));
+                if self.three_pass.is_some() {
+                    match self
+                        .execute_three_pass(turn, &plan, session, &model, Arc::clone(client))
+                        .await?
+                    {
+                        ThreePassFlow::FastPath(reply) => {
+                            if !reply.is_empty() {
+                                self.stream_text(turn, &reply)?;
+                            }
+                            self.flush_structured(turn, &reply)?;
+                            self.flush_audio(turn)?;
+                            return turn.finalize();
                         }
-                    };
-                    turn.set_prompt(
-                        prompt.instance_id.clone(),
-                        prompt.hash.clone(),
-                        prompt.variant.clone(),
+                        ThreePassFlow::Approved(reply) => reply,
+                        ThreePassFlow::Failed(detail) => return self.fail(turn, detail),
+                    }
+                } else {
+                    let variables = self
+                        .prompt_variables
+                        .clone()
+                        .unwrap_or_else(|| PromptVariables::for_turn(&plan, session));
+                    let pass = ProcessPass::new(
+                        Arc::clone(client),
+                        self.prompts.clone(),
+                        Arc::clone(&self.tools),
+                        Arc::clone(&self.confirm),
+                        self.prompt_provider.clone(),
+                        self.budget_class,
                     );
-                    if let Some(first) = messages.first_mut() {
-                        *first = Message::system(prompt.text.clone());
-                    }
-                    let request = self.llm_request(&plan, messages.clone(), tools.clone(), &model);
-                    if let Err(error) = budget.reserve_tokens(u64::from(request.max_tokens)) {
-                        return self.fail(turn, error.to_string());
-                    }
-                    let response = match client.complete(&request).await {
-                        Ok(response) => response,
+                    let run = match pass
+                        .run(
+                            turn,
+                            &plan,
+                            &model,
+                            variables,
+                            ProcessRequest::legacy("cm.turn", self.prompt_variant.clone()),
+                        )
+                        .await
+                    {
+                        Ok(run) => run,
                         Err(error) => return self.fail(turn, error.to_string()),
                     };
-                    let used = u64::from(response.usage.tokens_in)
-                        .saturating_add(u64::from(response.usage.tokens_out));
-                    if let Err(error) = budget.settle_tokens(Some(used)) {
-                        return self.fail(turn, error.to_string());
-                    }
-                    if response.tool_calls.is_empty() {
-                        break response.text;
-                    }
-                    if plan.tool_policy == ToolPolicy::None {
-                        return self.fail(
-                            turn,
-                            "model requested a tool but the turn's policy forbids tools".to_owned(),
-                        );
-                    }
-                    if rounds >= MAX_TOOL_ROUNDS {
-                        return self.fail(turn, "tool round cap".to_owned());
-                    }
-                    if tool_steps >= MAX_TOOL_STEPS {
-                        return self.fail(turn, "tool step cap".to_owned());
-                    }
-                    let remaining = MAX_TOOL_STEPS - tool_steps;
-                    let calls = response
-                        .tool_calls
-                        .iter()
-                        .take(remaining)
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    if let Err(error) = budget.reserve_steps(calls.len() as u32) {
-                        return self.fail(turn, error.to_string());
-                    }
-                    messages.push(Message::assistant_calls(
-                        response.text.clone(),
-                        calls.clone(),
-                    ));
-                    let results = self.run_tool_calls(turn, &calls).await?;
-                    tool_steps += calls.len();
-                    messages.extend(results);
+                    run.reply
                 }
             }
             None => format!("Echo: {}", plan.user_query),
@@ -432,176 +455,301 @@ impl TurnExecutor {
         Ok(outcome)
     }
 
-    /// Refresh bounded state from the provider. A closed store leaves an honest
-    /// `[STATE unavailable]` block instead of silently reusing stale state.
-    async fn refresh_variables(
-        &self,
-        plan: &crate::turn::TurnPlan,
-        current: &mut PromptVariables,
-    ) -> PromptVariables {
-        let Some(provider) = &self.prompt_provider else {
-            return current.clone();
-        };
-        match provider.prompt_variables(plan.session_id.as_ref()).await {
-            Ok(variables) => variables,
-            Err(error) => {
-                let mut stale = current.clone();
-                let block = crate::state_block::StateBlock::unavailable(error);
-                stale.set("state_block", block.text);
-                stale.set("state_json", "");
-                stale
-            }
-        }
-    }
-
-    /// Render the reviewed strategy before the first model call. A missing or
-    /// invalid tree is a `PROMPT_UNAVAILABLE` refusal, not an ad hoc prompt.
-    fn render_prompt(
-        &self,
-        plan: &crate::turn::TurnPlan,
-        variables: &PromptVariables,
-        budget: crate::budget::BudgetSnapshot,
-    ) -> std::result::Result<PromptInstance, String> {
-        let prompts = self
-            .prompts
-            .as_ref()
-            .ok_or_else(|| "prompt tree is unavailable; no model call was made".to_owned())?;
-        let mut variables = variables.clone();
-        variables.set("budget_class", budget.class);
-        variables.set("budget_rounds", budget.rounds.to_string());
-        variables.set("budget_tokens", budget.tokens.to_string());
-        variables.set("budget_wall_ms", budget.wall_ms.to_string());
-        let state_block = variables.get("state_block").map(str::to_owned);
-        // A pending variant is only valid while pending work remains. After a
-        // tool round clears the last item, the rebuild returns to the standard
-        // strategy instead of claiming work that no longer exists.
-        let variant = match self.prompt_variant.as_deref() {
-            Some("pending")
-                if variables
-                    .get("pending_summary")
-                    .is_some_and(|pending| pending != "none") =>
-            {
-                Some("pending".into())
-            }
-            Some("pending") => None,
-            Some(other) => Some(other.to_owned()),
-            None => None,
-        };
-        let request = PromptRequest {
-            application: "cm.turn".into(),
-            variant,
-            variables: variables.as_map().clone(),
-            state_block,
-            transcript: Vec::new(),
-            user_input: Some(plan.user_query.clone()),
-        };
-        prompts
-            .render_request(&request)
-            .map_err(|error| error.to_string())
-    }
-
-    /// Build the provider-neutral request for a plan and its current transcript.
-    fn llm_request(
-        &self,
-        plan: &crate::turn::TurnPlan,
-        messages: Vec<Message>,
-        tools: Vec<ToolSchema>,
-        model: &str,
-    ) -> LlmRequest {
-        let mut request = LlmRequest::new(Purpose::Converse, messages)
-            .with_cache(mm_llm::CacheMode::Use)
-            .with_model(model);
-        if !tools.is_empty() {
-            request = request.with_tools(tools);
-        }
-        request.max_tokens = u32::try_from(plan.budget.tokens)
-            .unwrap_or(u32::MAX)
-            .min(4_096);
-        request.temperature = 0.2;
-        request
-    }
-
-    /// Run the model's tool calls under the turn's policy and return the tool
-    /// messages to append to the model transcript.
-    ///
-    /// Refuses calls when the policy forbids tools. Under `ToolPolicy::Confirm`
-    /// the turn pauses in `waiting_confirm` and the chunk in
-    /// `tool_waiting_confirm` until the handler answers; a refusal records the
-    /// denial and lets the rest of the turn finish instead of failing it.
-    async fn run_tool_calls(
+    /// Run Interpret → Process → Phase A → Verify, retrying Process and Verify
+    /// until the reviewer approves or the retry allowance is exhausted.
+    async fn execute_three_pass(
         &self,
         turn: &mut Turn,
-        calls: &[ProviderToolCall],
-    ) -> Result<Vec<Message>> {
-        let policy = turn
-            .plan
-            .as_ref()
-            .map(|plan| plan.tool_policy)
-            .unwrap_or(ToolPolicy::None);
-        if policy == ToolPolicy::None {
-            return Err(CmeError::Tool(
-                "model requested a tool but the turn's policy forbids tools".to_owned(),
+        plan: &crate::turn::TurnPlan,
+        session: &SessionContext,
+        model: &str,
+        client: Arc<dyn LlmClient>,
+    ) -> Result<ThreePassFlow> {
+        let Some(runner) = self.three_pass.as_ref() else {
+            return Ok(ThreePassFlow::Failed(
+                "three-pass runner is not configured".into(),
+            ));
+        };
+        let clean_log = self.load_clean_log(plan.session_id.as_ref()).await;
+        let variables = self
+            .prompt_variables
+            .clone()
+            .unwrap_or_else(|| PromptVariables::for_turn(plan, session));
+        let state_block = variables.get("state_block").unwrap_or_default().to_owned();
+        let mut interpret_variables = variables.clone();
+        interpret_variables.set("user_input", plan.user_query.clone());
+        let ctx = PassContext::interpret(
+            clean_log.clone(),
+            state_block.clone(),
+            plan.user_query.clone(),
+            interpret_variables,
+            Some(model.to_owned()),
+            runner.envelope(),
+        );
+        let pass = match runner.run_interpret(ctx, plan.session_id.as_ref()).await {
+            Ok(pass) => pass,
+            Err(error) => return Ok(ThreePassFlow::Failed(error.to_string())),
+        };
+        if let (Some(instance), Some(hash)) =
+            (pass.prompt_instance_ids.last(), pass.prompt_hashes.last())
+        {
+            turn.set_prompt(instance.clone(), hash.clone(), None);
+        }
+        turn.record_pass(crate::turn::PassRecord {
+            kind: crate::runner::PassKind::Interpret,
+            attempt: 1,
+            prompt_hash: pass.prompt_hashes.last().cloned(),
+            budget: pass.budget.into(),
+            outcome: pass.finished.as_str().to_owned(),
+            verification: Vec::new(),
+            staged: 0,
+            committed: 0,
+            checks: pass
+                .checks
+                .iter()
+                .map(|check| check.label.clone())
+                .collect(),
+        });
+        // Control calls are protocol, not user-facing work; the pass frames
+        // carry their outcome without rendering a tool card.
+        let visible: Vec<_> = pass
+            .tool_emissions
+            .iter()
+            .filter(|emission| {
+                !matches!(
+                    emission.name.as_str(),
+                    "metamind.verify" | "metamind.approve"
+                )
+            })
+            .cloned()
+            .collect();
+        turn.tool_calls.extend(visible.iter().cloned());
+        turn.tool_results
+            .extend(visible.iter().map(|emission| emission.result.clone()));
+        if let Some(error) = &pass.error {
+            return Ok(ThreePassFlow::Failed(error.clone()));
+        }
+        if pass.is_fast_path() {
+            return Ok(ThreePassFlow::FastPath(pass.text.clone()));
+        }
+        if !pass.is_action() {
+            return Ok(ThreePassFlow::Failed(
+                pass.error
+                    .clone()
+                    .unwrap_or_else(|| "interpret pass failed".into()),
             ));
         }
-        let mut messages = Vec::with_capacity(calls.len());
-        for call in calls {
-            let approved = if policy == ToolPolicy::Confirm {
-                turn.dispatch(TurnEvent::ConfirmationRequired)?;
-                if let Some(chunk) = tool_chunk(turn) {
-                    chunk.dispatch(ChunkEvent::ToolCall)?;
-                    chunk.dispatch(ChunkEvent::ConfirmationRequired)?;
-                }
-                let approved = self.confirm.confirm(&call.name, &call.arguments).await?;
-                if let Some(chunk) = tool_chunk(turn) {
-                    chunk.dispatch(ChunkEvent::ConfirmationAnswer)?;
-                }
-                turn.dispatch(TurnEvent::ConfirmationAnswer)?;
-                approved
-            } else {
-                true
-            };
 
-            let (result, ok) = if approved {
-                turn.dispatch(TurnEvent::ToolCall)?;
-                if let Some(chunk) = tool_chunk(turn) {
-                    if chunk.state() == ChunkState::Streaming.as_str() {
-                        chunk.dispatch(ChunkEvent::ToolCall)?;
-                    }
-                }
-                let result = match self
-                    .tools
-                    .call_for_session(turn.session_id.as_str(), &call.name, &call.arguments)
-                    .await
-                {
-                    Ok(result) => {
-                        let ok = tool_result_ok(&result);
-                        (result, ok)
-                    }
-                    Err(error) => (format!("tool `{}` failed: {error}", call.name), false),
-                };
-                if let Some(chunk) = tool_chunk(turn) {
-                    chunk.dispatch(ChunkEvent::ToolResult)?;
-                }
-                turn.dispatch(TurnEvent::ToolResult)?;
-                result
-            } else {
-                if let Some(chunk) = tool_chunk(turn) {
-                    chunk.dispatch(ChunkEvent::ToolResult)?;
-                }
-                (format!("tool `{}` denied by the user", call.name), false)
-            };
+        let process_class = runner.config().process.budget_class;
+        let process_pass = ProcessPass::new(
+            client,
+            self.prompts.clone(),
+            Arc::clone(&self.tools),
+            Arc::clone(&self.confirm),
+            self.prompt_provider.clone(),
+            process_class,
+        );
+        let checks = pass.checks.clone();
+        let mut envelope = pass.envelope.clone();
+        let mut retry: Option<RetryContext> = None;
+        let mut prior_effects: Vec<ProcessMutation> = Vec::new();
+        let mut verification: Vec<VerificationResult> = Vec::new();
+        let mut staged_writes = Vec::new();
+        let mut committed_writes = Vec::new();
+        let mut discarded_writes = 0u32;
+        let max_retries = runner.config().verify.max_retries;
+        let mut exhaustion: Option<String> = None;
 
-            turn.tool_results.push(result.clone());
-            turn.tool_calls.push(ToolCallEmission {
-                call_id: call.id.clone(),
-                name: call.name.clone(),
-                arguments: call.arguments.clone(),
-                result: result.clone(),
-                ok,
+        for attempt in 0..=max_retries {
+            let attempt_number = attempt + 1;
+            let mut reservation = 0u64;
+            if attempt > 0 {
+                reservation = runner.retry_reservation();
+                if let Err(error) = envelope.reserve_retry(reservation) {
+                    exhaustion = Some(error.to_string());
+                    break;
+                }
+            }
+            let request = ProcessRequest {
+                application: runner.config().process.strategy.clone(),
+                scope: Some(PassScope::Process),
+                process: pass.process.clone(),
+                retry: retry.clone(),
+                clean_log: clean_log.clone(),
+                variant: None,
+                require_reply: true,
+                child_budget: true,
+            };
+            let run = match process_pass
+                .run_accounted(
+                    turn,
+                    plan,
+                    model,
+                    variables.clone(),
+                    request,
+                    Some(&mut envelope),
+                )
+                .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    if reservation > 0 {
+                        envelope.release_reservation(reservation);
+                    }
+                    return Ok(ThreePassFlow::Failed(error.to_string()));
+                }
+            };
+            turn.record_pass(crate::turn::PassRecord {
+                kind: crate::runner::PassKind::Process,
+                attempt: attempt_number,
+                prompt_hash: turn.prompt_hash.clone(),
+                budget: run.budget.into(),
+                outcome: "completed".into(),
+                verification: Vec::new(),
+                staged: 0,
+                committed: 0,
+                checks: Vec::new(),
             });
-            messages.push(Message::tool(call.id.clone(), call.name.clone(), result));
+            prior_effects.extend(run.mutations.iter().cloned());
+            let interpret = InterpretResult {
+                checks: checks.clone(),
+                process: pass.process.clone(),
+                fast_path: false,
+            };
+            let process_result = ProcessResult {
+                reply_text: run.reply.clone(),
+                tool_emissions: run.tool_emissions.clone(),
+            };
+            let verify_ctx = PassContext::verify(
+                clean_log.clone(),
+                state_block.clone(),
+                plan.user_query.clone(),
+                variables.clone(),
+                Some(model.to_owned()),
+                interpret,
+                process_result,
+                verification.clone(),
+                retry.clone(),
+                prior_effects.clone(),
+                attempt,
+                envelope.clone(),
+            );
+            let verify = match runner
+                .run_verify(verify_ctx, plan.session_id.as_ref())
+                .await
+            {
+                Ok(verify) => verify,
+                Err(error) => {
+                    if reservation > 0 {
+                        envelope.release_reservation(reservation);
+                    }
+                    return Ok(ThreePassFlow::Failed(error.to_string()));
+                }
+            };
+            envelope = verify.envelope.clone();
+            if reservation > 0 {
+                envelope.release_reservation(reservation);
+            }
+            verification = verify.verification.clone();
+            staged_writes.extend(verify.journal.intents.iter().cloned());
+            if let Some(error) = &verify.error {
+                turn.verification = verification.clone();
+                turn.staged_writes = staged_writes.clone();
+                turn.discarded_writes = discarded_writes;
+                record_verify(turn, attempt_number, &verify, 0);
+                return Ok(ThreePassFlow::Failed(error.clone()));
+            }
+            if verify.is_approved() {
+                // An approval with nothing staged is a no-op, not a commit the
+                // handler must support.
+                let commit = if verify.journal.is_empty() {
+                    Ok(Vec::new())
+                } else {
+                    runner
+                        .commit(plan.session_id.as_ref(), &verify.journal)
+                        .await
+                };
+                let committed = match commit {
+                    Ok(committed) => committed,
+                    Err(error) => {
+                        turn.verification = verification.clone();
+                        turn.staged_writes = staged_writes.clone();
+                        turn.discarded_writes = discarded_writes;
+                        record_verify(turn, attempt_number, &verify, 0);
+                        return Ok(ThreePassFlow::Failed(format!(
+                            "VERIFY_COMMIT_FAILED: {error}"
+                        )));
+                    }
+                };
+                committed_writes.extend(committed.iter().cloned());
+                turn.verification = verification.clone();
+                turn.staged_writes = staged_writes.clone();
+                turn.committed_writes = committed_writes.clone();
+                turn.discarded_writes = discarded_writes;
+                record_verify(turn, attempt_number, &verify, committed.len());
+                return Ok(ThreePassFlow::Approved(run.reply));
+            }
+            if verify.is_rejected() {
+                record_verify(turn, attempt_number, &verify, 0);
+                discarded_writes = discarded_writes.saturating_add(verify.journal.len() as u32);
+                let failures = verify
+                    .verification
+                    .iter()
+                    .filter(|result| !result.pass)
+                    .map(|result| RetryFailure {
+                        label: result.check_label.clone(),
+                        reasoning: if let Some(error) = &result.error {
+                            error.clone()
+                        } else {
+                            result.reasoning.clone()
+                        },
+                        confidence: result.confidence,
+                    })
+                    .collect();
+                retry = Some(RetryContext {
+                    attempt: attempt_number + 1,
+                    max_attempts: max_retries + 1,
+                    prior_reply_digest: digest(&run.reply),
+                    failures,
+                    error: verify
+                        .rejection
+                        .clone()
+                        .unwrap_or_else(|| "the reviewer rejected the reply".into()),
+                    prior_effects: prior_effects.clone(),
+                });
+                continue;
+            }
+            turn.verification = verification.clone();
+            turn.staged_writes = staged_writes.clone();
+            turn.discarded_writes = discarded_writes;
+            record_verify(turn, attempt_number, &verify, 0);
+            return Ok(ThreePassFlow::Failed(verify.error.clone().unwrap_or_else(
+                || format!("verify finished {}", verify.outcome_name()),
+            )));
         }
-        Ok(messages)
+
+        turn.verification = verification.clone();
+        turn.staged_writes = staged_writes;
+        turn.discarded_writes = discarded_writes;
+        Ok(ThreePassFlow::Failed(exhaustion.unwrap_or_else(|| {
+            verify_exhausted_message(max_retries + 1, &verification, &prior_effects)
+        })))
+    }
+
+    /// Rebuild the clean log from the agentstream. A closed store yields an
+    /// empty log rather than stale internal text; the prompt still carries the
+    /// current request and state.
+    async fn load_clean_log(&self, session_id: &str) -> CleanLog {
+        let Some(provider) = &self.clean_log_provider else {
+            return CleanLog::default();
+        };
+        match provider.clean_log(session_id).await {
+            Ok(log) => log,
+            Err(error) => {
+                debug!(%error, "clean log unavailable; using an empty log");
+                CleanLog::default()
+            }
+        }
     }
 
     /// Split the reply across streaming text chunks in order, so a multi-section
@@ -656,19 +804,73 @@ impl TurnExecutor {
     }
 }
 
-/// Prefer a structured `{ "ok": false }` result over the generic success case.
-fn tool_result_ok(result: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(result)
-        .ok()
-        .and_then(|value| value.get("ok").and_then(serde_json::Value::as_bool))
-        .unwrap_or(true)
+enum ThreePassFlow {
+    FastPath(String),
+    Approved(String),
+    Failed(String),
 }
 
-/// The turn's tool-call chunk, when the plan has one.
-fn tool_chunk(turn: &mut Turn) -> Option<&mut Chunk> {
-    turn.chunks
-        .iter_mut()
-        .find(|chunk| matches!(chunk.directive.kind, ChunkKind::ToolCall))
+fn record_verify(turn: &mut Turn, attempt: u32, verify: &VerifyOutcome, committed: usize) {
+    turn.record_pass(crate::turn::PassRecord {
+        kind: crate::runner::PassKind::Verify,
+        attempt,
+        prompt_hash: verify.prompt_hashes.last().cloned(),
+        budget: verify.budget.into(),
+        outcome: verify.outcome_name().to_owned(),
+        verification: verify.verification.clone(),
+        staged: verify.journal.len() as u32,
+        committed: committed as u32,
+        checks: verify
+            .verification
+            .iter()
+            .map(|result| result.check_label.clone())
+            .collect(),
+    });
+}
+
+fn digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn verify_exhausted_message(
+    attempts: u32,
+    verification: &[VerificationResult],
+    effects: &[ProcessMutation],
+) -> String {
+    let failed = verification
+        .iter()
+        .filter(|result| !result.pass)
+        .map(|result| {
+            let reason = result.error.as_deref().unwrap_or(result.reasoning.as_str());
+            format!("{} — {}", result.check_label, reason)
+        })
+        .collect::<Vec<_>>();
+    let reason = if failed.is_empty() {
+        "the reviewer did not approve".to_owned()
+    } else {
+        failed.join("; ")
+    };
+    let effects = effects
+        .iter()
+        .map(|effect| {
+            format!(
+                "{} {}",
+                effect.tool,
+                effect.target.as_deref().unwrap_or("(unnamed)")
+            )
+        })
+        .collect::<Vec<_>>();
+    let effects = if effects.is_empty() {
+        "none".to_owned()
+    } else {
+        effects.join(", ")
+    };
+    format!(
+        "VERIFY_EXHAUSTED: I couldn't verify this answer after {attempts} attempts: {reason}. Durable changes already made: {effects}."
+    )
 }
 
 /// Split text into `parts` contiguous word groups; joins preserve the words.
@@ -690,18 +892,6 @@ fn split_text(text: &str, parts: usize) -> Vec<String> {
         index += take;
     }
     result
-}
-
-fn messages_from_instance(instance: &PromptInstance) -> Vec<Message> {
-    instance
-        .messages
-        .iter()
-        .map(|message: &PromptMessage| match message.role.as_str() {
-            "user" => Message::user(message.content.clone()),
-            "assistant" => Message::assistant(message.content.clone()),
-            _ => Message::system(message.content.clone()),
-        })
-        .collect()
 }
 
 fn default_prompt_store() -> Option<Arc<PromptStore>> {

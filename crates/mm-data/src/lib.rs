@@ -71,8 +71,8 @@ pub use actions::{
     Recurrence, ScheduleSpec, ScheduledAction, ScheduledActionSpec, ScheduledActionStatus,
 };
 pub use agentstream::{
-    AgentstreamEvent, AgentstreamStore, EventProvenance, EventType, SessionFilter, SessionMetadata,
-    SessionRecord,
+    AgentstreamEvent, AgentstreamStore, CleanLog, CleanRole, CleanTurn, EventProvenance, EventType,
+    SessionFilter, SessionMetadata, SessionRecord, CLEAN_LOG_MAX_CHARS,
 };
 pub use apps::{AppRecord, AppRegistry, AppSpec};
 pub use config::{

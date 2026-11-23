@@ -1,0 +1,12 @@
+schema = "mm.prompt.fragment.v1"
+id = "retry_guidance"
+version = 1
+text = """
+Previous attempt:
+{{retry_context}}
+
+Failed checks:
+{{verification_results}}
+Address the failure. Do not restate the same answer, and do not repeat writes that already succeeded
+unless the correction requires it.
+"""

@@ -16,13 +16,15 @@ use async_trait::async_trait;
 use mm_agent::{AgentRuntime, ExternalWorkPort, TurnSummarizer};
 use mm_being::BeingFacade;
 use mm_cme::{
-    BudgetClass, BudgetLedger, ConversationRouter, FrameEngine, PromptContextProvider,
-    PromptVariables, RoutingTable, TurnExecutor, UserProjection,
+    BudgetClass, BudgetLedger, CleanLogProvider, ConversationRouter, FrameEngine,
+    PromptContextProvider, PromptVariables, RoutingTable, ThreePassConfig, ThreePassRunner,
+    ToolHandler, TurnExecutor, UserProjection,
 };
 use mm_core::{Config, MmError, UlidFactory};
 use mm_data::{
-    initialize_data_layer, ActionStore, AgentstreamStore, InitConfig, InitResult,
+    initialize_data_layer, ActionStore, AgentstreamStore, CleanLog, InitConfig, InitResult,
     InternalActionRegistry, MemorySystem, RdfEngine, RdfLogService, RdfPlanStore,
+    CLEAN_LOG_MAX_CHARS,
 };
 use mm_eventlog::EventLog;
 use mm_llm::{LlmClient, LlmConfig, OpenAiClient, ProviderEnv, ThresholdRouter};
@@ -97,6 +99,8 @@ pub struct AppState {
     pub agent: Arc<AgentRuntime>,
     /// Phase 7 feature flags.
     pub features: FeatureFlags,
+    /// The reviewed three-pass configuration (Phase 2).
+    pub three_pass: ThreePassConfig,
     /// Conversation-engine sessions and their drivers.
     pub cme: Arc<CmeRuntime>,
     /// Phase 1/2 conversation state and session operations.
@@ -297,6 +301,39 @@ impl AppState {
         } else {
             None
         };
+        let mut three_pass = ThreePassConfig::load_or_default(
+            Config::repo_root().join(mm_cme::config::DEFAULT_CONFIG_PATH),
+        )
+        .map_err(|error| MmError::Internal(format!("three-pass config: {error}")))?;
+        three_pass
+            .apply_env()
+            .map_err(|error| MmError::Internal(format!("three-pass config: {error}")))?;
+        if features.three_pass_v2 {
+            let mut fragments = vec!["interpret_repair", "verify_repair", "default_action_check"];
+            let mut strategies = vec![
+                &three_pass.interpret.strategy,
+                &three_pass.process.strategy,
+                &three_pass.verify.strategy,
+            ];
+            if three_pass.think.three_pass {
+                fragments.push("think_check");
+                strategies.push(&three_pass.think.strategy);
+            }
+            for fragment in fragments {
+                if prompts.fragment(fragment).is_none() {
+                    return Err(MmError::Internal(format!(
+                        "three-pass prompt fragment `{fragment}` is missing"
+                    )));
+                }
+            }
+            for strategy in strategies {
+                if prompts.strategy(strategy).is_none() {
+                    return Err(MmError::Internal(format!(
+                        "three-pass prompt strategy `{strategy}` is missing"
+                    )));
+                }
+            }
+        }
         let metrics = Arc::new(Metrics::default());
         let status_service = Arc::new(StatusService::new(
             Arc::clone(&state_service),
@@ -342,6 +379,7 @@ impl AppState {
             agentstream,
             agent,
             features,
+            three_pass,
             cme,
             state_service,
             automation,
@@ -433,35 +471,81 @@ impl AppState {
                 None => client,
             };
         let tool_client = Arc::clone(&client);
+        let runner_client = Arc::clone(&client);
         let model = config
             .defaults
             .default_model
             .clone()
             .or_else(|| table.default_model.clone());
+        let prompt_provider: Arc<dyn PromptContextProvider> = Arc::new(SessionPromptProvider {
+            state: Arc::downgrade(self),
+        });
         let executor = TurnExecutor::with_llm(
             client,
             ConversationRouter::with_table(Arc::new(router), table),
         )
         .with_prompts(Arc::clone(self.state_service.prompts()))
-        .with_prompt_provider(Arc::new(SessionPromptProvider {
-            state: Arc::downgrade(self),
-        }));
+        .with_prompt_provider(Arc::clone(&prompt_provider));
         // `MM_CM_V3` selects the conversation-manager contract surface. It is on
         // by default; turning it off leaves the legacy console controller reachable
         // and gives the CME executor a plain model round with no CM tools.
-        let executor = if self.features.cm_v3 {
-            executor.with_tools(Arc::new(
-                CmTools::new(Arc::clone(&self.state_service))
-                    .with_data(Arc::clone(&self.data.data_service))
-                    .with_metamind(
-                        Arc::clone(&self.rdf_engine),
-                        Arc::clone(&self.data.data_service),
-                        Arc::clone(self.state_service.prompts()),
-                        Some(tool_client),
-                        model,
-                    )
-                    .with_agent(Arc::clone(&self.agent)),
-            ))
+        let tools: Arc<dyn ToolHandler> = if self.features.cm_v3 {
+            let mut cm_tools = CmTools::new(Arc::clone(&self.state_service))
+                .with_data(Arc::clone(&self.data.data_service))
+                .with_metamind(
+                    Arc::clone(&self.rdf_engine),
+                    Arc::clone(&self.data.data_service),
+                    Arc::clone(self.state_service.prompts()),
+                    Some(Arc::clone(&tool_client)),
+                    model.clone(),
+                )
+                .with_agent(Arc::clone(&self.agent));
+            // A recursive thought gets its own handler fixed to the Think scope,
+            // so its read-only contract is enforced by the dispatcher, not only
+            // by its prompt. Its runner has no context provider: the thought has
+            // no conversation bundle to reload.
+            if self.features.three_pass_v2 && self.three_pass.think.three_pass {
+                let think_tools: Arc<dyn ToolHandler> = Arc::new(
+                    CmTools::new(Arc::clone(&self.state_service))
+                        .with_data(Arc::clone(&self.data.data_service))
+                        .with_metamind(
+                            Arc::clone(&self.rdf_engine),
+                            Arc::clone(&self.data.data_service),
+                            Arc::clone(self.state_service.prompts()),
+                            Some(Arc::clone(&tool_client)),
+                            model.clone(),
+                        )
+                        .with_agent(Arc::clone(&self.agent))
+                        .with_pass_scope(mm_cme::PassScope::Think),
+                );
+                let think_runner = ThreePassRunner::new(
+                    Arc::clone(&runner_client),
+                    Arc::clone(self.state_service.prompts()),
+                    think_tools,
+                    self.three_pass.clone(),
+                )
+                .expect("three-pass runner was validated at boot");
+                cm_tools = cm_tools.with_think_runner(Arc::new(think_runner));
+            }
+            Arc::new(cm_tools)
+        } else {
+            Arc::new(mm_cme::UnavailableTools)
+        };
+        let executor = executor.with_tools(Arc::clone(&tools));
+        let executor = if self.features.three_pass_v2 {
+            let runner = ThreePassRunner::new(
+                runner_client,
+                Arc::clone(self.state_service.prompts()),
+                tools,
+                self.three_pass.clone(),
+            )
+            .expect("three-pass runner was validated at boot")
+            .with_context_provider(prompt_provider);
+            executor
+                .with_three_pass(runner)
+                .with_clean_log_provider(Arc::new(SessionCleanLogProvider {
+                    state: Arc::downgrade(self),
+                }))
         } else {
             executor
         };
@@ -502,6 +586,28 @@ impl PromptContextProvider for SessionPromptProvider {
             BudgetLedger::new(BudgetClass::Standard).snapshot(),
         )
         .map_err(|error| format!("prompt variables: {error}"))
+    }
+}
+
+/// Rebuilds the clean log from the agentstream before Interpret. Only user
+/// messages and `final:true` agent messages contribute.
+struct SessionCleanLogProvider {
+    state: Weak<AppState>,
+}
+
+#[async_trait]
+impl CleanLogProvider for SessionCleanLogProvider {
+    async fn clean_log(&self, session_id: &str) -> std::result::Result<CleanLog, String> {
+        let state = self
+            .state
+            .upgrade()
+            .ok_or_else(|| "application state is closed".to_owned())?;
+        let events = state
+            .agentstream
+            .events(session_id)
+            .await
+            .map_err(|error| format!("agentstream: {error}"))?;
+        Ok(CleanLog::from_events(&events, CLEAN_LOG_MAX_CHARS))
     }
 }
 

@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "deep_analysis"
+version = 1
+text = """
+Question: {{thought_question}}
+
+Separate what you observed from what you inferred. Name the strongest alternative explanation and
+why the evidence does or does not rule it out. Stop when another pass would not change the answer.
+"""

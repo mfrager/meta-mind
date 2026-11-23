@@ -1,0 +1,46 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.process.v1"
+application = "cm.process"
+version = 1
+description = "Process pass: execute the interpreted task and produce the user-facing reply."
+budget = "standard"
+required_variables = ["state_block", "tools_summary", "process_task", "budget_class"]
+fragments = [
+  "identity",
+  "character",
+  "state_ownership",
+  "tools_contract",
+  "tool_selection",
+  "data_guidance",
+  "metamind_division",
+  "memory_contract",
+  "budget_contract",
+  "honesty_contract",
+  "safety_contract",
+  "process_execution",
+  "output_character",
+]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_block",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "user_input",
+  "transcript_compact",
+  "tools_summary",
+  "entity_summary",
+  "memory_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tone",
+  "process_task",
+  "process_constraints",
+  "process_suggested_tools",
+  "retry_context",
+]

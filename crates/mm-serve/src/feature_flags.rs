@@ -16,6 +16,8 @@
 //! | `MM_PROMPT_V1` | `false` | load the reviewed prompt tree for CM turns |
 //! | `MM_AUTOMATION_V1` | `true` | enable session automation/frame timers |
 //! | `MM_FRAMES_V1` | `false` | enable frame stack execution |
+//! | `MM_THREE_PASS_V2` | `false` | run turns through Interpret → Process → Verify |
+//! | `MM_PROCESS_V1` | `false` | enable the durable process pipeline |
 
 use mm_cme::VoiceTier;
 
@@ -44,6 +46,10 @@ pub struct FeatureFlags {
     pub automation_v1: bool,
     /// Enable the frame stack.
     pub frames_v1: bool,
+    /// Run turns through the three-pass runner.
+    pub three_pass_v2: bool,
+    /// Enable the durable process pipeline.
+    pub process_v1: bool,
 }
 
 impl Default for FeatureFlags {
@@ -60,6 +66,8 @@ impl Default for FeatureFlags {
             prompt_v1: false,
             automation_v1: false,
             frames_v1: false,
+            three_pass_v2: false,
+            process_v1: false,
         }
     }
 }
@@ -94,6 +102,8 @@ impl FeatureFlags {
             prompt_v1: env_bool("MM_PROMPT_V1", defaults.prompt_v1),
             automation_v1: env_bool("MM_AUTOMATION_V1", true),
             frames_v1: env_bool("MM_FRAMES_V1", defaults.frames_v1),
+            three_pass_v2: env_bool("MM_THREE_PASS_V2", defaults.three_pass_v2),
+            process_v1: env_bool("MM_PROCESS_V1", defaults.process_v1),
         }
     }
 }
@@ -125,6 +135,8 @@ mod tests {
         assert!(!flags.prompt_v1);
         assert!(!flags.automation_v1);
         assert!(!flags.frames_v1);
+        assert!(!flags.three_pass_v2);
+        assert!(!flags.process_v1);
     }
 
     #[test]

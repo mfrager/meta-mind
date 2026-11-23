@@ -52,6 +52,18 @@ pub enum CmeError {
     /// A routing table could not be loaded or was invalid.
     #[error("routing table: {0}")]
     RoutingTable(String),
+    /// A pass exhausted its budget.
+    #[error(transparent)]
+    Budget(#[from] crate::budget::BudgetError),
+    /// A verification backend or check failed.
+    #[error("verification: {0}")]
+    Verification(String),
+}
+
+impl From<crate::verification::VerificationError> for CmeError {
+    fn from(error: crate::verification::VerificationError) -> Self {
+        Self::Verification(error.to_string())
+    }
 }
 
 /// A result carrying [`CmeError`].

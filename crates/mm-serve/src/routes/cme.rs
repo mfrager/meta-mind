@@ -171,6 +171,13 @@ async fn frames_for(
             query: query.to_owned(),
         },
     ];
+    frames.extend(pass_frames(&turn_id, &outcome.text, &outcome.pass_history));
+    let verified = outcome
+        .pass_history
+        .iter()
+        .rev()
+        .find(|record| record.kind == mm_cme::PassKind::Verify)
+        .map(|record| record.verification.iter().all(|result| result.pass));
     if outcome.is_success() {
         for chunk in &outcome.chunks {
             if matches!(chunk.kind, ChunkKind::Text | ChunkKind::ToolCall) {
@@ -220,6 +227,7 @@ async fn frames_for(
             blocks: None,
             suggestions: None,
             unbacked: None,
+            verified,
         });
         let mut subsystems = vec!["cme".into(), "memory".into()];
         if !outcome.tool_calls.is_empty() {
@@ -323,6 +331,40 @@ pub async fn debug(State(state): State<Arc<AppState>>) -> Html<String> {
     Html(body)
 }
 
+/// The pass timeline frames for one turn. Every field comes from a recorded
+/// pass, so the UI never has to infer a pass that did not run.
+fn pass_frames(turn_id: &str, text: &str, pass_history: &[mm_cme::PassRecord]) -> Vec<ChatFrame> {
+    let mut frames = Vec::new();
+    for record in pass_history {
+        frames.push(ChatFrame::PassStart {
+            pass: record.kind.as_str().to_owned(),
+            turn_id: turn_id.to_owned(),
+            attempt: record.attempt,
+        });
+        if record.outcome == "fast_path" {
+            frames.push(ChatFrame::PassToken {
+                pass: record.kind.as_str().to_owned(),
+                token: text.to_owned(),
+                is_final: true,
+            });
+        }
+        frames.push(ChatFrame::PassComplete {
+            pass: record.kind.as_str().to_owned(),
+            finished: record.outcome.clone(),
+            budget: serde_json::to_value(&record.budget).unwrap_or(Value::Null),
+            prompt_hash: record.prompt_hash.clone(),
+        });
+        for result in &record.verification {
+            frames.push(ChatFrame::Verification {
+                label: result.check_label.clone(),
+                pass: result.pass,
+                confidence: result.confidence,
+            });
+        }
+    }
+    frames
+}
+
 fn json_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or_else(|_| json!(raw))
 }
@@ -369,4 +411,118 @@ fn summary(snapshot: &SessionSnapshot) -> Value {
             "improvement": snapshot.improvement,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mm_cme::{PassBudget, PassKind, PassRecord, VerificationResult};
+
+    fn budget() -> PassBudget {
+        PassBudget {
+            class: "quick".into(),
+            rounds: 7,
+            steps: 24,
+            tokens: 31_000,
+            wall_ms: 90_000,
+            estimated: false,
+        }
+    }
+
+    fn record(kind: PassKind, outcome: &str, hash: &str) -> PassRecord {
+        PassRecord {
+            kind,
+            attempt: 1,
+            prompt_hash: Some(hash.into()),
+            budget: budget(),
+            outcome: outcome.into(),
+            verification: Vec::new(),
+            staged: 0,
+            committed: 0,
+            checks: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_pass_timeline_comes_only_from_recorded_passes() {
+        let mut verify = record(PassKind::Verify, "approved", "ef01");
+        verify.verification = vec![VerificationResult {
+            check_label: "cites".into(),
+            pass: true,
+            reasoning: "a source is named".into(),
+            confidence: 0.9,
+            backend: "llm_judge".into(),
+            elapsed_ms: 12,
+            error: None,
+        }];
+        let frames = pass_frames(
+            "t1",
+            "reply",
+            &[
+                record(PassKind::Interpret, "action", "abcd"),
+                record(PassKind::Process, "completed", "1234"),
+                verify,
+            ],
+        );
+
+        let starts = frames
+            .iter()
+            .filter(|frame| matches!(frame, ChatFrame::PassStart { .. }))
+            .count();
+        let completes = frames
+            .iter()
+            .filter(|frame| matches!(frame, ChatFrame::PassComplete { .. }))
+            .count();
+        let checks = frames
+            .iter()
+            .filter(|frame| matches!(frame, ChatFrame::Verification { .. }))
+            .count();
+        assert_eq!((starts, completes, checks), (3, 3, 1));
+        assert!(!frames
+            .iter()
+            .any(|frame| matches!(frame, ChatFrame::PassToken { .. })));
+        assert!(matches!(
+            &frames[1],
+            ChatFrame::PassComplete {
+                pass,
+                finished,
+                prompt_hash,
+                ..
+            } if pass == "interpret"
+                && finished == "action"
+                && prompt_hash.as_deref() == Some("abcd")
+        ));
+        assert!(matches!(
+            &frames[6],
+            ChatFrame::Verification {
+                label,
+                pass: true,
+                confidence,
+            } if label == "cites" && (*confidence - 0.9).abs() < f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn a_fast_path_emits_one_final_token() {
+        let frames = pass_frames(
+            "t1",
+            "hello",
+            &[record(PassKind::Interpret, "fast_path", "abcd")],
+        );
+        assert!(matches!(
+            &frames[1],
+            ChatFrame::PassToken {
+                pass,
+                token,
+                is_final: true,
+            } if pass == "interpret" && token == "hello"
+        ));
+        assert_eq!(
+            frames
+                .iter()
+                .filter(|frame| matches!(frame, ChatFrame::PassStart { .. }))
+                .count(),
+            1
+        );
+    }
 }

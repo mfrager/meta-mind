@@ -755,6 +755,7 @@ fn closing(request_id: &str, text: &str, unbacked: bool) -> Vec<ChatFrame> {
             blocks: None,
             suggestions: None,
             unbacked: unbacked.then_some(true),
+            verified: None,
         },
         ChatFrame::Completed {
             subsystems: vec!["controller".into()],

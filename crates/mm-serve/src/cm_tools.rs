@@ -13,8 +13,11 @@ use async_trait::async_trait;
 use mm_agent::{
     AgentCall, AgentError, AgentKind, AgentOrigin, AgentRunStatus, AgentRuntime, ExternalWorkPort,
 };
-use mm_cme::{CmeError, FrameError, Result as CmeResult, ToolHandler};
-use mm_data::{ConversationError, SessionError, StateOrigin, StatusValue};
+use mm_cme::{
+    is_mutating_call, CmeError, CommittedMutation, FrameError, MutationJournal, PassScope,
+    Result as CmeResult, ToolHandler, MAX_STAGED_MUTATIONS,
+};
+use mm_data::{ConversationError, DataBroker, DataQuery, SessionError, StateOrigin, StatusValue};
 use mm_llm::ToolSchema;
 use serde_json::{json, Value};
 use tokio::time::timeout;
@@ -66,6 +69,7 @@ pub struct CmTools {
     metamind: Option<MetamindTools>,
     agent: Option<Arc<AgentRuntime>>,
     session_id: Option<String>,
+    pass_scope: Option<PassScope>,
 }
 
 impl CmTools {
@@ -77,7 +81,21 @@ impl CmTools {
             metamind: None,
             agent: None,
             session_id: None,
+            pass_scope: None,
         }
+    }
+
+    /// Restrict this handler to one three-pass pass. Without a scope the
+    /// legacy seventeen-tool surface is unchanged.
+    #[must_use]
+    pub fn with_pass_scope(mut self, scope: PassScope) -> Self {
+        self.pass_scope = Some(scope);
+        self
+    }
+
+    /// The configured pass scope, if any.
+    pub fn pass_scope(&self) -> Option<PassScope> {
+        self.pass_scope
     }
 
     /// Attach the managed-data service, enabling the seven `data.*` tools.
@@ -112,6 +130,18 @@ impl CmTools {
             client,
             model,
         ));
+        self
+    }
+
+    /// Route `metamind.think` through the verified three-pass cycle.
+    ///
+    /// Call after [`CmTools::with_metamind`]; a handler without metamind
+    /// services ignores it.
+    #[must_use]
+    pub fn with_think_runner(self, runner: Arc<mm_cme::ThreePassRunner>) -> Self {
+        if let Some(metamind) = &self.metamind {
+            metamind.set_think_runner(runner);
+        }
         self
     }
 
@@ -554,6 +584,24 @@ impl CmTools {
         }))
     }
 
+    async fn fresh_subject_revision(&self, tool: &str, arguments: &Value) -> Option<u64> {
+        if !matches!(tool, "data.update" | "data.delete") {
+            return None;
+        }
+        let subject = arguments.get("subject")?.as_str()?.to_owned();
+        let data = self.data.as_ref()?;
+        let page = data
+            .service()
+            .query(DataQuery {
+                subject: Some(subject),
+                limit: 1,
+                ..DataQuery::default()
+            })
+            .await
+            .ok()?;
+        page.entities.first().map(|entity| entity.revision)
+    }
+
     async fn envelope(
         &self,
         session_id: &str,
@@ -594,13 +642,32 @@ impl ToolHandler for CmTools {
     fn schemas(&self) -> Vec<ToolSchema> {
         ToolCatalog::embedded()
             .map(|catalog| {
-                catalog
-                    .schemas()
-                    .iter()
+                let schemas = match self.pass_scope {
+                    Some(scope) => catalog.schemas_for(scope),
+                    None => catalog.work_schemas(),
+                };
+                schemas
+                    .into_iter()
                     .map(|schema| ToolSchema {
-                        name: schema.name.clone(),
-                        description: schema.description.clone(),
-                        parameters: schema.parameters.clone(),
+                        name: schema.name,
+                        description: schema.description,
+                        parameters: schema.parameters,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn schemas_for(&self, scope: PassScope) -> Vec<ToolSchema> {
+        ToolCatalog::embedded()
+            .map(|catalog| {
+                catalog
+                    .schemas_for(scope)
+                    .into_iter()
+                    .map(|schema| ToolSchema {
+                        name: schema.name,
+                        description: schema.description,
+                        parameters: schema.parameters,
                     })
                     .collect()
             })
@@ -610,6 +677,185 @@ impl ToolHandler for CmTools {
     async fn call(&self, name: &str, arguments: &str) -> CmeResult<String> {
         let session = self.session(None)?;
         self.call_for_session(session, name, arguments).await
+    }
+
+    async fn call_staged_for_session(
+        &self,
+        session_id: &str,
+        name: &str,
+        arguments: &str,
+        journal: &mut MutationJournal,
+    ) -> CmeResult<String> {
+        let now = mm_data::rdf::now_ms();
+        if let Err(error) = self
+            .state
+            .ensure_session(session_id, CONSOLE_USER, now)
+            .await
+        {
+            return serde_json::to_string(&ToolEnvelope::failure(
+                name,
+                None,
+                0,
+                Value::Null,
+                ToolFailure::from(error).body(),
+            ))
+            .map_err(|error| CmeError::Tool(error.to_string()));
+        }
+        let action = action_of(arguments);
+        if !PassScope::Verify.allows(name, action.as_deref()) {
+            let envelope = self
+                .envelope(
+                    session_id,
+                    name,
+                    action,
+                    Err(ToolFailure::new(
+                        "TOOL_NOT_AVAILABLE",
+                        format!("{name} is not available in the verify pass"),
+                    )),
+                )
+                .await;
+            return serde_json::to_string(&envelope)
+                .map_err(|error| CmeError::Tool(error.to_string()));
+        }
+        if !is_mutating_call(name, action.as_deref()) {
+            return self.call_for_session(session_id, name, arguments).await;
+        }
+        let catalog = match ToolCatalog::embedded() {
+            Ok(catalog) => catalog,
+            Err(error) => {
+                let envelope = self
+                    .envelope(
+                        session_id,
+                        name,
+                        action,
+                        Err(ToolFailure::new("INTERNAL", error.to_string())),
+                    )
+                    .await;
+                return serde_json::to_string(&envelope)
+                    .map_err(|error| CmeError::Tool(error.to_string()));
+            }
+        };
+        let parsed = match catalog.parse(name, arguments) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                let envelope = self
+                    .envelope(
+                        session_id,
+                        name,
+                        action,
+                        Err(ToolFailure::from_argument(error)),
+                    )
+                    .await;
+                return serde_json::to_string(&envelope)
+                    .map_err(|error| CmeError::Tool(error.to_string()));
+            }
+        };
+        if journal.len() >= MAX_STAGED_MUTATIONS {
+            let envelope = self
+                .envelope(
+                    session_id,
+                    name,
+                    action,
+                    Err(ToolFailure::new(
+                        "BUDGET",
+                        format!("the Verify journal holds at most {MAX_STAGED_MUTATIONS} writes"),
+                    )),
+                )
+                .await;
+            return serde_json::to_string(&envelope)
+                .map_err(|error| CmeError::Tool(error.to_string()));
+        }
+        let bundle = self.state.load(session_id).await.ok();
+        let preconditions = json!({
+            "conversationRevision": bundle.as_ref().map(|bundle| bundle.conversation.revision),
+            "dataRevision": self.data.as_ref().map(|data| data.service().data_revision()),
+            "expectedRevision": parsed.get("expected_revision").cloned(),
+        });
+        let preview = json!({
+            "tool": name,
+            "action": action,
+            "target": parsed
+                .get("subject")
+                .or_else(|| parsed.get("id"))
+                .or_else(|| parsed.get("plan_id"))
+                .or_else(|| parsed.get("memory_id"))
+                .cloned(),
+            "arguments": parsed.clone(),
+        });
+        let intent = match journal.push(name, action.clone(), parsed, preconditions, preview) {
+            Ok(intent) => intent,
+            Err(message) => {
+                let envelope = self
+                    .envelope(
+                        session_id,
+                        name,
+                        action,
+                        Err(ToolFailure::new("BUDGET", message)),
+                    )
+                    .await;
+                return serde_json::to_string(&envelope)
+                    .map_err(|error| CmeError::Tool(error.to_string()));
+            }
+        };
+        let mut envelope = self
+            .envelope(session_id, name, action, Ok(intent.staged_result()))
+            .await;
+        envelope.data_revision = self
+            .data
+            .as_ref()
+            .map(|data| data.service().data_revision());
+        serde_json::to_string(&envelope).map_err(|error| CmeError::Tool(error.to_string()))
+    }
+
+    async fn commit_staged_for_session(
+        &self,
+        session_id: &str,
+        journal: &MutationJournal,
+    ) -> CmeResult<Vec<CommittedMutation>> {
+        let mut committed = Vec::with_capacity(journal.intents.len());
+        for intent in &journal.intents {
+            let mut arguments = intent.arguments.clone();
+            let mut retried = false;
+            let mut result = self
+                .call_for_session(session_id, &intent.tool, &arguments.to_string())
+                .await?;
+            if is_data_conflict(&result) {
+                if let Some(revision) = self.fresh_subject_revision(&intent.tool, &arguments).await
+                {
+                    if let Some(object) = arguments.as_object_mut() {
+                        object.insert("expected_revision".into(), json!(revision));
+                    }
+                    retried = true;
+                    result = self
+                        .call_for_session(session_id, &intent.tool, &arguments.to_string())
+                        .await?;
+                }
+            }
+            let envelope: ToolEnvelope = serde_json::from_str(&result).map_err(|error| {
+                CmeError::Tool(format!(
+                    "VERIFY_COMMIT_FAILED: intent {} {} returned invalid JSON: {error}",
+                    intent.seq, intent.tool
+                ))
+            })?;
+            if !envelope.ok {
+                let detail = envelope
+                    .error
+                    .map(|error| format!("{}: {}", error.code, error.message))
+                    .unwrap_or_else(|| "unknown error".into());
+                return Err(CmeError::Tool(format!(
+                    "VERIFY_COMMIT_FAILED: intent {} {}: {detail}",
+                    intent.seq, intent.tool
+                )));
+            }
+            committed.push(CommittedMutation {
+                seq: intent.seq,
+                tool: intent.tool.clone(),
+                action: intent.action.clone(),
+                result: envelope.result.unwrap_or(Value::Null),
+                retried,
+            });
+        }
+        Ok(committed)
     }
 
     async fn call_for_session(
@@ -635,6 +881,25 @@ impl ToolHandler for CmTools {
         }
 
         let action = action_of(arguments);
+
+        if let Some(scope) = self.pass_scope {
+            if !scope.allows(name, action.as_deref()) {
+                let envelope = self
+                    .envelope(
+                        session_id,
+                        name,
+                        action,
+                        Err(ToolFailure::new(
+                            "TOOL_NOT_AVAILABLE",
+                            format!("{name} is not available in the {} pass", scope.as_str()),
+                        )),
+                    )
+                    .await;
+                return serde_json::to_string(&envelope)
+                    .map_err(|error| CmeError::Tool(error.to_string()));
+            }
+        }
+
         let catalog = match ToolCatalog::embedded() {
             Ok(catalog) => catalog,
             Err(error) => {
@@ -724,6 +989,19 @@ fn frame_result(bundle: &mm_data::SessionBundle) -> Value {
         "top": bundle.frames.top(),
         "utterance": bundle.session.pending_utterance,
     })
+}
+
+fn is_data_conflict(envelope: &str) -> bool {
+    serde_json::from_str::<Value>(envelope)
+        .ok()
+        .and_then(|value| value.get("error").cloned())
+        .and_then(|error| {
+            error
+                .get("code")
+                .and_then(Value::as_str)
+                .map(|code| code == "DATA_CONFLICT")
+        })
+        .unwrap_or(false)
 }
 
 fn action_of(raw: &str) -> Option<String> {

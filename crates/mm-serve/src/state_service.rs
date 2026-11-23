@@ -590,6 +590,10 @@ impl StateService {
         session_id: &str,
         now_ms: i64,
     ) -> Result<Presence, StateServiceError> {
+        // Presence is a read-modify-write of the session revision. Serialize it
+        // with the other mutations so a concurrent status/automation write
+        // cannot move the revision between the load and the save.
+        let _guard = self.mutations.write().await;
         let presence = self
             .registry
             .heartbeat(session_id, now_ms)

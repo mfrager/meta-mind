@@ -141,6 +141,11 @@ function Row({ item, live, onAnswer }: { item: TranscriptItem; live?: boolean; o
     return (
       <p data-item={`final:${item.text}`} className="text-sm" aria-live={live ? "polite" : undefined}>
         {item.text}
+        {item.verified === true ? (
+          <span className="ml-2 align-middle">
+            <StatusChip tone="ok" label="verified" />
+          </span>
+        ) : null}
         {item.unbacked ? (
           <span className="ml-2 align-middle">
             <StatusChip tone="degraded" label="not backed by a tool" />

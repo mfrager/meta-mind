@@ -177,10 +177,33 @@ impl CmeRuntime {
         .with_turn(outcome.turn_id.to_string());
         self.log_event(user).await;
 
+        // The clean-log projection reads top-level `text` + `final`; the frame
+        // records below are for replay and tool cards, not assistant content.
+        if outcome.is_success() {
+            let assistant = AgentstreamEvent::new(
+                session_id,
+                EventType::AgentMessage,
+                json!({
+                    "requestId": request_id,
+                    "text": outcome.text,
+                    "final": true
+                }),
+                EventProvenance {
+                    source: "cme".into(),
+                    model: outcome.model.clone(),
+                },
+            )
+            .with_turn(outcome.turn_id.to_string());
+            self.log_event(assistant).await;
+        }
+
         for (seq, frame) in frames {
             let kind = match frame {
                 ChatFrame::ToolCall { .. } => EventType::ToolCall,
                 ChatFrame::ToolResult { .. } => EventType::ToolResult,
+                ChatFrame::PassStart { .. } => EventType::PassStarted,
+                ChatFrame::PassComplete { .. } => EventType::PassCompleted,
+                ChatFrame::Verification { .. } => EventType::VerificationResult,
                 _ => EventType::AgentMessage,
             };
             let event = AgentstreamEvent::new(
@@ -194,6 +217,113 @@ impl CmeRuntime {
             )
             .with_turn(outcome.turn_id.to_string());
             self.log_event(event).await;
+        }
+
+        for record in &outcome.pass_history {
+            if record.kind != mm_cme::PassKind::Interpret || record.checks.is_empty() {
+                continue;
+            }
+            self.log_event(
+                AgentstreamEvent::new(
+                    session_id,
+                    EventType::VerificationRegistered,
+                    json!({
+                        "requestId": request_id,
+                        "attempt": record.attempt,
+                        "checks": record.checks,
+                    }),
+                    EventProvenance {
+                        source: "cme".into(),
+                        model: outcome.model.clone(),
+                    },
+                )
+                .with_turn(outcome.turn_id.to_string()),
+            )
+            .await;
+        }
+
+        for record in &outcome.pass_history {
+            if record.kind != mm_cme::PassKind::Verify || record.outcome != "rejected" {
+                continue;
+            }
+            self.log_event(
+                AgentstreamEvent::new(
+                    session_id,
+                    EventType::RetryScheduled,
+                    json!({
+                        "requestId": request_id,
+                        "attempt": record.attempt,
+                        "nextAttempt": record.attempt + 1,
+                    }),
+                    EventProvenance {
+                        source: "cme".into(),
+                        model: outcome.model.clone(),
+                    },
+                )
+                .with_turn(outcome.turn_id.to_string()),
+            )
+            .await;
+        }
+
+        for staged in &outcome.staged_writes {
+            self.log_event(
+                AgentstreamEvent::new(
+                    session_id,
+                    EventType::WriteStaged,
+                    json!({
+                        "requestId": request_id,
+                        "seq": staged.seq,
+                        "tool": staged.tool,
+                        "action": staged.action,
+                        "preview": staged.preview,
+                    }),
+                    EventProvenance {
+                        source: "cme".into(),
+                        model: outcome.model.clone(),
+                    },
+                )
+                .with_turn(outcome.turn_id.to_string()),
+            )
+            .await;
+        }
+        for committed in &outcome.committed_writes {
+            self.log_event(
+                AgentstreamEvent::new(
+                    session_id,
+                    EventType::WriteCommitted,
+                    json!({
+                        "requestId": request_id,
+                        "seq": committed.seq,
+                        "tool": committed.tool,
+                        "action": committed.action,
+                        "retried": committed.retried,
+                    }),
+                    EventProvenance {
+                        source: "cme".into(),
+                        model: outcome.model.clone(),
+                    },
+                )
+                .with_turn(outcome.turn_id.to_string()),
+            )
+            .await;
+        }
+        if outcome.discarded_writes > 0 {
+            self.log_event(
+                AgentstreamEvent::new(
+                    session_id,
+                    EventType::WriteDiscarded,
+                    json!({
+                        "requestId": request_id,
+                        "count": outcome.discarded_writes,
+                    }),
+                    EventProvenance {
+                        source: "cme".into(),
+                        model: outcome.model.clone(),
+                    },
+                )
+                .with_turn(outcome.turn_id.to_string()),
+            )
+            .await;
         }
     }
 

@@ -1,0 +1,33 @@
+# Three-pass turn configuration. Reviewed data: prompts and backends are named,
+# never embedded in code. Missing keys use the defaults in mm-cme::config.
+
+[interpret]
+budget_class = "quick"
+strategy = "cm.interpret.v1"
+max_checks = 8
+
+[process]
+budget_class = "standard"
+strategy = "cm.process.v1"
+
+[verify]
+budget_class = "quick"
+strategy = "cm.verify.v1"
+max_retries = 5
+check_timeout_ms = 20000
+max_parallel_checks = 4
+allow_think = false
+allow_override = false
+
+[envelope]
+max_tokens = 184000
+
+[verification.backends.llm_judge]
+enabled = true
+temperature = 0.0
+max_output_tokens = 512
+
+[think]
+budget_class = "think"
+strategy = "cm.think.v1"
+three_pass = false

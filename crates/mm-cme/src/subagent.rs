@@ -497,6 +497,22 @@ pub struct ThinkEvidence {
     pub id: String,
 }
 
+/// The runner a recursive thought executes through.
+pub struct ThinkRuntime {
+    /// The three-pass runner.
+    pub runner: Arc<crate::runner::ThreePassRunner>,
+    /// The model a thought routes through.
+    pub model: Option<String>,
+}
+
+impl std::fmt::Debug for ThinkRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ThinkRuntime")
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
+}
+
 /// The private thinker.
 pub struct ThinkService {
     data: Arc<DataService>,
@@ -504,6 +520,7 @@ pub struct ThinkService {
     prompts: Arc<PromptStore>,
     client: Option<Arc<dyn LlmClient>>,
     model: Option<String>,
+    runtime: std::sync::OnceLock<Arc<ThinkRuntime>>,
 }
 
 impl std::fmt::Debug for ThinkService {
@@ -529,7 +546,30 @@ impl ThinkService {
             prompts,
             client,
             model,
+            runtime: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Run thoughts through the verified three-pass cycle. The caller sets this
+    /// only when `think.three_pass` is enabled.
+    #[must_use]
+    pub fn with_runtime(self, runtime: Arc<ThinkRuntime>) -> Self {
+        let _ = self.runtime.set(runtime);
+        self
+    }
+
+    /// Install the recursive runtime after construction, breaking the cycle
+    /// between the think runner and the handler that dispatches its tools.
+    pub fn install_runner(&self, runner: Arc<crate::runner::ThreePassRunner>) {
+        let _ = self.runtime.set(Arc::new(ThinkRuntime {
+            runner,
+            model: self.model.clone(),
+        }));
+    }
+
+    /// Whether thoughts use the recursive verified path.
+    pub fn recursive(&self) -> bool {
+        self.runtime.get().is_some()
     }
 
     /// Run one bounded inner thought.
@@ -541,6 +581,20 @@ impl ThinkService {
         session_id: &str,
     ) -> Result<ThinkResult> {
         let started = Instant::now();
+        if let Some(runtime) = self.runtime.get() {
+            let run = runtime
+                .runner
+                .run_think(crate::runner::ThinkPassRequest {
+                    think_id: session_id.to_owned(),
+                    question: question.to_owned(),
+                    context: context.map(str::to_owned),
+                    focus: focus.to_vec(),
+                    model: runtime.model.clone().or_else(|| self.model.clone()),
+                })
+                .await
+                .map_err(|error| SubagentError::Model(error.to_string()))?;
+            return Ok(run.result);
+        }
         let Some(client) = &self.client else {
             return self.fallback(question, focus, started).await;
         };
@@ -892,7 +946,7 @@ impl ThinkService {
     }
 }
 
-fn parse_think_result(text: &str) -> ThinkResult {
+pub(crate) fn parse_think_result(text: &str) -> ThinkResult {
     if let Ok(value) = serde_json::from_str::<Value>(text) {
         let summary = value
             .get("summary")

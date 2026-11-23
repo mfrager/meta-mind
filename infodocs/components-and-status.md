@@ -474,8 +474,10 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
 - **Purpose.** A bounded conversation manager over ontology data, plans, memory,
   logs, internal actions, downstream agents, and a live inspector — the surface
   described in [`design/conversation_manager_agent_inspector_plan.md`](../design/conversation_manager_agent_inspector_plan.md).
-- **Can do.** Exactly seventeen CM tools (`conversation.*`, `data.*`, `metamind.*`,
-  `agent.run`) with strict schemas and typed errors; deterministic prompt
+- **Can do.** Exactly seventeen CM work tools (`conversation.*`, `data.*`,
+  `metamind.*`, `agent.run`) with strict schemas and typed errors, plus the two
+  pass-control schemas `metamind.verify`/`metamind.approve` that are only
+  advertised inside a three-pass scope; deterministic prompt
   strategies and frame templates under `config/prompts/`; revisioned conversation
   state with topic/depth/status/frames; session presence, idle/expiry sweep, resume
   and supersede; one automation supervisor per live session; durable scheduled
@@ -492,14 +494,33 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
   by the runtime: the prompt tree and frame timers are governed by the CME path
   and `MM_AUTOMATION_V1` instead. The CM tool surface is attached to the CME executor
   only when `MM_CM_V3=true` (the default); `MM_CME_ENABLED` still chooses the CME
-  versus the legacy console route. Legacy `urn:metamind:*` user/project triples
-  are retained for audit and aliased with `owl:sameAs`; they are not rewritten or
-  deleted.
+  versus the legacy console route. The Phase 1 three-pass substrate (verification
+  backends, pass scopes, prompts, budget envelope, clean log), Phase 2
+  Interpret pass (fast path, protocol repair, implicit action check, pass
+  telemetry), Phase 3 Process pass (extracted reusable loop, `cm.process.v1`
+  brief, 17-tool scope, child budget reservation, legacy parity), and Phase 4
+  Verify (parallel checks, staged writes committed only on approval, `cm.verify.v1`
+  review with override guard, retry loop and `VERIFY_EXHAUSTED`, recursive think
+  under the Think scope, pass timeline) are implemented but inert while
+  `MM_THREE_PASS_V2` is off; the legacy path still advertises exactly the
+  seventeen work tools. `MM_PROCESS_V1` also remains off, and the live
+  three-pass dual-run is still to be recorded. See
+  [`three-pass-substrate.md`](./three-pass-substrate.md),
+  [`three-pass-interpret.md`](./three-pass-interpret.md),
+  [`three-pass-process.md`](./three-pass-process.md), and
+  [`three-pass-verify.md`](./three-pass-verify.md). Legacy
+  `urn:metamind:*` user/project triples are retained for audit and aliased with
+  `owl:sameAs`; they are not rewritten or deleted.
 - **Tested by.** `cargo test -p mm-serve --tests` (phase 1–10 suites plus parity
   and wire compatibility), `cargo test -p mm-data`, `cargo test -p mm-search`,
-  frontend typecheck/Vitest/build, and `mm-cli data verify` on a fresh data root.
+  the Phase 1 substrate, Phase 2 runner, Phase 3 Process, and Phase 4 Verify
+  tests described in [`three-pass-substrate.md`](./three-pass-substrate.md),
+  [`three-pass-interpret.md`](./three-pass-interpret.md),
+  [`three-pass-process.md`](./three-pass-process.md), and
+  [`three-pass-verify.md`](./three-pass-verify.md), frontend
+  typecheck/Vitest/build, and `mm-cli data verify` on a fresh data root.
 - **Quality.** The tool contract and state invariants are the strongest part: the
-  seventeen schemas are embedded and count-checked, every state write is
+  seventeen work schemas plus two control schemas are embedded and count-checked, every state write is
   revision-checked, and the index is verified against RDF. The weak part is
   external validation — the live model path is now proven to work and to account
   for itself, but the dual-run is incomplete and there is still no live

@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "tool_selection"
+version = 1
+text = """
+Choose tools by job: conversation.* for state, data.* for typed knowledge, metamind.plan/act for
+durable work, metamind.think for deep private analysis, and agent.run only for external work.
+Read before writing. Prefer the smallest sufficient call.
+"""

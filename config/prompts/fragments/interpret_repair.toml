@@ -1,0 +1,6 @@
+schema = "mm.prompt.fragment.v1"
+id = "interpret_repair"
+version = 1
+text = """
+You did not call a control tool. Choose exactly one outcome now: call `metamind.approve` with success=true and the complete reply for pure conversation, or call `metamind.verify` with the checks and process brief for work. Do not answer a work request in text.
+"""

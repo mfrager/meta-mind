@@ -12,33 +12,33 @@ export type EpistemicStatus = "observation" | "assumption" | "inference" | "unve
 
 export type DocSourceKind = "chat" | "nav" | "palette" | "link" | "stream";
 
-export type DocSource = { kind: DocSourceKind, 
+export type DocSource = { kind: DocSourceKind,
 /**
  * The chat message / run / link that opened it, when there is one.
  */
 refId?: string | null, };
 
-export type FocusDoc = { 
+export type FocusDoc = {
 /**
  * Envelope version, always 1 within `wireVersion: 1`.
  */
-v: number, 
+v: number,
 /**
  * ULID, lowercase.
  */
-id: string, kind: DocKind, title: string, 
+id: string, kind: DocKind, title: string,
 /**
  * Mono value line: ids, paths, counts (plan `05` §1).
  */
-subtitle?: string | null, status: DocStatus, 
+subtitle?: string | null, status: DocStatus,
 /**
  * Mandatory for `unavailable`, `degraded`, `blocked`, and `failed`.
  */
-reason?: string | null, epistemic?: EpistemicStatus | null, 
+reason?: string | null, epistemic?: EpistemicStatus | null,
 /**
  * Monotonic snapshot version (the focus channel's `?from=` cursor).
  */
-version: number, source: DocSource, capabilities: Array<DocCapability>, 
+version: number, source: DocSource, capabilities: Array<DocCapability>,
 /**
  * Kind-specific payload. Typed per-kind snapshots replace this in M3.
  */

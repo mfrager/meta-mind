@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 
+use mm_cme::PassScope;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -14,8 +15,8 @@ use thiserror::Error;
 /// Embedded schemas, extracted verbatim from the design.
 pub const TOOL_SCHEMA_JSON: &str = include_str!("../schemas/tools.json");
 
-/// The exact tool names, in design order.
-pub const TOOL_NAMES: [&str; 17] = [
+/// The seventeen work tools, in design order.
+pub const WORK_TOOL_NAMES: [&str; 17] = [
     "agent.run",
     "conversation.status",
     "conversation.frame",
@@ -33,6 +34,35 @@ pub const TOOL_NAMES: [&str; 17] = [
     "metamind.memory",
     "metamind.log",
     "metamind.act",
+];
+
+/// Backwards-compatible name for the work-tool set.
+pub const TOOL_NAMES: [&str; 17] = WORK_TOOL_NAMES;
+
+/// The two verification-control tools.
+pub const CONTROL_TOOL_NAMES: [&str; 2] = ["metamind.verify", "metamind.approve"];
+
+/// The full catalog: seventeen work tools plus two control tools.
+pub const ALL_TOOL_NAMES: [&str; 19] = [
+    "agent.run",
+    "conversation.status",
+    "conversation.frame",
+    "conversation.topic",
+    "conversation.depth",
+    "data.create",
+    "data.update",
+    "data.query",
+    "data.delete",
+    "data.search",
+    "data.schema",
+    "data.namespace",
+    "metamind.plan",
+    "metamind.think",
+    "metamind.memory",
+    "metamind.log",
+    "metamind.act",
+    "metamind.verify",
+    "metamind.approve",
 ];
 
 /// One tool schema.
@@ -66,9 +96,9 @@ impl ToolCatalog {
     }
 
     fn new(schemas: Vec<ToolSchema>) -> Result<Self, SchemaError> {
-        if schemas.len() != TOOL_NAMES.len() {
+        if schemas.len() != ALL_TOOL_NAMES.len() {
             return Err(SchemaError::WrongCount {
-                expected: TOOL_NAMES.len(),
+                expected: ALL_TOOL_NAMES.len(),
                 found: schemas.len(),
             });
         }
@@ -79,7 +109,7 @@ impl ToolCatalog {
             }
             validate_schema(schema)?;
         }
-        for name in TOOL_NAMES {
+        for name in ALL_TOOL_NAMES {
             if !seen.contains(name) {
                 return Err(SchemaError::Missing(name.into()));
             }
@@ -87,9 +117,26 @@ impl ToolCatalog {
         Ok(Self { schemas })
     }
 
-    /// All schemas in design order.
+    /// All schemas in design order, including the control tools.
     pub fn schemas(&self) -> &[ToolSchema] {
         &self.schemas
+    }
+
+    /// The seventeen work schemas, for the legacy turn path.
+    pub fn work_schemas(&self) -> Vec<ToolSchema> {
+        WORK_TOOL_NAMES
+            .into_iter()
+            .filter_map(|name| self.get(name).cloned())
+            .collect()
+    }
+
+    /// The schemas visible to one pass.
+    pub fn schemas_for(&self, scope: PassScope) -> Vec<ToolSchema> {
+        self.schemas
+            .iter()
+            .filter(|schema| scope.allows(&schema.name, None))
+            .cloned()
+            .collect()
     }
 
     /// Find by name.
@@ -578,18 +625,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exactly_seventeen_embedded_schemas() {
+    fn the_catalog_is_seventeen_work_tools_plus_two_control_tools() {
         let catalog = ToolCatalog::embedded().unwrap();
-        assert_eq!(catalog.schemas().len(), 17);
+        assert_eq!(catalog.schemas().len(), 19);
+        assert_eq!(catalog.work_schemas().len(), 17);
+        assert_eq!(WORK_TOOL_NAMES.len(), 17);
+        assert_eq!(CONTROL_TOOL_NAMES.len(), 2);
+        assert_eq!(ALL_TOOL_NAMES.len(), 19);
         assert_eq!(catalog.schemas()[0].name, "agent.run");
         assert_eq!(catalog.schemas()[16].name, "metamind.act");
+        assert_eq!(catalog.schemas()[17].name, "metamind.verify");
+        assert_eq!(catalog.schemas()[18].name, "metamind.approve");
+    }
+
+    #[test]
+    fn each_pass_sees_only_its_scope() {
+        let catalog = ToolCatalog::embedded().unwrap();
+        assert_eq!(catalog.schemas_for(PassScope::Interpret).len(), 6);
+        assert_eq!(catalog.schemas_for(PassScope::Process).len(), 17);
+        assert_eq!(catalog.schemas_for(PassScope::Verify).len(), 16);
+        assert_eq!(catalog.schemas_for(PassScope::Think).len(), 8);
+        let interpret = catalog.schemas_for(PassScope::Interpret);
+        assert!(interpret
+            .iter()
+            .any(|schema| schema.name == "metamind.verify"));
+        assert!(!interpret.iter().any(|schema| schema.name == "agent.run"));
     }
 
     #[test]
     fn every_schema_is_valid_json_and_has_a_unique_name() {
         let raw: Value = serde_json::from_str(TOOL_SCHEMA_JSON).unwrap();
         let array = raw.as_array().unwrap();
-        assert_eq!(array.len(), 17);
+        assert_eq!(array.len(), 19);
         let mut names = BTreeSet::new();
         for schema in array {
             let name = schema.get("name").unwrap().as_str().unwrap();
@@ -616,6 +683,31 @@ mod tests {
         assert_eq!(error.code(), "INVALID_ARGUMENTS");
         let error = catalog.parse("conversation.status", "{}").unwrap_err();
         assert_eq!(error.code(), "INVALID_ARGUMENTS");
+    }
+
+    #[test]
+    fn control_tools_parse_their_documented_shapes() {
+        let catalog = ToolCatalog::embedded().unwrap();
+        let verify = catalog
+            .parse(
+                "metamind.verify",
+                r#"{"checks":[{"label":"tests","backend":"llm_judge","backend_params":{"evaluation_prompt":"x"}}],"process":{"task":"do it","constraints":["be brief"],"suggested_tools":["data.query"]}}"#,
+            )
+            .unwrap();
+        assert_eq!(verify["checks"][0]["label"], "tests");
+        catalog
+            .parse("metamind.verify", r#"{"checks":[]}"#)
+            .unwrap();
+        let approve = catalog
+            .parse("metamind.approve", r#"{"success":true,"reply":"hello"}"#)
+            .unwrap();
+        assert_eq!(approve["success"], true);
+        assert!(catalog
+            .parse("metamind.verify", r#"{"checks":[],"bogus":1}"#)
+            .is_err());
+        assert!(catalog
+            .parse("metamind.approve", r#"{"reply":"missing success"}"#)
+            .is_err());
     }
 
     #[test]

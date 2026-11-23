@@ -68,18 +68,36 @@ script can never silently replace a live provider.
 | `MM_CME_AGENTSTREAM_LOGGING` | `true` | Write CM turns and frames to agentstream. |
 | `MM_PROMPT_V1` | `false` | Declared prompt-tree flag. The reviewed tree under `config/prompts/` is loaded by the CME prompt path regardless of this flag. |
 | `MM_FRAMES_V1` | `false` | Declared frame flag. Frame tools and timers are governed by `MM_AUTOMATION_V1` and `config/automation.toml`. |
+| `MM_THREE_PASS_V2` | `false` | Run turns through the three-pass runner (Interpret → Process → Verify). Checks, staged writes, retries, and recursive think are implemented; the flag stays off until the live dual-run gate is recorded. |
+| `MM_PROCESS_V1` | `false` | Enable durable process templates/instances (Phase 5). No process tools are wired yet. |
 
 Rollback to the legacy console route is `MM_CM_V3=false MM_CME_ENABLED=false`.
 Rollback only the CM tool surface is `MM_CM_V3=false` (the CME still runs, with no
 CM tools attached).
+
+### Three-pass turns
+
+With `MM_THREE_PASS_V2=true`, a turn is Interpret → Process → Verify. The checks
+are turn-scoped; Verify stages durable writes and commits only on approval; a
+rejected reply retries Process up to `verify.max_retries`; exhaustion fails with
+`VERIFY_EXHAUSTED` and names the durable changes already made. Retries and
+budgets come from `config/three_pass.toml`; `MM_VERIFY_MAX_RETRIES` may only
+lower the retry count. Recursive think (`[think] three_pass = true`) runs
+`metamind.think` through the same verified path under the read-only Think scope
+and never commits a write. The full contract is in
+[`three-pass-verify.md`](./three-pass-verify.md); the live dual-run gate is in
+[`phase12-dual-run.md`](./phase12-dual-run.md).
 
 ---
 
 ## 2. The seventeen tools
 
 Every tool has a strict JSON Schema in `crates/mm-serve/schemas/tools.json`.
-Unknown fields, wrong types, and missing required fields are rejected before any
-side effect. Every result is a full envelope carrying the post-call conversation
+The reviewed work catalog is seventeen tools. Phase 1 adds two pass-control
+schemas (`metamind.verify`, `metamind.approve`) and Phase 2 consumes them in the
+Interpret pass; they are only advertised inside a pass scope, so the legacy path
+still sees exactly seventeen. Unknown fields, wrong types, and missing required fields are
+rejected before any side effect. Every result is a full envelope carrying the post-call conversation
 state; a refused tool returns a typed error (`INVALID_ARGUMENTS`,
 `NOT_AVAILABLE`, `FORBIDDEN`, `CONFLICT`, `BUDGET`, …) rather than a fake success.
 

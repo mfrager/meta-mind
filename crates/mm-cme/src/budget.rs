@@ -96,6 +96,34 @@ impl BudgetLimits {
     }
 }
 
+/// What one ledger consumed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetUsage {
+    /// Model rounds consumed.
+    pub rounds: u32,
+    /// Tool steps consumed.
+    pub steps: u32,
+    /// Tokens consumed (including any reservation not yet settled).
+    pub tokens: u64,
+}
+
+impl BudgetUsage {
+    /// Add another usage row.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            rounds: self.rounds.saturating_add(other.rounds),
+            steps: self.steps.saturating_add(other.steps),
+            tokens: self.tokens.saturating_add(other.tokens),
+        }
+    }
+
+    /// Whether every dimension fits inside `limits`.
+    pub fn fits(self, limits: BudgetLimits) -> bool {
+        self.rounds <= limits.rounds && self.steps <= limits.steps && self.tokens <= limits.tokens
+    }
+}
+
 /// The ledger's current view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BudgetSnapshot {
@@ -248,6 +276,163 @@ impl BudgetLedger {
     pub fn wall_remaining(&self) -> Duration {
         Duration::from_millis(self.limits.wall_ms).saturating_sub(self.started.elapsed())
     }
+
+    /// What this ledger has consumed so far.
+    pub fn usage(&self) -> BudgetUsage {
+        BudgetUsage {
+            rounds: self.limits.rounds.saturating_sub(self.rounds),
+            steps: self.limits.steps.saturating_sub(self.steps),
+            tokens: self.limits.tokens.saturating_sub(self.tokens),
+        }
+    }
+}
+
+/// The total allowance for one turn across Interpret, Process, Verify, and retries.
+///
+/// Each pass still gets its own class ledger, but the envelope is the hard ceiling:
+/// a pass (or a retry, or a child operation) cannot spend what the turn does not have.
+#[derive(Debug, Clone)]
+pub struct TurnEnvelope {
+    limits: BudgetLimits,
+    used: BudgetUsage,
+    reserved_tokens: u64,
+    retries: u32,
+    max_retries: u32,
+    started: Instant,
+}
+
+impl TurnEnvelope {
+    /// Build an envelope from explicit limits.
+    pub fn new(limits: BudgetLimits, max_retries: u32) -> Self {
+        Self {
+            limits,
+            used: BudgetUsage::default(),
+            reserved_tokens: 0,
+            retries: 0,
+            max_retries,
+            started: Instant::now(),
+        }
+    }
+
+    /// The default three-pass allowance: quick + standard + quick.
+    pub fn standard(max_retries: u32) -> Self {
+        let quick = BudgetClass::Quick.limits();
+        let standard = BudgetClass::Standard.limits();
+        Self::new(
+            BudgetLimits::new(
+                quick.rounds + standard.rounds + quick.rounds,
+                quick.steps + standard.steps + quick.steps,
+                quick.tokens + standard.tokens + quick.tokens,
+                quick.wall_ms + standard.wall_ms + quick.wall_ms,
+            ),
+            max_retries,
+        )
+    }
+
+    /// The envelope limits.
+    pub fn limits(&self) -> BudgetLimits {
+        self.limits
+    }
+
+    /// What has been consumed.
+    pub fn used(&self) -> BudgetUsage {
+        self.used
+    }
+
+    /// Retries consumed so far.
+    pub fn retries(&self) -> u32 {
+        self.retries
+    }
+
+    /// Remaining retries.
+    pub fn retries_remaining(&self) -> u32 {
+        self.max_retries.saturating_sub(self.retries)
+    }
+
+    /// Tokens still available after used and reserved amounts.
+    pub fn remaining_tokens(&self) -> u64 {
+        self.limits
+            .tokens
+            .saturating_sub(self.used.tokens)
+            .saturating_sub(self.reserved_tokens)
+    }
+
+    /// Start one pass at its class limits. The envelope does not pre-deduct the
+    /// class ceiling; [`absorb`](Self::absorb) accounts what the pass actually used.
+    pub fn ledger(&mut self, class: BudgetClass) -> Result<BudgetLedger, BudgetError> {
+        self.check_wall()?;
+        if self.remaining_tokens() == 0 {
+            return Err(BudgetError::Exhausted {
+                scope: "envelope",
+                reason: "no tokens remain for another pass".into(),
+            });
+        }
+        Ok(BudgetLedger::new(class))
+    }
+
+    /// Account a finished ledger against the envelope.
+    pub fn absorb(&mut self, ledger: &BudgetLedger) -> Result<(), BudgetError> {
+        let next = self.used.plus(ledger.usage());
+        if !next.fits(self.limits) {
+            return Err(BudgetError::Exhausted {
+                scope: "envelope",
+                reason: format!(
+                    "turn used {} rounds, {} steps, {} tokens",
+                    next.rounds, next.steps, next.tokens
+                ),
+            });
+        }
+        if next.tokens.saturating_add(self.reserved_tokens) > self.limits.tokens {
+            return Err(BudgetError::Exhausted {
+                scope: "envelope",
+                reason: "turn usage plus retry reservations exceed the token ceiling".into(),
+            });
+        }
+        self.used = next;
+        Ok(())
+    }
+
+    /// Reserve a token ceiling for a child operation (think, agent.run, a step)
+    /// before it starts. The caller releases it once the child is accounted.
+    pub fn reserve_tokens(&mut self, tokens: u64) -> Result<(), BudgetError> {
+        if self.remaining_tokens() < tokens {
+            return Err(BudgetError::Exhausted {
+                scope: "token",
+                reason: format!("{tokens} tokens requested for a child operation"),
+            });
+        }
+        self.reserved_tokens = self.reserved_tokens.saturating_add(tokens);
+        Ok(())
+    }
+
+    /// Reserve the token ceiling for one retry before it starts.
+    pub fn reserve_retry(&mut self, tokens: u64) -> Result<(), BudgetError> {
+        if self.retries >= self.max_retries {
+            return Err(BudgetError::Exhausted {
+                scope: "retry",
+                reason: format!("{} retries already used", self.max_retries),
+            });
+        }
+        self.reserve_tokens(tokens)?;
+        self.retries += 1;
+        Ok(())
+    }
+
+    /// Release a retry reservation once the retry's ledgers have been absorbed.
+    pub fn release_reservation(&mut self, tokens: u64) {
+        self.reserved_tokens = self.reserved_tokens.saturating_sub(tokens);
+    }
+
+    /// Fail if the turn's wall-clock cap has elapsed.
+    pub fn check_wall(&self) -> Result<(), BudgetError> {
+        if self.started.elapsed() >= Duration::from_millis(self.limits.wall_ms) {
+            return Err(BudgetError::Exhausted {
+                scope: "wall",
+                reason: format!("{} ms elapsed", self.limits.wall_ms),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Budget failures.
@@ -307,6 +492,58 @@ mod tests {
             BudgetError::Exhausted { scope: "token", .. }
         ));
         assert!(error.to_string().starts_with("BUDGET:"));
+    }
+
+    #[test]
+    fn an_envelope_totals_the_three_passes() {
+        let mut envelope = TurnEnvelope::standard(5);
+        assert_eq!(envelope.limits().tokens, 184_000);
+        assert_eq!(envelope.limits().rounds, 48);
+
+        let mut interpret = envelope.ledger(BudgetClass::Quick).unwrap();
+        interpret.reserve_round().unwrap();
+        interpret.reserve_tokens(1_000).unwrap();
+        envelope.absorb(&interpret).unwrap();
+
+        let mut process = envelope.ledger(BudgetClass::Standard).unwrap();
+        process.reserve_round().unwrap();
+        process.reserve_tokens(40_000).unwrap();
+        envelope.absorb(&process).unwrap();
+
+        assert_eq!(envelope.used().rounds, 2);
+        assert_eq!(envelope.used().tokens, 41_000);
+        assert_eq!(envelope.remaining_tokens(), 143_000);
+    }
+
+    #[test]
+    fn an_envelope_refuses_an_overrun() {
+        let mut envelope = TurnEnvelope::new(BudgetLimits::new(2, 2, 100, 1_000), 0);
+        let mut ledger = envelope.ledger(BudgetClass::Quick).unwrap();
+        ledger.reserve_tokens(100).unwrap();
+        envelope.absorb(&ledger).unwrap();
+        let error = envelope.ledger(BudgetClass::Quick).unwrap_err();
+        assert!(matches!(
+            error,
+            BudgetError::Exhausted {
+                scope: "envelope",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retries_are_capped_and_reserved_before_they_run() {
+        let mut envelope = TurnEnvelope::new(BudgetLimits::new(10, 10, 1_000, 60_000), 1);
+        envelope.reserve_retry(400).unwrap();
+        assert_eq!(envelope.retries(), 1);
+        assert_eq!(envelope.remaining_tokens(), 600);
+        let error = envelope.reserve_retry(100).unwrap_err();
+        assert!(matches!(
+            error,
+            BudgetError::Exhausted { scope: "retry", .. }
+        ));
+        envelope.release_reservation(400);
+        assert_eq!(envelope.remaining_tokens(), 1_000);
     }
 
     #[test]

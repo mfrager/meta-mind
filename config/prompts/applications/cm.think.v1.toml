@@ -1,0 +1,29 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.think.v1"
+application = "cm.think"
+version = 1
+description = "Private think sub-agent: read-only investigation with findings and evidence."
+budget = "think"
+required_variables = ["being_name", "thought_question", "tools_summary", "tone"]
+fragments = [
+  "identity",
+  "character",
+  "thought_guidance",
+  "think_contract",
+  "deep_analysis",
+  "budget_contract",
+  "honesty_contract",
+  "style",
+]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "thought_question",
+  "tools_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tone",
+]

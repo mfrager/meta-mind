@@ -112,6 +112,11 @@ impl MetamindTools {
         self.agent = Some(agent);
     }
 
+    /// Route `metamind.think` through the verified three-pass cycle.
+    pub fn set_think_runner(&self, runner: Arc<mm_cme::ThreePassRunner>) {
+        self.think_service.install_runner(runner);
+    }
+
     /// Dispatch one tool call.
     pub async fn dispatch(
         &self,
@@ -238,7 +243,7 @@ impl MetamindTools {
     async fn think(&self, session_id: &str, arguments: &Value) -> Result<Value, MetamindToolError> {
         let question = string_arg(arguments, "question")?;
         let focus = string_array(arguments, "focus");
-        let think_id = format!("think/{}", mm_data::rdf::new_id());
+        let think_id = format!("think/{session_id}/{}", mm_data::rdf::new_id());
         let mut result = self
             .think_service
             .think(question, opt_str(arguments, "context"), &focus, &think_id)

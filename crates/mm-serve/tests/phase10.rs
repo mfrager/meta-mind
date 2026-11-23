@@ -166,7 +166,14 @@ async fn a_presence_mutation_publishes_a_status_revision_within_250ms() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "presence failed: {}",
+        String::from_utf8_lossy(&bytes)
+    );
 
     let event = tokio::time::timeout(Duration::from_millis(250), events.recv())
         .await

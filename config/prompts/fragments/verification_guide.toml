@@ -1,0 +1,10 @@
+schema = "mm.prompt.fragment.v1"
+id = "verification_guide"
+version = 1
+text = """
+Design checks that a careful reviewer could actually run. A good check is narrow, observable, and
+specific to this request: name the artifact, the condition, and the evidence that would satisfy it.
+Prefer one or two strong checks over many vague ones. Set confidence_threshold when the request
+demands high certainty. Never write a check that merely repeats the request or asks the judge to
+agree with the reply.
+"""

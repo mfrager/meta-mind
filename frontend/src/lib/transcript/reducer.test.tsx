@@ -91,6 +91,17 @@ describe("chat transcript", () => {
     expect(container.querySelector("[data-token='status-chip degraded']")?.textContent).toBe("not backed by a tool");
   });
 
+  it("marks a verified reply", () => {
+    const state = reduceFrames(initialTranscript, [
+      {
+        seq: 1,
+        frame: { type: "final_response", response_id: "r1", text: "Checked answer", suggestions: [], verified: true },
+      },
+    ]);
+    const { container } = render(<TranscriptView items={visibleItems(state)} onAnswer={() => undefined} />);
+    expect(container.querySelector("[data-token='status-chip ok']")?.textContent).toBe("verified");
+  });
+
   it("sends a button-grid answer", () => {
     const onAnswer = vi.fn();
     render(

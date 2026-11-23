@@ -1,0 +1,36 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.interpret.v1"
+application = "cm.interpret"
+version = 1
+description = "Interpret pass: classify the request, register checks, or fast-path pure conversation."
+budget = "quick"
+required_variables = ["state_block", "tools_summary", "budget_class", "user_input"]
+fragments = [
+  "identity",
+  "character",
+  "state_ownership",
+  "interpret_contract",
+  "verification_guide",
+  "fast_path_criteria",
+  "budget_contract",
+  "honesty_contract",
+  "output_character",
+]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_block",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "user_input",
+  "transcript_compact",
+  "tools_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tone",
+]

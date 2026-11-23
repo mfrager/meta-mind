@@ -1001,5 +1001,123 @@
         "action"
       ]
     }
-  }
+  },
+    {
+      "name": "metamind.verify",
+      "description": "Register verification checks for this turn. Call this in the Interpret pass when the request needs work. Each check names a backend and its configuration. Registering zero checks with a process context asks the runtime to add the default action check.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "Checks the Verify pass should run. Empty is allowed only on an action turn, where the default check is added.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "Unique label for this check."
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "description": "What is being verified."
+                },
+                "details": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "description": "Additional detail for the backend."
+                },
+                "backend": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "Verification backend id, for example llm_judge."
+                },
+                "backend_params": {
+                  "type": "object",
+                  "description": "Backend-specific configuration."
+                },
+                "confidence_threshold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "default": 0.5,
+                  "description": "Acceptance threshold."
+                }
+              },
+              "required": [
+                "label",
+                "backend"
+              ]
+            }
+          },
+          "process": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Optional context for the Process pass. Omitted values are derived from the request.",
+            "properties": {
+              "task": {
+                "type": "string",
+                "maxLength": 8000,
+                "description": "One-sentence restatement of the task."
+              },
+              "constraints": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "description": "Constraints the Process pass must respect."
+              },
+              "suggested_tools": {
+                "type": "array",
+                "maxItems": 19,
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "description": "Advisory tool subset."
+              }
+            }
+          }
+        },
+        "required": [
+          "checks"
+        ]
+      }
+    },
+    {
+      "name": "metamind.approve",
+      "description": "End the turn. In the Interpret pass, approve a pure-conversation turn and supply the reply (fast path). In the Verify pass, approve the Process reply or reject it with an error so Process retries. This is the only tool that can end a turn.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "True approves the turn; false requests another Process attempt."
+          },
+          "reply": {
+            "type": "string",
+            "maxLength": 8000,
+            "description": "Required for an Interpret fast path: the user-facing reply."
+          },
+          "error": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Required for a Verify rejection: what failed and what to fix."
+          }
+        },
+        "required": [
+          "success"
+        ]
+      }
+    }
 ]

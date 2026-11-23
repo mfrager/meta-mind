@@ -234,6 +234,65 @@ pub struct ToolCallEmission {
     pub ok: bool,
 }
 
+/// An owned budget view for the turn record, so the record round-trips through
+/// JSON without borrowing the ledger's static class name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PassBudget {
+    /// Class name.
+    pub class: String,
+    /// Rounds remaining.
+    pub rounds: u32,
+    /// Steps remaining.
+    pub steps: u32,
+    /// Tokens remaining.
+    pub tokens: u64,
+    /// Wall milliseconds remaining.
+    pub wall_ms: u64,
+    /// Whether an estimate contributed to the token value.
+    pub estimated: bool,
+}
+
+impl From<crate::budget::BudgetSnapshot> for PassBudget {
+    fn from(snapshot: crate::budget::BudgetSnapshot) -> Self {
+        Self {
+            class: snapshot.class.to_owned(),
+            rounds: snapshot.rounds,
+            steps: snapshot.steps,
+            tokens: snapshot.tokens,
+            wall_ms: snapshot.wall_ms,
+            estimated: snapshot.estimated,
+        }
+    }
+}
+
+/// One pass's telemetry, retained on the turn and projected to the inspector.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PassRecord {
+    /// Which pass ran.
+    pub kind: crate::runner::PassKind,
+    /// One-based attempt number.
+    pub attempt: u32,
+    /// The pinned prompt hash, when a prompt was rendered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_hash: Option<String>,
+    /// The pass's budget view.
+    pub budget: PassBudget,
+    /// The finish name (`fast_path`, `action`, `approved`, ...).
+    pub outcome: String,
+    /// Phase A results associated with this pass, when it is Verify.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification: Vec<crate::verification::VerificationResult>,
+    /// Writes staged by this pass.
+    #[serde(default)]
+    pub staged: u32,
+    /// Writes committed by this pass.
+    #[serde(default)]
+    pub committed: u32,
+    /// Check labels registered by Interpret.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<String>,
+}
+
 /// The result of a completed turn.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TurnOutcome {
@@ -263,6 +322,21 @@ pub struct TurnOutcome {
     /// Selected prompt variant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_variant: Option<String>,
+    /// Passes that ran, in order. Empty on the legacy path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pass_history: Vec<PassRecord>,
+    /// Phase A results from the final Verify attempt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification: Vec<crate::verification::VerificationResult>,
+    /// Staged writes retained for inspection (committed or discarded).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub staged_writes: Vec<crate::verification::StagedMutation>,
+    /// Writes committed after approval.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub committed_writes: Vec<crate::verification::CommittedMutation>,
+    /// Number of staged writes discarded across attempts.
+    #[serde(default)]
+    pub discarded_writes: u32,
 }
 
 impl TurnOutcome {
@@ -390,6 +464,16 @@ pub struct Turn {
     pub prompt_hash: Option<String>,
     /// Selected prompt variant.
     pub prompt_variant: Option<String>,
+    /// Passes that ran, in order. Empty on the legacy path.
+    pub pass_history: Vec<PassRecord>,
+    /// Phase A results from the final Verify attempt.
+    pub verification: Vec<crate::verification::VerificationResult>,
+    /// Staged writes retained for inspection (committed or discarded).
+    pub staged_writes: Vec<crate::verification::StagedMutation>,
+    /// Writes committed after approval.
+    pub committed_writes: Vec<crate::verification::CommittedMutation>,
+    /// Number of staged writes discarded across attempts.
+    pub discarded_writes: u32,
 }
 
 impl Turn {
@@ -412,6 +496,11 @@ impl Turn {
             prompt_instance_id: None,
             prompt_hash: None,
             prompt_variant: None,
+            pass_history: Vec::new(),
+            verification: Vec::new(),
+            staged_writes: Vec::new(),
+            committed_writes: Vec::new(),
+            discarded_writes: 0,
         })
     }
 
@@ -421,6 +510,11 @@ impl Turn {
         self.session_id = plan.session_id.clone();
         self.plan = Some(plan.clone());
         self.sm.data_mut()["plan"] = serde_json::json!(plan);
+    }
+
+    /// Record one completed pass for telemetry.
+    pub fn record_pass(&mut self, record: PassRecord) {
+        self.pass_history.push(record);
     }
 
     /// Pin the prompt instance used by the model call.
@@ -636,6 +730,11 @@ impl Turn {
             prompt_instance_id: self.prompt_instance_id.clone(),
             prompt_hash: self.prompt_hash.clone(),
             prompt_variant: self.prompt_variant.clone(),
+            pass_history: self.pass_history.clone(),
+            verification: self.verification.clone(),
+            staged_writes: self.staged_writes.clone(),
+            committed_writes: self.committed_writes.clone(),
+            discarded_writes: self.discarded_writes,
         }
     }
 }

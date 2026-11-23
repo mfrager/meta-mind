@@ -340,6 +340,7 @@ impl ChatCatalog {
             blocks: None,
             suggestions,
             unbacked: None,
+            verified: None,
         });
         let numbered = numbered(&run.frames);
         drop(runs);
@@ -376,6 +377,7 @@ impl ChatCatalog {
             blocks: None,
             suggestions: None,
             unbacked: None,
+            verified: None,
         });
         let query = source.query.clone();
         drop(runs);

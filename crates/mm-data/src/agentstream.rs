@@ -77,6 +77,22 @@ pub enum EventType {
     FrameUpdated,
     /// A frame was popped.
     FramePopped,
+    /// One three-pass turn pass started.
+    PassStarted,
+    /// One three-pass turn pass completed.
+    PassCompleted,
+    /// The Interpret pass registered verification checks.
+    VerificationRegistered,
+    /// One verification check returned.
+    VerificationResult,
+    /// A failed verification scheduled another Process attempt.
+    RetryScheduled,
+    /// A write intent was staged by the Verify pass.
+    WriteStaged,
+    /// A staged write was committed after approval.
+    WriteCommitted,
+    /// A staged write set was discarded after rejection.
+    WriteDiscarded,
     /// Anything else.
     Custom,
 }
@@ -110,6 +126,14 @@ impl EventType {
             Self::FramePushed => "frame_pushed",
             Self::FrameUpdated => "frame_updated",
             Self::FramePopped => "frame_popped",
+            Self::PassStarted => "pass_started",
+            Self::PassCompleted => "pass_completed",
+            Self::VerificationRegistered => "verification_registered",
+            Self::VerificationResult => "verification_result",
+            Self::RetryScheduled => "retry_scheduled",
+            Self::WriteStaged => "write_staged",
+            Self::WriteCommitted => "write_committed",
+            Self::WriteDiscarded => "write_discarded",
             Self::Custom => "custom",
         }
     }
@@ -511,12 +535,166 @@ pub fn agent_message(session_id: &str, text: impl Into<String>) -> AgentstreamEv
     AgentstreamEvent::new(
         session_id,
         EventType::AgentMessage,
-        serde_json::json!({ "text": text.into() }),
+        serde_json::json!({ "text": text.into(), "final": true }),
         EventProvenance {
             source: "agent".to_owned(),
             model: None,
         },
     )
+}
+
+/// Who spoke in the clean log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CleanRole {
+    /// The operator.
+    User,
+    /// The agent's approved final reply.
+    Assistant,
+}
+
+/// One clean-log turn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanTurn {
+    /// Speaker.
+    pub role: CleanRole,
+    /// Message text.
+    pub text: String,
+    /// The turn that produced it, when known.
+    pub turn_id: String,
+}
+
+/// User messages plus approved final replies, newest-last and bounded by size.
+///
+/// Internal pass text, tool results, verification reasoning, and rejected attempts
+/// never enter this projection. Existing traces that predate the `final` marker
+/// simply contribute no assistant turns.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanLog {
+    /// Turns in chronological order.
+    pub turns: Vec<CleanTurn>,
+    /// Whether older turns were dropped to fit the bound.
+    pub truncated: bool,
+}
+
+/// The default clean-log character budget (roughly 4,000 tokens).
+pub const CLEAN_LOG_MAX_CHARS: usize = 16_000;
+
+impl CleanLog {
+    /// Build from an agentstream trace.
+    pub fn from_events(events: &[AgentstreamEvent], max_chars: usize) -> Self {
+        let mut turns = Vec::new();
+        for event in events {
+            match event.event_type {
+                EventType::UserMessage => {
+                    if let Some(text) = event
+                        .payload
+                        .get("text")
+                        .or_else(|| event.payload.get("query"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        push_clean(
+                            &mut turns,
+                            CleanRole::User,
+                            text,
+                            event.turn_id.as_deref().unwrap_or_default(),
+                        );
+                    }
+                }
+                EventType::AgentMessage => {
+                    if event
+                        .payload
+                        .get("final")
+                        .and_then(serde_json::Value::as_bool)
+                        != Some(true)
+                    {
+                        continue;
+                    }
+                    if let Some(text) = event
+                        .payload
+                        .get("text")
+                        .or_else(|| event.payload.get("reply"))
+                        .or_else(|| event.payload.get("content"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        push_clean(
+                            &mut turns,
+                            CleanRole::Assistant,
+                            text,
+                            event.turn_id.as_deref().unwrap_or_default(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        trim_clean(turns, max_chars)
+    }
+
+    /// Append one approved turn, enforcing the size bound.
+    pub fn push(
+        &mut self,
+        role: CleanRole,
+        text: impl Into<String>,
+        turn_id: impl Into<String>,
+        max_chars: usize,
+    ) {
+        let mut turns = std::mem::take(&mut self.turns);
+        let text = text.into();
+        let turn_id = turn_id.into();
+        push_clean(&mut turns, role, &text, &turn_id);
+        *self = trim_clean(turns, max_chars);
+    }
+
+    /// Whether any turn is present.
+    pub fn is_empty(&self) -> bool {
+        self.turns.is_empty()
+    }
+
+    /// The projection as plain text, one turn per line.
+    pub fn render(&self) -> String {
+        self.turns
+            .iter()
+            .map(|turn| {
+                let speaker = match turn.role {
+                    CleanRole::User => "User",
+                    CleanRole::Assistant => "Assistant",
+                };
+                format!("{speaker}: {}", turn.text)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+fn push_clean(turns: &mut Vec<CleanTurn>, role: CleanRole, text: &str, turn_id: &str) {
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    turns.push(CleanTurn {
+        role,
+        text: text.to_owned(),
+        turn_id: turn_id.to_owned(),
+    });
+}
+
+fn trim_clean(mut turns: Vec<CleanTurn>, max_chars: usize) -> CleanLog {
+    let mut total = 0usize;
+    let mut keep_from = turns.len();
+    for (index, turn) in turns.iter().enumerate().rev() {
+        let size = turn.text.chars().count() + 16;
+        if total + size > max_chars {
+            break;
+        }
+        total += size;
+        keep_from = index;
+    }
+    let truncated = keep_from > 0;
+    if truncated {
+        turns.drain(..keep_from);
+    }
+    CleanLog { turns, truncated }
 }
 
 /// Ensure a session exists, creating it when absent.
@@ -540,4 +718,112 @@ pub async fn require_session(store: &AgentstreamStore, session_id: &str) -> Resu
             kind: "session",
             id: session_id.to_owned(),
         })
+}
+
+#[cfg(test)]
+mod clean_log_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn event(kind: EventType, payload: serde_json::Value, turn: &str) -> AgentstreamEvent {
+        AgentstreamEvent::new(
+            "s1",
+            kind,
+            payload,
+            EventProvenance {
+                source: "test".into(),
+                model: None,
+            },
+        )
+        .with_turn(turn)
+    }
+
+    #[test]
+    fn pass_event_names_are_stable() {
+        for (kind, name) in [
+            (EventType::PassStarted, "pass_started"),
+            (EventType::PassCompleted, "pass_completed"),
+            (EventType::VerificationRegistered, "verification_registered"),
+            (EventType::VerificationResult, "verification_result"),
+            (EventType::RetryScheduled, "retry_scheduled"),
+            (EventType::WriteStaged, "write_staged"),
+            (EventType::WriteCommitted, "write_committed"),
+            (EventType::WriteDiscarded, "write_discarded"),
+        ] {
+            assert_eq!(kind.as_str(), name);
+        }
+    }
+
+    #[test]
+    fn only_user_messages_and_final_replies_enter_the_log() {
+        let events = vec![
+            event(EventType::UserMessage, json!({"query": "hello"}), "t1"),
+            event(EventType::PassStarted, json!({"pass": "interpret"}), "t1"),
+            event(EventType::AgentMessage, json!({"text": "thinking"}), "t1"),
+            event(
+                EventType::AgentMessage,
+                json!({"text": "hi there", "final": true}),
+                "t1",
+            ),
+            event(EventType::ToolCall, json!({"name": "data.query"}), "t1"),
+            event(
+                EventType::VerificationResult,
+                json!({"check": "x", "pass": false}),
+                "t1",
+            ),
+        ];
+        let log = CleanLog::from_events(&events, CLEAN_LOG_MAX_CHARS);
+        assert_eq!(log.turns.len(), 2);
+        assert_eq!(log.turns[0].role, CleanRole::User);
+        assert_eq!(log.turns[0].text, "hello");
+        assert_eq!(log.turns[1].role, CleanRole::Assistant);
+        assert_eq!(log.turns[1].text, "hi there");
+        assert!(!log.truncated);
+        assert_eq!(log.render(), "User: hello\nAssistant: hi there");
+    }
+
+    #[test]
+    fn the_bound_keeps_the_newest_turns_and_marks_truncation() {
+        let events = vec![
+            event(
+                EventType::UserMessage,
+                json!({"text": "a".repeat(40)}),
+                "t1",
+            ),
+            event(
+                EventType::AgentMessage,
+                json!({"text": "b".repeat(40), "final": true}),
+                "t1",
+            ),
+            event(
+                EventType::UserMessage,
+                json!({"text": "c".repeat(40)}),
+                "t2",
+            ),
+            event(
+                EventType::AgentMessage,
+                json!({"text": "d".repeat(40), "final": true}),
+                "t2",
+            ),
+        ];
+        let log = CleanLog::from_events(&events, 100);
+        assert!(log.truncated);
+        assert!(log.turns.len() < 4);
+        assert_eq!(log.turns.last().unwrap().text, "d".repeat(40));
+    }
+
+    #[test]
+    fn push_keeps_the_bound() {
+        let mut log = CleanLog::default();
+        log.push(CleanRole::User, "a".repeat(80), "t1", 100);
+        log.push(CleanRole::Assistant, "b".repeat(80), "t1", 100);
+        assert!(log.truncated);
+        assert_eq!(log.turns.len(), 1);
+    }
+
+    #[test]
+    fn empty_messages_are_ignored() {
+        let events = vec![event(EventType::UserMessage, json!({"text": "  "}), "t1")];
+        assert!(CleanLog::from_events(&events, CLEAN_LOG_MAX_CHARS).is_empty());
+    }
 }

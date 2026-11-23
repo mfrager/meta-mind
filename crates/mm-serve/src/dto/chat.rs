@@ -79,6 +79,39 @@ pub enum ChatFrame {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
+    /// A three-pass pass began.
+    PassStart {
+        pass: String,
+        turn_id: String,
+        attempt: u32,
+    },
+    /// A pass emitted text. Only `final:true` tokens are assistant content.
+    PassToken {
+        pass: String,
+        token: String,
+        #[serde(rename = "final")]
+        is_final: bool,
+    },
+    /// A three-pass pass ended.
+    PassComplete {
+        pass: String,
+        finished: String,
+        #[ts(type = "unknown")]
+        budget: Value,
+        /// The pass's pinned prompt hash, when one was rendered.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "promptHash"
+        )]
+        prompt_hash: Option<String>,
+    },
+    /// One verification check returned.
+    Verification {
+        label: String,
+        pass: bool,
+        confidence: f64,
+    },
     /// A working turn began.
     LlmRequestStarted {
         turn_id: String,
@@ -173,5 +206,8 @@ pub enum ChatFrame {
         /// HonestyMw set this when the sentence claims a write no tool performed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         unbacked: Option<bool>,
+        /// Present on a V2 approved turn whose checks passed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        verified: Option<bool>,
     },
 }

@@ -10,6 +10,7 @@ import type { AgentstreamEvent, SessionTrace } from "@/lib/wire/inspector.ts";
 import { clockAt, errorMessage, shortId } from "@/lib/inspector/format.ts";
 import { cn } from "@/lib/utils";
 
+import { PassTimeline } from "./pass-timeline.tsx";
 import { Chip, UnavailableRow } from "./section.tsx";
 import { TraceEventRow } from "./trace-event-row.tsx";
 
@@ -266,6 +267,8 @@ export function TraceViewer({
           ) : null}
         </div>
       </div>
+
+      <PassTimeline events={events} />
 
       <div
         className="min-h-0 flex-1 overflow-auto"

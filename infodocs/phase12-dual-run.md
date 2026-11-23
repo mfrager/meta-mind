@@ -176,3 +176,41 @@ mm-cli --data-dir <root> llm stats --json
 The Phase 12 default (`MM_CM_V3=true`) still rests on passing parity tests and
 an explicit rollback flag, not on a measured cost win. The rerun is the
 remaining validation.
+
+## Three-pass turn run (Phase 4)
+
+**Status: not executed in this change.** Phase 4 added verification, staged
+writes, retries, and recursive think. The live gate in
+`five_phase_turn_process_plan.md` §7.9 asks for the same prompt set with
+`MM_THREE_PASS_V2=false` (legacy) and `MM_THREE_PASS_V2=true` (three-pass), on a
+key with quota. Provider quota was not confirmed available for this change, and
+scripted latency must not stand in for a provider measurement. The gate stays
+open until the run below is recorded.
+
+What the mocked suites already establish (no provider involved):
+
+- pure chat exits after Interpret in exactly one model call;
+- an action prompt runs Interpret, Process, judged checks, and Verify, and the
+  turn is `verified` only when every check passed;
+- a rejected attempt re-runs Process and Verify only (Interpret is not
+  re-counted), and the journal commits exactly once on approval;
+- exhaustion yields `VERIFY_EXHAUSTED` with no reply and no committed journal.
+
+How to record the live run:
+
+1. Start the server with the provider configured as in the earlier run, once
+   with `MM_THREE_PASS_V2=false` and once with `MM_THREE_PASS_V2=true`.
+2. Send the same six prompts through `POST /api/cme/chat` (or `/api/chat` with
+   `MM_CME_ENABLED=true`) and keep the `requestId` for each.
+3. Capture, per prompt: `llm_calls` rows by `purpose` (including `critique` for
+   the judge), total tokens and cost, wall time, pass history, verification
+   outcomes, and retry count. The pass timeline is in the SSE frames
+   (`pass_start`, `pass_complete`, `verification`) and in the agentstream
+   (`pass_started`, `pass_completed`, `verification_result`, `retry_scheduled`).
+4. Fill a table with the same columns as the legacy run above. The expected
+   shape is: pure chat 1 call in three-pass mode; action prompts at least 3 calls
+   (Interpret, Process, Verify) plus one judge call per check; V2 handle turns
+   carry `verified=true` only when checks passed.
+
+If the key has no quota, record that as the limitation, as this section does,
+and leave `MM_THREE_PASS_V2` off.

@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use mm_cme::{
-    ConversationRouter, Session, ToolHandler, Turn, TurnExecutor, TurnLoopPolicy, TurnPlan,
+    ConversationRouter, PassScope, Session, ToolHandler, Turn, TurnExecutor, TurnLoopPolicy,
+    TurnPlan,
 };
 use mm_data::{SessionId, StatusValue, TurnId, UserId};
 use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse, ThresholdRouter};
@@ -66,6 +67,32 @@ async fn the_public_catalog_is_exactly_the_seventeen_schemas() {
         assert!(!name.contains("shell"));
         assert!(!name.contains("url"));
     }
+}
+
+#[tokio::test]
+async fn a_pass_scope_refuses_tools_outside_it_before_parsing() {
+    let (state, session, _temp) = fixture().await;
+    let tools = CmTools::new(state)
+        .with_session(session.clone())
+        .with_pass_scope(PassScope::Interpret);
+    assert_eq!(tools.schemas().len(), 6);
+    let raw = tools
+        .call_for_session(&session, "data.query", "{}")
+        .await
+        .unwrap();
+    let value = parse(&raw);
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["error"]["code"], "TOOL_NOT_AVAILABLE");
+
+    let verify = CmTools::new(tools.state().clone())
+        .with_session(session.clone())
+        .with_pass_scope(PassScope::Verify);
+    assert_eq!(verify.schemas().len(), 16);
+    let raw = verify
+        .call_for_session(&session, "agent.run", r#"{"input":"x"}"#)
+        .await
+        .unwrap();
+    assert_eq!(parse(&raw)["error"]["code"], "TOOL_NOT_AVAILABLE");
 }
 
 #[tokio::test]

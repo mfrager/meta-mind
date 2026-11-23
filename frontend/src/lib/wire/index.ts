@@ -4,15 +4,15 @@
 
 export type ApiErrorCode = "unavailable" | "invalid_argument" | "not_found" | "conflict" | "budget_exceeded" | "firewall_blocked" | "locked" | "internal";
 
-export type ApiError = { code: ApiErrorCode, message: string, 
+export type ApiError = { code: ApiErrorCode, message: string,
 /**
  * The kernel's own explanation, verbatim. Present whenever one exists.
  */
-reason?: string | null, 
+reason?: string | null,
 /**
  * Ties the error to the UI log entry (`data/logs/ui/`).
  */
-correlationId: string, 
+correlationId: string,
 /**
  * Whether retrying the same request could plausibly succeed.
  */
@@ -20,11 +20,11 @@ retryable: boolean, };
 
 export type ServiceState = "ok" | "degraded" | "unavailable";
 
-export type ServiceStatus = { 
+export type ServiceStatus = {
 /**
  * Stable service name: `sqlite`, `eventlog`, `graph`, `llm`, `ui`.
  */
-name: string, state: ServiceState, 
+name: string, state: ServiceState,
 /**
  * Required unless `state` is `ok` — honest state is a UI invariant.
  */
@@ -32,26 +32,26 @@ reason?: string | null, };
 
 export type KernelStatus = { state: ServiceState, reason?: string | null, services: Array<ServiceStatus>, };
 
-export type EventHead = { 
+export type EventHead = {
 /**
  * Highest committed event sequence (`EventLog::head_seq`), 0 when empty.
  */
-seq: number, 
+seq: number,
 /**
  * Audit-chain head sequence, when the audit log has records.
  */
-audit_seq?: number | null, 
+audit_seq?: number | null,
 /**
  * Audit-chain head hash.
  */
 audit_hash?: string | null, };
 
-export type HealthEnvelope = { 
+export type HealthEnvelope = {
 /**
  * Whether the server itself is serving. Kernel problems are reported in
  * `kernel`, not by making `ok` lie.
  */
-ok: boolean, 
+ok: boolean,
 /**
  * The wire contract version. The SPA refuses to run against an older one.
  */

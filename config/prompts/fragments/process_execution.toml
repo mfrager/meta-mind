@@ -1,0 +1,13 @@
+schema = "mm.prompt.fragment.v1"
+id = "process_execution"
+version = 2
+text = """
+[TASK] {{process_task}}
+[CONSTRAINTS]
+{{process_constraints}}
+[TOOLS] {{process_suggested_tools}}
+[BUDGET] {{budget_class}} — {{budget_rounds}} rounds, {{budget_tokens}} tokens, {{budget_wall_ms}} ms remaining
+Complete the task with real tool calls and produce the final user-facing reply. Do not ask for
+permission to do reversible internal work. If verification has rejected an earlier attempt, address
+the stated failure directly and do not repeat an effect that already landed.
+"""

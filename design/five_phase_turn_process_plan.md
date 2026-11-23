@@ -174,6 +174,8 @@ The two source documents contradict themselves or each other in seven places, an
 
 ## 4. Phase 1 — Substrate: verification, scopes, prompts, budgets, observability
 
+**Status:** implemented 2026-11-23; both flags remain off. See [`infodocs/three-pass-substrate.md`](../infodocs/three-pass-substrate.md) for the shipped contract.
+
 **Goal:** Land every shared contract with **zero behavior change** while both flags are off. Phase 1 is the only phase that may be merged without a route change.
 
 **Entry criteria:** baseline `cargo test` green; a scripted `LlmClient` test double exists or is added here; provider quota is not required (all tests mocked).
@@ -380,6 +382,8 @@ Flags added to `feature_flags.rs`: `MM_THREE_PASS_V2` (false), `MM_PROCESS_V1` (
 
 ## 5. Phase 2 — Interpret and the fast path
 
+**Status:** implemented 2026-11-23; `MM_THREE_PASS_V2` remains off by default. See [`infodocs/three-pass-interpret.md`](../infodocs/three-pass-interpret.md).
+
 **Goal:** Make Interpret a real pass, including the one-call fast path, default check injection, and pass-aware streaming. Process still runs the existing loop; Verify is stubbed to "approve" so the flag can be exercised end-to-end without changing outcomes.
 
 **Entry criteria:** Phase 1 merged; `MM_THREE_PASS_V2` exists but is off.
@@ -484,6 +488,8 @@ Frontend transcript reducer treats only `final:true` tokens as assistant content
 
 ## 6. Phase 3 — Process pass and delegation
 
+**Status:** implemented 2026-11-23; `MM_THREE_PASS_V2` remains off by default. See [`infodocs/three-pass-process.md`](../infodocs/three-pass-process.md).
+
 **Goal:** Extract the existing execution loop into a reusable Process pass, confine `agent.run` to it, add retry error context, and make the reply identity explicit. No new model behavior when Interpret is stubbed.
 
 **Entry criteria:** Phase 2 merged; scripted Process fixtures exist.
@@ -552,6 +558,8 @@ Frontend transcript reducer treats only `final:true` tokens as assistant content
 ---
 
 ## 7. Phase 4 — Verify, staged writes, retry loop, and orchestration
+
+**Status:** implemented 2026-11-23; `MM_THREE_PASS_V2` remains off by default and the live dual-run gate is open. See [`infodocs/three-pass-verify.md`](../infodocs/three-pass-verify.md) and [`infodocs/phase12-dual-run.md`](../infodocs/phase12-dual-run.md) §"Three-pass turn run".
 
 **Goal:** Complete the turn architecture: run checks, review with staged writes, approve/retry, expose the timeline, and produce a real dual-run record.
 

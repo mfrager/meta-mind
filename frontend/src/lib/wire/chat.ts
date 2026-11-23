@@ -6,21 +6,29 @@ export type Phase = "plan" | "act" | "verify" | "repair" | "final";
 
 export type ChatRunState = "processing" | "reconnecting" | "completed" | "failed" | "detached";
 
-export type ChatFrame = { "type": "started", query: string, } | { "type": "run", requestId: string, sessionId: string, query: string, } | { "type": "reconnecting", attempt: number, } | { "type": "completed", 
+export type ChatFrame = { "type": "started", query: string, } | { "type": "run", requestId: string, sessionId: string, query: string, } | { "type": "reconnecting", attempt: number, } | { "type": "completed",
 /**
  * Which kernel subsystems the run touched.
  */
-subsystems: Array<string>, } | { "type": "failed", error: string, 
+subsystems: Array<string>, } | { "type": "failed", error: string,
 /**
  * The kernel's verbatim explanation, when one exists.
  */
-reason?: string | null, } | { "type": "llm_request_started", turn_id: string, phase: Phase, subsystem?: string | null, turn_number: number, visible: boolean, 
+reason?: string | null, } | { "type": "pass_start", pass: string, turn_id: string, attempt: number, } | { "type": "pass_token", pass: string, token: string, final: boolean, } | { "type": "pass_complete", pass: string, finished: string, budget: unknown,
+/**
+ * The pass's pinned prompt hash, when one was rendered.
+ */
+promptHash?: string | null, } | { "type": "verification", label: string, pass: boolean, confidence: number, } | { "type": "llm_request_started", turn_id: string, phase: Phase, subsystem?: string | null, turn_number: number, visible: boolean,
 /**
  * Projected voice for this round, when the controller produced it.
  */
-voice?: unknown, } | { "type": "llm_response", turn_id: string, phase: Phase, text: string, visible: boolean, is_final: boolean, } | { "type": "llm_request_finished", turn_id: string, outcome: string, error?: string | null, } | { "type": "tool_call", id: string, turn_id: string, phase: Phase, name: string, input: unknown, } | { "type": "tool_result", id: string, turn_id: string, name: string, success: boolean, output: unknown, durationMs: number, } | { "type": "block", turn_id: string, block: unknown, } | { "type": "input_request", id: string, request: unknown, } | { "type": "input_answer", id: string, answer: unknown, at: number, } | { "type": "focus", doc: unknown, } | { "type": "status", docId?: string | null, status: string, reason?: string | null, } | { "type": "progress", label: string, value: number, max: number, } | { "type": "final_response", response_id: string, text: string, blocks?: unknown[], suggestions?: Array<string> | null, 
+voice?: unknown, } | { "type": "llm_response", turn_id: string, phase: Phase, text: string, visible: boolean, is_final: boolean, } | { "type": "llm_request_finished", turn_id: string, outcome: string, error?: string | null, } | { "type": "tool_call", id: string, turn_id: string, phase: Phase, name: string, input: unknown, } | { "type": "tool_result", id: string, turn_id: string, name: string, success: boolean, output: unknown, durationMs: number, } | { "type": "block", turn_id: string, block: unknown, } | { "type": "input_request", id: string, request: unknown, } | { "type": "input_answer", id: string, answer: unknown, at: number, } | { "type": "focus", doc: unknown, } | { "type": "status", docId?: string | null, status: string, reason?: string | null, } | { "type": "progress", label: string, value: number, max: number, } | { "type": "final_response", response_id: string, text: string, blocks?: unknown[], suggestions?: Array<string> | null,
 /**
  * HonestyMw set this when the sentence claims a write no tool performed.
  */
-unbacked?: boolean | null, };
+unbacked?: boolean | null,
+/**
+ * Present on a V2 approved turn whose checks passed.
+ */
+verified?: boolean | null, };
 

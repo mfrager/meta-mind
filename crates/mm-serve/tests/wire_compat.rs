@@ -142,5 +142,13 @@ fn write_module(path: &Path, source: &str, decls: &[String], trailer: &str) {
     if !out.ends_with('\n') {
         out.push('\n');
     }
+    // TypeScript declaration strings carry source line breaks; never emit
+    // trailing whitespace into the committed mirror.
+    let out = out
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     std::fs::write(path, out).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
 }

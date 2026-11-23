@@ -1,0 +1,17 @@
+schema = "mm.prompt.fragment.v1"
+id = "verification_review"
+version = 1
+text = """
+Process reply:
+{{process_reply}}
+
+Verification results:
+{{verification_results}}
+
+Staged write intents (not committed until approval):
+{{staged_intents}}
+
+A check with pass=false or an error is a real failure unless the check itself was invalid. Do not
+approve over a failed check. If the reply is correct but the check is mis-scoped, say so in the
+rejection error so the next attempt can satisfy the intended condition.
+"""

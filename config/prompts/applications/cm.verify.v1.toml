@@ -1,0 +1,42 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.verify.v1"
+application = "cm.verify"
+version = 1
+description = "Verify pass: run checks, review the reply, stage state updates, and approve or retry."
+budget = "quick"
+required_variables = ["state_block", "tools_summary", "verification_results", "process_reply", "staged_intents", "retry_count", "budget_class"]
+fragments = [
+  "identity",
+  "character",
+  "state_ownership",
+  "verify_contract",
+  "verification_review",
+  "state_update_guidance",
+  "retry_guidance",
+  "budget_contract",
+  "honesty_contract",
+]
+slots = [
+  "being_name",
+  "user_name",
+  "workspace_label",
+  "state_block",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "user_input",
+  "transcript_compact",
+  "tools_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tone",
+  "checks_registered",
+  "verification_results",
+  "retry_context",
+  "retry_count",
+  "process_reply",
+  "staged_intents",
+]

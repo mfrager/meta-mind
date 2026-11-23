@@ -27,7 +27,7 @@ export type TranscriptItem =
   | { kind: "turn"; id: string; phase: Phase; text: string; state: "processing" | "complete" | "error"; visible: boolean; ops: OpCall[] }
   | { kind: "input_request"; id: string; request: ButtonRequest; answered?: string }
   | { kind: "system"; id: string; level: "info" | "error"; message: string; reason?: string }
-  | { kind: "final"; id: string; text: string; suggestions: string[]; unbacked?: boolean };
+  | { kind: "final"; id: string; text: string; suggestions: string[]; unbacked?: boolean; verified?: boolean };
 
 export type TranscriptState = {
   items: TranscriptItem[];
@@ -156,6 +156,7 @@ function apply(state: TranscriptState, frame: ChatFrame): TranscriptState {
             text: frame.text,
             suggestions: frame.suggestions ?? [],
             unbacked: frame.unbacked === true,
+            verified: typeof frame.verified === "boolean" ? frame.verified : undefined,
           },
         ],
       };

@@ -46,6 +46,7 @@
 
 pub mod budget;
 pub mod chunk;
+pub mod config;
 pub mod dashboard;
 pub mod driver;
 pub mod error;
@@ -55,27 +56,37 @@ pub mod hill_climb;
 pub mod improvement;
 pub mod memory;
 pub mod observability;
+pub mod pass_scope;
 pub mod planner;
 pub mod plugins;
 pub mod preferences;
+pub mod process;
 pub mod prompt;
 pub mod regions;
 pub mod report;
 pub mod routing;
+pub mod runner;
 pub mod session;
 pub mod state_block;
 pub mod subagent;
 pub mod turn;
+pub mod verification;
 pub mod voice;
 
-pub use budget::{BudgetClass, BudgetError, BudgetLedger, BudgetLimits, BudgetSnapshot};
+pub use budget::{
+    BudgetClass, BudgetError, BudgetLedger, BudgetLimits, BudgetSnapshot, BudgetUsage, TurnEnvelope,
+};
 pub use chunk::{Chunk, ChunkDirective, ChunkEvent, ChunkId, ChunkKind, ChunkState};
+pub use config::{
+    EnvelopeConfig, InterpretConfig, JudgeConfig, PassConfig, ThinkConfig, ThreePassConfig,
+    ThreePassConfigError, VerificationConfig, VerifyConfig,
+};
 pub use dashboard::{Dashboard, Panel, PanelKind, ViewingContext};
 pub use driver::{DriverMessage, SessionDriver};
 pub use error::{CmeError, Result};
 pub use executor::{
-    ConfirmationHandler, DenyUnconfirmed, PromptContextProvider, ToolHandler, TurnExecutor,
-    TurnLoopPolicy, UnavailableTools,
+    CleanLogProvider, ConfirmationHandler, DenyUnconfirmed, PromptContextProvider, ToolHandler,
+    TurnExecutor, TurnLoopPolicy, UnavailableTools,
 };
 pub use frames::{FrameEngine, FrameError, FrameTimerView};
 pub use hill_climb::{climb, HillClimbConfig, HillClimbResult, HillClimbStep, Optimizable};
@@ -90,6 +101,7 @@ pub use observability::{
     ChunkSnapshot, Observability, PreferencesView, RegionView, SessionSnapshot, SmObserver,
     SmTransitionEvent, TurnSnapshot, VoiceView,
 };
+pub use pass_scope::{PassScope, CONTROL_TOOLS, WORK_TOOLS};
 pub use planner::{ResponseModality, ToolPolicy, TurnBudget, TurnContext, TurnPlanner};
 pub use plugins::{
     BuiltIn, Plugin, PluginCapability, PluginContext, PluginHost, PluginManifest, PluginResult,
@@ -99,6 +111,7 @@ pub use preferences::{
     PlannerHooks, PreferenceConfig, PreferenceDimension, PreferenceLearner, PreferencePosterior,
     PreferenceUpdate,
 };
+pub use process::{ProcessPass, ProcessRequest, ProcessRun};
 pub use prompt::{CmePromptManager, PromptVariables, PromptingError, STANDARD_SLOTS};
 pub use regions::{
     improvement::{ImprovementEvent, ImprovementRegion, ImprovementState},
@@ -114,6 +127,10 @@ pub use regions::{
 };
 pub use report::{Modality, Report, ReportFormat, ReportSection, TechnicalLevel};
 pub use routing::{ConversationRouter, ConversationRoutingRequest, RoutingTable};
+pub use runner::{
+    InterpretResult, PassContext, PassFinish, PassKind, PassOutcome, RetryContext, RetryFailure,
+    ThinkPassRequest, ThinkRun, ThreePassRunner, VerifyOutcome,
+};
 pub use session::{
     AffectState, MemoryContext, PreferenceProfile, Session, SessionBudgets, SessionContext,
     SessionEvent, SessionState, REGION_NAMES,
@@ -126,11 +143,17 @@ pub use state_block::{
 pub use subagent::{
     control_request, read_only_schemas, IntrospectionFinding, IntrospectionReport,
     IntrospectionService, PlanResult, PlanService, SubagentError, ThinkEvidence, ThinkFinding,
-    ThinkResult, ThinkService,
+    ThinkResult, ThinkRuntime, ThinkService,
 };
 pub use turn::{
-    ChunkEmission, ToolCallEmission, Turn, TurnEvent, TurnOutcome, TurnPlan, TurnPlanMetadata,
-    TurnState,
+    ChunkEmission, PassBudget, PassRecord, ToolCallEmission, Turn, TurnEvent, TurnOutcome,
+    TurnPlan, TurnPlanMetadata, TurnState,
+};
+pub use verification::{
+    is_mutating_call, BackendRegistry, CheckVerdict, CommittedMutation, LlmJudgeBackend,
+    MutationJournal, ProcessContext, ProcessMutation, ProcessResult, StagedMutation,
+    VerificationBackend, VerificationError, VerificationResult, VerifyCheck, VerifyContext,
+    WriteMode, MAX_CHECKS, MAX_STAGED_MUTATIONS,
 };
 pub use voice::{
     AsrClient, AsrEvent, AsrFinal, AsrPartial, AudioChunk, AudioInput, AudioOutput,
