@@ -316,6 +316,8 @@ pub struct VerifyContext {
 
 First (and initially only) backend: `LlmJudgeBackend`
 
+**Important:** The LLM Judge is the **only** component that uses structured output. All three main passes (Interpret, Process, Verify) use normal LLM calls that return text/streaming/tool calls. The structured output is confined to the verification check execution inside the Verify pass.
+
 ```rust
 pub struct LlmJudgeBackend {
     client: Arc<dyn LlmClient>,
@@ -329,7 +331,7 @@ impl VerificationBackend for LlmJudgeBackend {
     async fn verify(&self, check, process_output, context) -> Result<VerificationResult> {
         // 1. Build judge prompt from check.backend_params.evaluation_prompt
         //    Template variables: {{user_request}}, {{process_reply}}, {{check_details}}, {{state_summary}}
-        // 2. Call model with structured output schema from check.backend_params.expected_output_schema
+        // 2. Call model WITH STRUCTURED OUTPUT schema from check.backend_params.expected_output_schema
         // 3. Parse result → VerificationResult
         // 4. Clamp confidence: if > 1.0 → 1.0
         // 5. Compare confidence against check.confidence_threshold
@@ -341,7 +343,7 @@ impl VerificationBackend for LlmJudgeBackend {
 }
 ```
 
-**Structured Output Schema (required):**
+**Structured Output Schema (required for LLM Judge only):**
 ```json
 {
   "type": "object",
@@ -356,37 +358,43 @@ impl VerificationBackend for LlmJudgeBackend {
 
 ### 5.4 Verify Pass Steps
 
+The Verify pass has **two distinct phases**:
+
 ```
 VERIFY PASS:
-1. Run verification checks (parallel where possible)
-   For each check in InterpretResult.verify_checks:
-     - Look up backend by check.backend
-     - Call backend.verify(check, process_result, verify_context)
-     - Collect VerificationResult
-
-2. LLM Call: State Update & Review
-   - Prompt: cm.verify.v1
-   - Context: clean_log + [STATE] + user_request + process_result + verification_results
-   - Tools: All 16 internal tools (NO agent.run, NO metamind.verify)
-            PLUS metamind.approve(success=false, error=...)
-   - LLM reviews Process output + verification results
-   - LLM calls internal tools to update:
-       * Conversation state (topic, depth, status)
-       * Memory (metamind.memory remember/forget)
-       * Database (data.* if new facts learned)
-       * Plans/actions (metamind.plan/act if relevant)
-   - LLM then calls ONE of:
-       * metamind.approve(success=true) → turn complete
-       * metamind.approve(success=false, error="...") → retry
-
-3. On metamind.approve(success=false, error):
-   - If retry_count < MAX_RETRIES (default 5):
-       * Prepend error to ProcessContext: "Previous attempt failed: {error}. Please fix."
-       * Re-run Process pass (Pass 2) with augmented context
-       * Re-run Verify pass (Pass 3)
-   - Else:
-       * Return error to user: "I couldn't complete this after several attempts: {error}"
-       * Log failure
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE A: Run Verification Checks (0-N items, parallel where possible)      │
+│                                                                             │
+│ For each check in InterpretResult.verify_checks:                           │
+│   - Look up backend by check.backend (e.g., "llm_judge")                   │
+│   - Call backend.verify(check, process_result, verify_context)             │
+│     → This is the ONLY place structured output is used                     │
+│   - Collect VerificationResult into a results collection                   │
+│                                                                             │
+│ If Interpret added 0 checks: Phase A is skipped, results = []              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE B: Verify LLM Call (normal text/streaming/tool calls)                │
+│                                                                             │
+│ - Prompt: cm.verify.v1                                                     │
+│ - Context: clean_log + [STATE] + user_request + process_result             │
+│              + verification_results (collection from Phase A)              │
+│ - Tools: All 16 internal tools (NO agent.run, NO metamind.verify)          │
+│            PLUS metamind.approve(success=false, error=...)                 │
+│ - LLM reviews Process output + verification results                        │
+│ - LLM calls internal tools to update state/memory/db:                      │
+│     * Conversation state (topic, depth, status)                            │
+│     * Memory (metamind.memory remember/forget)                             │
+│     * Database (data.* if new facts learned)                               │
+│     * Plans/actions (metamind.plan/act if relevant)                        │
+│ - LLM then calls ONE of:                                                   │
+│     * metamind.approve(success=true) → turn complete                       │
+│     * metamind.approve(success=false, error="...") → retry Process         │
+│                                                                             │
+│ This LLM call uses NORMAL streaming/tool calls — NO structured output      │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 5.5 Verify Tools
@@ -590,28 +598,32 @@ The frontend **concatenates all pass outputs** into a single message bubble:
 
 ## 12. Tool Visibility Matrix
 
+**Rule:** All 19 tools are available in all passes **except** these three explicit exceptions:
+- `metamind.approve` — only in **Interpret** (success=true) and **Verify** (success=false)
+- `metamind.verify` — only in **Interpret**
+- `agent.run` — only in **Process**
+
 | Tool | Interpret | Process | Verify | Think Sub-Agent |
 |------|-----------|---------|--------|-----------------|
-| `conversation.topic` | ✗ | ✓ | ✓ | ✗ |
-| `conversation.depth` | ✗ | ✓ | ✓ | ✗ |
-| `conversation.status` | ✗ | ✓ | ✓ | ✗ |
-| `conversation.frame` | ✗ | ✓ | ✓ | ✗ |
-| `agent.run` | ✗ | ✓ | ✗ | ✓ |
-| `data.create` | ✗ | ✓ | ✓ | ✗ |
-| `data.update` | ✗ | ✓ | ✓ | ✗ |
-| `data.query` | ✗ | ✓ | ✓ | ✓ |
-| `data.delete` | ✗ | ✓ | ✓ | ✗ |
-| `data.search` | ✗ | ✓ | ✓ | ✓ |
-| `data.schema` | ✗ | ✓ | ✓ | ✓ |
-| `data.namespace` | ✗ | ✓ | ✓ | ✓ |
-| `metamind.plan` | ✗ | ✓ | ✓ | ✗ |
-| `metamind.think` | ✗ | ✓ | ✗ | ✗ |
-| `metamind.memory` | ✗ | ✓ | ✓ | ✓ |
-| `metamind.log` | ✗ | ✓ | ✓ | ✓ |
-| `metamind.act` | ✗ | ✓ | ✓ | ✗ |
+| `conversation.topic` | ✓ | ✓ | ✓ | ✓ |
+| `conversation.depth` | ✓ | ✓ | ✓ | ✓ |
+| `conversation.status` | ✓ | ✓ | ✓ | ✓ |
+| `conversation.frame` | ✓ | ✓ | ✓ | ✓ |
+| `agent.run` | ✗ | ✓ | ✗ | ✗ |
+| `data.create` | ✓ | ✓ | ✓ | ✓ |
+| `data.update` | ✓ | ✓ | ✓ | ✓ |
+| `data.query` | ✓ | ✓ | ✓ | ✓ |
+| `data.delete` | ✓ | ✓ | ✓ | ✓ |
+| `data.search` | ✓ | ✓ | ✓ | ✓ |
+| `data.schema` | ✓ | ✓ | ✓ | ✓ |
+| `data.namespace` | ✓ | ✓ | ✓ | ✓ |
+| `metamind.plan` | ✓ | ✓ | ✓ | ✓ |
+| `metamind.think` | ✓ | ✓ | ✓ | ✓ |
+| `metamind.memory` | ✓ | ✓ | ✓ | ✓ |
+| `metamind.log` | ✓ | ✓ | ✓ | ✓ |
+| `metamind.act` | ✓ | ✓ | ✓ | ✓ |
 | `metamind.verify` | ✓ | ✗ | ✗ | ✗ |
-| `metamind.approve(true)` | ✓ | ✗ | ✗ | ✗ |
-| `metamind.approve(false)` | ✗ | ✗ | ✓ | ✗ |
+| `metamind.approve` | ✓ | ✗ | ✓ | ✗ |
 
 ---
 

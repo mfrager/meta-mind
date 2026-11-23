@@ -364,8 +364,7 @@ impl TurnExecutor {
                     if let Some(first) = messages.first_mut() {
                         *first = Message::system(prompt.text.clone());
                     }
-                    let request =
-                        self.llm_request(&plan, messages.clone(), tools.clone(), &model);
+                    let request = self.llm_request(&plan, messages.clone(), tools.clone(), &model);
                     if let Err(error) = budget.reserve_tokens(u64::from(request.max_tokens)) {
                         return self.fail(turn, error.to_string());
                     }

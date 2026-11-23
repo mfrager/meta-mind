@@ -721,6 +721,20 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Streaming** — Each pass streams tokens via SSE; UI aggregates into single message bubble with pass indicators
 - **Tool visibility** — Interpret: verify/approve(true) only; Process: all 17 including agent.run; Verify: 16 internal + approve(false)
 - **Migration** — 6 phases: verification backend → Interpret → Process refactor → Verify → orchestration/streaming → sub-agents; feature flag `MM_THREE_PASS_V2`
+
+#### W.2 Process Pipeline System (`process_pipeline_system.md`)
+- **Core Concept** — Reusable Process abstraction: templates (persistent, RDF/OWL, unique URI) → instances (queue inbox, mm-sm state machine, agentstream session) → execution (sequential/parallel/batch queue consumption)
+- **Three Process Types** — Conversational (step-by-step user dialog), LLM Operations (autonomous LLM+tool loops), Backend Service (external service orchestration; future)
+- **Step Model** — Each step: templated instructions for LLM, allowed tool subset, step type (llm_tool_loop, wait_condition, backend_call, user_input), wait conditions (tool result, user input, signal, timeout), parallel groups, output bindings
+- **PROCESS.md** — Per-template documentation file (like SKILL.md) with step details, injected into LLM context
+- **Plan → Process** — Evaluating a Plan auto-generates a ProcessTemplate, instantiates and executes it; Plan types: flat (sequential), tree (parallel groups, DFS), markdown (file-backed, flexible)
+- **Plan Builder (2-4 Pass)** — Pass 1: structured classification (flat/tree/markdown); Pass 2: markdown generation (hints from Pass 1); Pass 3: decode to target format (structured); Pass 4: LLM Judge verify-decode (retries up to 5)
+- **Plan Storage** — Flat/tree in RDF `plan` graph; markdown in `data/plans/<id>.md` with RDF reference; metadata: short random ID, label, description, 24h expiry (unless neverExpires)
+- **Tools** — `metamind.act(process=, plan=, run=)` executes process or plan; `metamind.plan(request, structure=flat|tree|markdown, run=, list=, last=, never_expires=)` builds/runs/lists plans
+- **Verification Reuse** — Step-level Verify phase reuses main Verify pass engine (VerificationBackend trait, LLM Judge, metamind.verify/approve tools)
+- **RDF Integration** — All templates/instances/queues in `mm:process` named graph; queryable via data.* tools
+- **Expiration** — Plans expire in 24h (configurable) unless neverExpires; daily cleanup job; processes: conversational inactivity timeout, LLM ops no expiry
+- **Migration** — 6 phases: core engine → queue/parallel → plan builder → plan/process integration → process types/PROCESS.md → advanced features
 - **Tool Surface** — Seventeen tools in three bounded families: conversation (5: `agent.run`, `conversation.status/topic/depth/frame`), data (7: `data.create/update/query/delete/search/schema/namespace`), metamind (5: `metamind.plan/think/memory/log/act`); strict schemas, full envelopes, typed errors; admin catalog and raw SPARQL remain CLI-only
 - **Prompt Strategies / Frames** — New `mm-prompt` deterministic manager: complete `config/prompts/` tree including `frames/`, manifest-selected strategies, strict variable renderer, hash-addressed `PromptInstance`, `cm.turn.v1` character/source/tool/state/frame/pending/data/memory/budget fragments, `frame.utterance.v1`, fail-closed `PROMPT_UNAVAILABLE`, and no prompt literals in the executor
 - **Session / Conversation State** — RDF `mm:Session` and `mm:SessionTrace` instances plus revisioned `ConversationState`/`SessionState`/`FrameStack`: lifecycle, presence, derived `working`, main+parallel work catalog, multiple agentstream traces with mandatory `main`, on-demand `data/sessions/<ULID>/`, cursor-paginated RDF listing, soft delete/purge, topic/depth, bounded typed status, intro/resume/work/tutorial/goodbye frames; no project/task CRUD; state block adds current user, session/work/traces/frames, pending, budget, health

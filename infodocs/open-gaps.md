@@ -25,8 +25,8 @@ already recorded in the code are listed separately at the end so that nobody "fi
 | G3 | `modules/tools/*` module directories absent; nine tool `module_uri` IRIs dangle | Missing artifacts + plan inconsistency | Phase 10 (plan) |
 | G4 | `pi_editor.open` is still a refusing stub; Phase 11 wired `mm-pi` instead | Missing implementation or stale plan | Phase 10 → Phase 11 |
 | G5 | Tier-2/3 sandboxes have no runtime (gVisor / microVM) | Missing implementation, operator-installable | Phase 10, env-gated by design |
-| G6 | Hosted cores and LLM paths never executed against a live provider | Configuration/verification, not code | Operator |
-| G7 | No measured CM v3 dual-run cost/latency report | Verification, not code | Operator with provider credentials |
+| G6 | Hosted decision core and metacog scan never executed against a live provider (the console and CM paths now have been) | Verification, not code | Operator |
+| G7 | CM v3 dual-run is partial: legacy half complete, CM half cut short by provider quota | Verification, not code | Operator with provider quota |
 | G8 | `MM_PROMPT_V1` and `MM_FRAMES_V1` are declared but never read | Implementation/doc inconsistency | Phase 8–12 follow-up |
 
 ---
@@ -266,14 +266,15 @@ decision core (`crates/mm-decision/src/hosted.rs`), and the CLI wiring that degr
 documented behaviour is to fall back to rules + escalate (`design/planning/phase_09_decision_firewall_build_plan.md:441`,
 restated at `design/planning/full/phase_09_decision_firewall_build_plan.md:545`).
 
-**What is missing.** No run against a live provider in this environment: `OPENAI_BASE_URL` and
-`OPENAI_API_KEY` are unset, so the hosted decision core (`mm-cli decide --core hosted`) and the metacog
-scan's LLM ops are exercised only through mocks and the refusal path. `mm-runtime` itself has no LLM
-dependency — the loop reaches models through the Pi authoring path (`mm-pi`, which needs the `pi`
+**What is missing.** A live provider is now configured and has been exercised by `mm-serve` (see
+[`phase12-dual-run.md`](./phase12-dual-run.md)), but the hosted decision core (`mm-cli decide --core
+hosted`), `mm-cli conformance --core hosted`, and the metacog scan's LLM ops have not been run against
+it, so those paths are still exercised only through mocks and the refusal path. `mm-runtime` itself has
+no LLM dependency — the loop reaches models through the Pi authoring path (`mm-pi`, which needs the `pi`
 binary) rather than by calling a provider. This is not code to write — it is a verification the plan's
-gates ask for and this machine cannot perform.
+gates ask for and this machine has not performed.
 
-**To close:** configure the two environment variables, then run `mm-cli decide --core hosted`,
+**To close:** with provider quota available, run `mm-cli decide --core hosted`,
 `mm-cli conformance --core local --core hosted` and the loop's qualification scenario against the real
 endpoint, and record what the redaction/accounting checks observed on real traffic.
 
@@ -281,19 +282,30 @@ endpoint, and record what the redaction/accounting checks observed on real traff
 
 <a id="g7"></a>
 
-## G7 — The CM v3 dual-run has no measured cost or latency
+## G7 — The CM v3 dual-run is only half measured
 
 **What exists.** `MM_CM_V3` is on by default, the flag-off path still boots, and
 both the legacy controller suite and the CME suite pass. `llm_calls` already
-records cost, tokens, latency, cache hits, and failures.
+records cost, tokens, latency, cache hits, and failures. A live provider is
+configured here, and on 2026-11-23 the dual-run was executed as far as the
+provider's quota allowed: the legacy route completed all six prompts; the CM
+route completed turns live but the paired window was refused upstream with
+`429` quota errors.
 
-**What is missing.** No live provider was available in this environment, so
-[`phase12-dual-run.md`](./phase12-dual-run.md) contains the method and thresholds
-but no cost/latency numbers. Scripted runs are correctly not reported as a
-substitute.
+**Two defects were found and fixed by that run.** The CM executor chose a model
+and then dropped it before the provider call (every live CM turn failed), and
+the CM path bypassed `llm_calls` entirely (the comparison would have been
+impossible). Both fixes and the `llm_calls` rows are recorded in
+[`phase12-dual-run.md`](./phase12-dual-run.md).
 
-**Acceptance criteria.** Run the same prompt set against the legacy and new paths
-on separate data roots; fill the report with per-purpose `llm_calls` aggregates;
+**What is missing.** A complete paired sample. The key had no quota left after
+the legacy half, so the report has four successful CM calls from an earlier
+window and one complete legacy set; no p50/p95 or per-turn cost verdict is
+claimed.
+
+**Acceptance criteria.** With provider quota available, run the same prompt set
+against the legacy and new paths on separate data roots (≥20 prompts per path);
+fill the report with per-purpose `llm_calls` aggregates and the raw rows;
 record p50/p95 and failures; either keep the default or flip `MM_CM_V3=false` with
 the failing trace ids.
 

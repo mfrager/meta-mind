@@ -191,10 +191,11 @@ Test counts are the `#[test]`/`#[tokio::test]` functions in that crate; the exec
   validation; grammar/decoder backends (`llguidance`, `xgrammar`); a cache index with re-hashing; routing;
   accounting (`llm_calls`); provenance and redaction; replay of recorded sessions with the network guard
   armed.
-- **Limits.** **No live-provider call has ever been made in this environment.** With `OPENAI_BASE_URL`/
-  `OPENAI_API_KEY` unset, every hosted path degrades to `Unavailable` (`mm-cli conformance` prints exactly
-  that). Grammar quality is measured against fixtures, not against a real model's outputs. There are no
-  `#[ignore]`d live tests and no recorded golden traffic from a real provider.
+- **Limits.** A live provider is configured in this environment and the `mm-serve` routes have made real
+  calls with it (2026-11-23, see [`phase12-dual-run.md`](./phase12-dual-run.md)); the CLI's hosted-core
+  paths (`decide --core hosted`, `conformance --core hosted`) have not been run against it, and there are
+  no `#[ignore]`d live tests. Grammar quality is still measured against fixtures, not recorded provider
+  traffic. When `OPENAI_BASE_URL`/`OPENAI_API_KEY` are unset every hosted path degrades to `Unavailable`.
 - **Tested by.** `accounting.rs`, `cache_replay.rs`, `grammar_conformance.rs`, `no_hardcoded_endpoint.rs`
   (endpoints come only from the environment), `routing.rs`, `schema_reject.rs` (every malformed fixture is
   rejected for the right reason), plus `bench/llm/` fixtures.
@@ -483,11 +484,13 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
   `agent.run` with Hermes and Pi backends; session-scoped status SSE; and the
   full-screen `/inspector/:sessionId` UI with Status, Knowledge, Plan, and Trace
   tabs.
-- **Limits.** No live provider has been exercised in this environment, so the CM
-  model path is proven by scripted/mock clients and deterministic executors. The
-  declared `MM_PROMPT_V1`/`MM_FRAMES_V1` flags are not read by the runtime: the
-  prompt tree and frame timers are governed by the CME path and
-  `MM_AUTOMATION_V1` instead. The CM tool surface is attached to the CME executor
+- **Limits.** The CM model path has been exercised live, but only partially: the
+  provider key ran out of quota during the dual-run, so four successful CM turns
+  and a complete legacy set are recorded rather than a paired sample. The CM
+  executor now routes through `LlmService` so its calls land in `llm_calls` like
+  the legacy path's. The declared `MM_PROMPT_V1`/`MM_FRAMES_V1` flags are not read
+  by the runtime: the prompt tree and frame timers are governed by the CME path
+  and `MM_AUTOMATION_V1` instead. The CM tool surface is attached to the CME executor
   only when `MM_CM_V3=true` (the default); `MM_CME_ENABLED` still chooses the CME
   versus the legacy console route. Legacy `urn:metamind:*` user/project triples
   are retained for audit and aliased with `owl:sameAs`; they are not rewritten or
@@ -498,8 +501,9 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
 - **Quality.** The tool contract and state invariants are the strongest part: the
   seventeen schemas are embedded and count-checked, every state write is
   revision-checked, and the index is verified against RDF. The weak part is
-  external validation — no live model, no live Hermes/Pi turn, and no measured
-  dual-run cost/latency (see [`phase12-dual-run.md`](./phase12-dual-run.md)).
+  external validation — the live model path is now proven to work and to account
+  for itself, but the dual-run is incomplete and there is still no live
+  Hermes/Pi turn (see [`phase12-dual-run.md`](./phase12-dual-run.md)).
 
 ---
 
@@ -656,7 +660,7 @@ commands.
 
 | Untested | Why it is untested | How to close it |
 |---|---|---|
-| Live LLM calls (hosted core, metacog scan, Pi live authoring) | No `OPENAI_*` credentials in this environment; no `#[ignore]`d live tests exist | Set the env vars (see the [user guide](./user-guide.md#4-configuration)) and run `decide --core hosted`, `conformance --core hosted`, `pi run` without `--offline`; record the redaction/accounting results |
+| Hosted decision core, metacog scan, Pi live authoring | The provider is configured and `mm-serve` has used it live, but these CLI paths have not been run against it; no `#[ignore]`d live tests exist | Run `decide --core hosted`, `conformance --core hosted`, `pi run` without `--offline`; record the redaction/accounting results |
 | Local decision core | Nothing fits a head (G1) | Implement the fitter, then run the conformance suite with `--head` |
 | Search-augmented factuality | No retriever seam; no caller (G2) | Implement + wire, then assert a `factuality_checks` row |
 | Sandbox tiers 2/3 | No gVisor/Firecracker runtime installed (G5) | Install a runtime, enable the feature, run a tier-2 tool end to end |
@@ -665,8 +669,8 @@ commands.
 | Long-running/soak behaviour | The loop is tested for single runs; the five clocks need a long-lived process | Run `bin/mm-loop` for hours with `--ticks` high and watch `logs verify`/GC/budget drift |
 | Concurrency at scale | Single-writer stores are correct but untested under load | A load test against the SQLite pool and the graph actor |
 | Data migration/upgrade from an older `data/` dir | Only clean-boot and per-migration up/down are covered | Replay an older dump through the 12 migrations |
-| Token/cost realism | Accounting is exercised with mocks only | A live run with the provider's usage reporting |
-| CM v3 live model path | No `OPENAI_*` credentials in this environment | Run both routes with the same prompt set and fill [`phase12-dual-run.md`](./phase12-dual-run.md) |
+| Token/cost realism | `llm_calls` has live rows from both `mm-serve` routes now, but no soak or scale sample; the CLI cores still run on mocks | A longer live run with the provider's usage reporting |
+| CM v3 full dual-run | The paired run was cut short by provider quota; the legacy half is complete and the CM half is four successful calls | Rerun both halves on a key with quota and fill [`phase12-dual-run.md`](./phase12-dual-run.md) |
 | Legacy user/project IRI migration at scale | Unit/integration coverage inserts legacy rows, but no full older data root was replayed | Copy an older data dir, boot it, and run `mm-cli data verify` |
 
 ---

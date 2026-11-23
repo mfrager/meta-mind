@@ -15,7 +15,10 @@ use mm_cme::{
 };
 use mm_data::{SessionId, TurnId, UserId};
 use mm_llm::config::Complexity;
-use mm_llm::{MockClient, ModelSpec, ProviderToolCall, ScriptedResponse, ThresholdRouter};
+use mm_llm::{
+    LlmClient, LlmRequest, LlmResponse, MockClient, ModelSpec, ProviderToolCall, ScriptedResponse,
+    ThresholdRouter,
+};
 
 fn specs() -> Vec<ModelSpec> {
     vec![
@@ -151,6 +154,53 @@ async fn executor_drives_turn_through_planning_to_completion() {
         turn.state(),
         mm_cme::TurnState::Completed.as_str(),
         "executor reaches completed"
+    );
+}
+
+/// Records the model each request pins, so a routed model cannot be dropped on
+/// the way to the adapter (the live path failed exactly that way).
+struct ModelRecorder {
+    inner: Arc<MockClient>,
+    seen: std::sync::Mutex<Vec<Option<String>>>,
+}
+
+#[async_trait]
+impl LlmClient for ModelRecorder {
+    async fn complete(&self, request: &LlmRequest) -> mm_llm::Result<LlmResponse> {
+        self.seen.lock().unwrap().push(request.model.clone());
+        self.inner.complete(request).await
+    }
+
+    fn provider(&self) -> &str {
+        "recording"
+    }
+}
+
+#[tokio::test]
+async fn the_routed_model_is_pinned_on_the_request() {
+    let recorder = Arc::new(ModelRecorder {
+        inner: Arc::new(MockClient::script(vec![ScriptedResponse::text(
+            "Here is the answer.",
+        )])),
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let mut executor =
+        TurnExecutor::with_llm(Arc::clone(&recorder) as Arc<dyn LlmClient>, router());
+    let mut turn = Turn::new(TurnPlan::simple(
+        SessionId::new("s1"),
+        TurnId::new("t1"),
+        "hello",
+    ))
+    .unwrap();
+    let outcome = executor
+        .execute(&mut turn, &session_context(), None)
+        .await
+        .unwrap();
+    assert!(outcome.is_success(), "{outcome:?}");
+    assert_eq!(
+        recorder.seen.lock().unwrap().as_slice(),
+        [Some("fast".to_owned())],
+        "the request must carry the model the router chose"
     );
 }
 
