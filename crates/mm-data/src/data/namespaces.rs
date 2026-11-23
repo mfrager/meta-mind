@@ -6,7 +6,7 @@
 //! `owl:sameAs` alias once, so a person is never duplicated because two
 //! spellings existed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use oxrdf::NamedNode;
@@ -236,6 +236,38 @@ impl NamespaceRegistry {
         Ok(canonical)
     }
 
+    /// Record `owl:sameAs` for every legacy user/project IRI found in the named
+    /// graphs. Returns how many distinct legacy spellings were aliased.
+    ///
+    /// The legacy triples are deliberately not deleted: the graph is an audit
+    /// record, and an `owl:sameAs` alias plus the registries' legacy fallback is
+    /// enough for reads to converge on the canonical identity. New writes mint
+    /// `mmd:` directly. Idempotent.
+    pub async fn migrate_legacy_identities(&self) -> Result<usize, DataError> {
+        let mut legacy = BTreeSet::new();
+        for graph in self.engine.named_graphs().await? {
+            for row in self.engine.triples(&graph).await? {
+                for key in ["s", "o"] {
+                    let Some(value) = row.get(key).and_then(crate::rdf::term_value) else {
+                        continue;
+                    };
+                    if is_legacy_identity(value) {
+                        legacy.insert(value.to_string());
+                    }
+                }
+            }
+        }
+        let mut migrated = 0usize;
+        for alias in legacy {
+            let Some(canonical) = legacy_to_canonical(&alias) else {
+                continue;
+            };
+            self.ensure_alias(&canonical, &alias).await?;
+            migrated += 1;
+        }
+        Ok(migrated)
+    }
+
     /// Record `owl:sameAs` once, in the schema graph.
     pub async fn ensure_alias(&self, canonical: &str, alias: &str) -> Result<(), DataError> {
         if canonical == alias {
@@ -292,6 +324,10 @@ impl NamespaceRegistry {
         }
         Ok(out)
     }
+}
+
+fn is_legacy_identity(value: &str) -> bool {
+    value.starts_with("urn:metamind:user:") || value.starts_with("urn:metamind:project:")
 }
 
 /// Map a legacy `urn:metamind:<kind>:<id>` IRI to `mmd:<kind>/<id>`.

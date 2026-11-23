@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "agent.run.v1"
+application = "agent"
+budget = "action"
 version = 1
 description = "Bounded external-agent turn."
 fragments = ["identity", "contract", "agent_guidance", "style"]

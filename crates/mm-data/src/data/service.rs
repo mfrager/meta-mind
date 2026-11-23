@@ -108,6 +108,13 @@ impl DataService {
         catalog.bootstrap().await?;
         let namespaces = NamespaceRegistry::new(Arc::clone(&engine));
         namespaces.bootstrap().await?;
+        let migrated = namespaces.migrate_legacy_identities().await?;
+        if migrated > 0 {
+            tracing::info!(
+                aliases = migrated,
+                "migrated legacy user/project identities"
+            );
+        }
 
         let outbox = DataOutbox::new(sqlite.pool().clone());
         outbox.migrate().await?;
@@ -164,6 +171,12 @@ impl DataService {
         &self.namespaces
     }
 
+    /// Record aliases for legacy user/project IRIs. Idempotent; returns the
+    /// number of distinct legacy spellings found in the named graphs.
+    pub async fn migrate_legacy_identities(&self) -> Result<usize, DataError> {
+        self.namespaces.migrate_legacy_identities().await
+    }
+
     /// The outbox.
     pub fn outbox(&self) -> &DataOutbox {
         &self.outbox
@@ -217,8 +230,20 @@ impl DataService {
             return Err(DataError::SearchUnavailable("the index is not open".into()));
         };
         let entities = self.all_entities().await?;
-        let documents = entities
-            .iter()
+        let mut latest: BTreeMap<String, DataEntity> = BTreeMap::new();
+        for entity in entities {
+            latest
+                .entry(entity.iri.clone())
+                .and_modify(|current| {
+                    if entity.revision > current.revision {
+                        *current = entity.clone();
+                    }
+                })
+                .or_insert(entity);
+        }
+        let documents = latest
+            .values()
+            .filter(|entity| entity.status != EntityStatus::Deleted)
             .map(|entity| self.document_for(entity))
             .collect::<Result<Vec<_>, _>>()?;
         let report = search.reindex(documents).await?;
@@ -288,6 +313,46 @@ impl DataService {
             self.checkpoint().await?;
         }
         Ok(())
+    }
+
+    /// Compare the RDF entity set with the lexical index.
+    ///
+    /// A *missing* document is an RDF entity that search cannot find; an
+    /// *orphan* is an indexed subject with no live RDF entity. Deleted entities
+    /// are excluded from both sides, matching [`DataService::reindex`] and the
+    /// outbox's deletion rule.
+    pub async fn verify_index(&self) -> Result<IndexVerification, DataError> {
+        let Some(search) = &self.search else {
+            return Err(DataError::SearchUnavailable("the index is not open".into()));
+        };
+        let entities = self.all_entities().await?;
+        let mut latest: BTreeMap<String, DataEntity> = BTreeMap::new();
+        for entity in entities {
+            latest
+                .entry(entity.iri.clone())
+                .and_modify(|current| {
+                    if entity.revision > current.revision {
+                        *current = entity.clone();
+                    }
+                })
+                .or_insert(entity);
+        }
+        let expected = latest
+            .into_values()
+            .filter(|entity| entity.status != EntityStatus::Deleted)
+            .map(|entity| entity.iri)
+            .collect::<BTreeSet<_>>();
+        let indexed = search
+            .subjects()
+            .await?
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        Ok(IndexVerification {
+            entities: expected.len() as u64,
+            documents: indexed.len() as u64,
+            missing: expected.difference(&indexed).cloned().collect(),
+            orphaned: indexed.difference(&expected).cloned().collect(),
+        })
     }
 
     /// The compact status projection used by later phases and the inspector.
@@ -804,7 +869,27 @@ impl DataService {
     }
 }
 
-/// The compact data projection for `[STATE]`.
+/// The result of comparing the RDF entity set with the lexical index.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct IndexVerification {
+    /// Live RDF entities expected in the index.
+    pub entities: u64,
+    /// Documents found in the index.
+    pub documents: u64,
+    /// RDF entities with no index document.
+    pub missing: Vec<String>,
+    /// Index documents whose RDF entity is gone or deleted.
+    pub orphaned: Vec<String>,
+}
+
+impl IndexVerification {
+    /// True when the two sides agree exactly.
+    pub fn is_clean(&self) -> bool {
+        self.missing.is_empty() && self.orphaned.is_empty()
+    }
+}
+
+/// The compact status projection used by later phases and the inspector.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DataStatus {
     /// Managed entities.

@@ -1,0 +1,57 @@
+schema = "mm.prompt.strategy.v1"
+id = "cm.repair.v1"
+application = "cm.turn"
+version = 1
+description = "Repair round after invalid JSON, invalid arguments, or a stale state revision."
+budget = "standard"
+variants = ["repair"]
+required_variables = ["state_block", "tools_summary", "budget_class", "repair_reason"]
+fragments = [
+  "being",
+  "character",
+  "current_user",
+  "source_map",
+  "tools_contract",
+  "state_ownership",
+  "state_pending",
+  "state_frames",
+  "data_capture",
+  "metamind_division",
+  "memory_contract",
+  "budget_contract",
+  "honesty_contract",
+  "safety_contract",
+  "output_character",
+  "repair_guidance",
+]
+slots = [
+  "being_name",
+  "being_version",
+  "being_values",
+  "user_name",
+  "user_iri",
+  "canonical_user",
+  "user_locale",
+  "user_timezone",
+  "workspace_label",
+  "state_block",
+  "state_json",
+  "revision",
+  "topic",
+  "depth",
+  "pending_summary",
+  "frame_kind",
+  "frame_step",
+  "frame_attempt",
+  "memory_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tools_summary",
+  "tone",
+  "transcript_compact",
+  "project_name",
+  "user_input",
+  "repair_reason",
+]

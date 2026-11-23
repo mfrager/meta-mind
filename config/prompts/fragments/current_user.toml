@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "current_user"
+version = 1
+text = """
+Your current user is {{user_name}} ({{user_iri}}), canonically {{canonical_user}}.
+Locale {{user_locale}}, timezone {{user_timezone}}, workspace {{workspace_label}}.
+Treat this person as the operator. Use their name and preferences; do not invent an identity.
+"""

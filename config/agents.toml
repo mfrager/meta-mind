@@ -1,0 +1,6 @@
+# Downstream agent endpoints. Secrets stay in the environment.
+[hermes]
+# Explicitly empty by default; set MM_AGENT_HERMES_BASE_URL or this endpoint.
+endpoint = ""
+# Optional model hint. When empty, /models discovery chooses the first model.
+model = ""

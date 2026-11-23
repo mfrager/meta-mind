@@ -18,6 +18,7 @@ import {
 import { useChatStore } from "@/agentgui/lib/store/chat-store";
 import { useWorkspaceStore } from "@/agentgui/lib/store/workspace-store";
 import { cn } from "@/agentgui/lib/utils";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronRightIcon,
   Columns2Icon,
@@ -25,6 +26,7 @@ import {
   Maximize2Icon,
   MenuIcon,
   MessagesSquareIcon,
+  PanelRightOpenIcon,
   PlusIcon,
   SparklesIcon,
   Trash2Icon,
@@ -61,6 +63,7 @@ export function TopBar({
   );
   const createSession = useWorkspaceStore((state) => state.createSession);
   const clearSession = useChatStore((state) => state.clearSession);
+  const navigate = useNavigate();
   const streaming = useChatStore(
     (state) => state.streamingSessions[activeSessionId] ?? false
   );
@@ -184,6 +187,9 @@ export function TopBar({
             <DropdownMenuShortcut>⌘J</DropdownMenuShortcut>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => navigate("/inspector")}>
+            <PanelRightOpenIcon className="size-3.5" /> Open inspector
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={onOpenSettings}>
             <SparklesIcon className="size-3.5" /> Agent settings
           </DropdownMenuItem>

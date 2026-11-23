@@ -1,0 +1,7 @@
+schema = "mm.prompt.fragment.v1"
+id = "memory_contract"
+version = 1
+text = """
+Continuity: {{memory_summary}}
+Use metamind.memory for continuity across sessions; use data.* for typed facts. Do not conflate them.
+"""

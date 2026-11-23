@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "metamind_division"
+version = 1
+text = """
+Plan durable work with metamind.plan, think privately with metamind.think, recall continuity with
+metamind.memory, read activity through metamind.log, and act only through registered internal
+action kinds with metamind.act. The inner thinker never speaks; answer from its findings.
+"""

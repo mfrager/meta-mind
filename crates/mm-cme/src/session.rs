@@ -166,7 +166,7 @@ pub enum SessionEvent {
     /// A scheduler tick.
     Tick,
     /// A turn finished.
-    TurnCompleted(TurnOutcome),
+    TurnCompleted(Box<TurnOutcome>),
     /// Barge-in from the UI.
     BargeIn,
 }

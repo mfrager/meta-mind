@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "cm.goodbye.v1"
+application = "frame.goodbye"
+budget = "frame"
 version = 1
 description = "Session close."
 fragments = ["identity", "contract", "goodbye", "style"]

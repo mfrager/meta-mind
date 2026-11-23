@@ -10,6 +10,7 @@ const AppShell = lazy(() =>
 const MapPage = lazy(() => import("@/routes/map.tsx").then((mod) => ({ default: mod.MapPage })));
 const SettingsPage = lazy(() => import("@/routes/settings.tsx").then((mod) => ({ default: mod.SettingsPage })));
 const TokenGallery = lazy(() => import("@/routes/catalog.tsx").then((mod) => ({ default: mod.TokenGallery })));
+const InspectorPage = lazy(() => import("@/routes/inspector.tsx").then((mod) => ({ default: mod.InspectorPage })));
 
 function RoutePending() {
   return (
@@ -34,6 +35,14 @@ export function App() {
       <TooltipProvider delayDuration={180}>
         <BrowserRouter>
           <Routes>
+            <Route
+              path="/inspector/:sessionId?"
+              element={
+                <Suspense fallback={<div className="bg-background h-dvh" data-inspector-pending />}>
+                  <InspectorPage />
+                </Suspense>
+              }
+            />
             <Route
               element={
                 <Suspense fallback={<div className="bg-background h-dvh" data-shell-pending />}>

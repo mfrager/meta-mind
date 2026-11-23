@@ -10,13 +10,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mm_llm::{LlmClient, LlmRequest, Message, ProviderToolCall, Purpose, ToolSchema};
+use mm_prompt::{PromptInstance, PromptMessage, PromptRequest, PromptStore};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use crate::budget::{BudgetClass, BudgetLedger};
 use crate::chunk::{Chunk, ChunkEvent, ChunkKind, ChunkState};
 use crate::error::{CmeError, Result};
 use crate::observability::{ObserverHandle, SmObserver};
 use crate::planner::{ResponseModality, ToolPolicy, TurnContext, TurnPlanner};
+use crate::prompt::PromptVariables;
 use crate::routing::{ConversationRouter, ConversationRoutingRequest};
 use crate::session::SessionContext;
 use crate::turn::{ToolCallEmission, Turn, TurnEvent, TurnOutcome, TurnState};
@@ -107,6 +110,19 @@ impl ConfirmationHandler for DenyUnconfirmed {
     }
 }
 
+/// Reloads the bounded prompt variables from authoritative stores before a
+/// model call. Implementations return an error when the store is closed; the
+/// executor renders an honest `[STATE unavailable]` block rather than stale
+/// state.
+#[async_trait]
+pub trait PromptContextProvider: Send + Sync {
+    /// Build this session's current prompt variables.
+    async fn prompt_variables(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<PromptVariables, String>;
+}
+
 /// Executes turns.
 pub struct TurnExecutor {
     planner: TurnPlanner,
@@ -116,6 +132,11 @@ pub struct TurnExecutor {
     confirm: Arc<dyn ConfirmationHandler>,
     observer: Option<ObserverHandle>,
     loop_policy: TurnLoopPolicy,
+    prompts: Option<Arc<PromptStore>>,
+    prompt_variables: Option<PromptVariables>,
+    prompt_provider: Option<Arc<dyn PromptContextProvider>>,
+    prompt_variant: Option<String>,
+    budget_class: BudgetClass,
 }
 
 impl std::fmt::Debug for TurnExecutor {
@@ -144,6 +165,11 @@ impl TurnExecutor {
             confirm: Arc::new(DenyUnconfirmed),
             observer: None,
             loop_policy: TurnLoopPolicy::default(),
+            prompts: None,
+            prompt_variables: None,
+            prompt_provider: None,
+            prompt_variant: None,
+            budget_class: BudgetClass::Standard,
         }
     }
 
@@ -157,6 +183,11 @@ impl TurnExecutor {
             confirm: Arc::new(DenyUnconfirmed),
             observer: None,
             loop_policy: TurnLoopPolicy::default(),
+            prompts: default_prompt_store(),
+            prompt_variables: None,
+            prompt_provider: None,
+            prompt_variant: None,
+            budget_class: BudgetClass::Standard,
         }
     }
 
@@ -186,6 +217,44 @@ impl TurnExecutor {
     /// The continuation policy in force.
     pub fn loop_policy(&self) -> TurnLoopPolicy {
         self.loop_policy
+    }
+
+    /// Attach the reviewed prompt tree. Without one, a model call fails closed
+    /// with `PROMPT_UNAVAILABLE` before reaching the provider.
+    pub fn with_prompts(mut self, prompts: Arc<PromptStore>) -> Self {
+        self.prompts = Some(prompts);
+        self
+    }
+
+    /// Remove the prompt tree, for a fail-closed test or a caller that must
+    /// prove no provider is reached without a PromptInstance.
+    pub fn without_prompts(mut self) -> Self {
+        self.prompts = None;
+        self
+    }
+
+    /// Supply the prebuilt variables for this turn's prompt instance.
+    pub fn with_prompt_variables(mut self, variables: PromptVariables) -> Self {
+        self.prompt_variables = Some(variables);
+        self
+    }
+
+    /// Reload prompt variables from stores before every model call.
+    pub fn with_prompt_provider(mut self, provider: Arc<dyn PromptContextProvider>) -> Self {
+        self.prompt_provider = Some(provider);
+        self
+    }
+
+    /// Select a prompt variant (`pending`, `resume`, or `repair`).
+    pub fn with_prompt_variant(mut self, variant: impl Into<String>) -> Self {
+        self.prompt_variant = Some(variant.into());
+        self
+    }
+
+    /// Select the initial budget class.
+    pub fn with_budget_class(mut self, class: BudgetClass) -> Self {
+        self.budget_class = class;
+        self
     }
 
     /// Run a turn to completion. A model or tool failure marks the turn failed and
@@ -249,21 +318,65 @@ impl TurnExecutor {
 
         let reply = match &self.client {
             Some(client) => {
+                let mut budget = BudgetLedger::new(self.budget_class);
+                let mut variables = self
+                    .prompt_variables
+                    .clone()
+                    .unwrap_or_else(|| PromptVariables::for_turn(&plan, session));
+                let prompt = match self.render_prompt(&plan, &variables, budget.snapshot()) {
+                    Ok(prompt) => prompt,
+                    Err(error) => {
+                        return self.fail(turn, format!("PROMPT_UNAVAILABLE: {error}"));
+                    }
+                };
+                turn.set_prompt(
+                    prompt.instance_id.clone(),
+                    prompt.hash.clone(),
+                    prompt.variant.clone(),
+                );
                 let tools = if plan.tool_policy == ToolPolicy::None {
                     Vec::new()
                 } else {
                     self.tools.schemas()
                 };
-                let mut messages = self.messages(&plan);
+                let mut messages = messages_from_instance(&prompt);
                 let mut rounds = 0usize;
                 let mut tool_steps = 0usize;
                 loop {
                     rounds += 1;
+                    if let Err(error) = budget.reserve_round() {
+                        return self.fail(turn, error.to_string());
+                    }
+                    // Rebuild before every model call, including every tool
+                    // round, and after any tool-side state/data/frame write.
+                    variables = self.refresh_variables(&plan, &mut variables).await;
+                    let prompt = match self.render_prompt(&plan, &variables, budget.snapshot()) {
+                        Ok(prompt) => prompt,
+                        Err(error) => {
+                            return self.fail(turn, format!("PROMPT_UNAVAILABLE: {error}"));
+                        }
+                    };
+                    turn.set_prompt(
+                        prompt.instance_id.clone(),
+                        prompt.hash.clone(),
+                        prompt.variant.clone(),
+                    );
+                    if let Some(first) = messages.first_mut() {
+                        *first = Message::system(prompt.text.clone());
+                    }
                     let request = self.llm_request(&plan, messages.clone(), tools.clone());
+                    if let Err(error) = budget.reserve_tokens(u64::from(request.max_tokens)) {
+                        return self.fail(turn, error.to_string());
+                    }
                     let response = match client.complete(&request).await {
                         Ok(response) => response,
                         Err(error) => return self.fail(turn, error.to_string()),
                     };
+                    let used = u64::from(response.usage.tokens_in)
+                        .saturating_add(u64::from(response.usage.tokens_out));
+                    if let Err(error) = budget.settle_tokens(Some(used)) {
+                        return self.fail(turn, error.to_string());
+                    }
                     if response.tool_calls.is_empty() {
                         break response.text;
                     }
@@ -286,6 +399,9 @@ impl TurnExecutor {
                         .take(remaining)
                         .cloned()
                         .collect::<Vec<_>>();
+                    if let Err(error) = budget.reserve_steps(calls.len() as u32) {
+                        return self.fail(turn, error.to_string());
+                    }
                     messages.push(Message::assistant_calls(
                         response.text.clone(),
                         calls.clone(),
@@ -316,27 +432,72 @@ impl TurnExecutor {
         Ok(outcome)
     }
 
-    /// The initial system/user messages for a plan.
-    fn messages(&self, plan: &crate::turn::TurnPlan) -> Vec<Message> {
-        let system = format!(
-            "You are the Metamind assistant. Answer in the {} shape at detail {}/5. \
-             Be direct and never invent sources. Use the provided tools when the \
-             operator asks for kernel state, memory, goals or any operation rather \
-             than answering from memory.",
-            plan.modality.as_str(),
-            plan.detail_level
-        );
-        let mut messages = vec![
-            Message::system(system),
-            Message::user(plan.user_query.clone()),
-        ];
-        if plan.metadata.is_proactive {
-            messages.insert(
-                0,
-                Message::system("This is a proactive aside; keep it brief and clearly optional."),
-            );
+    /// Refresh bounded state from the provider. A closed store leaves an honest
+    /// `[STATE unavailable]` block instead of silently reusing stale state.
+    async fn refresh_variables(
+        &self,
+        plan: &crate::turn::TurnPlan,
+        current: &mut PromptVariables,
+    ) -> PromptVariables {
+        let Some(provider) = &self.prompt_provider else {
+            return current.clone();
+        };
+        match provider.prompt_variables(plan.session_id.as_ref()).await {
+            Ok(variables) => variables,
+            Err(error) => {
+                let mut stale = current.clone();
+                let block = crate::state_block::StateBlock::unavailable(error);
+                stale.set("state_block", block.text);
+                stale.set("state_json", "");
+                stale
+            }
         }
-        messages
+    }
+
+    /// Render the reviewed strategy before the first model call. A missing or
+    /// invalid tree is a `PROMPT_UNAVAILABLE` refusal, not an ad hoc prompt.
+    fn render_prompt(
+        &self,
+        plan: &crate::turn::TurnPlan,
+        variables: &PromptVariables,
+        budget: crate::budget::BudgetSnapshot,
+    ) -> std::result::Result<PromptInstance, String> {
+        let prompts = self
+            .prompts
+            .as_ref()
+            .ok_or_else(|| "prompt tree is unavailable; no model call was made".to_owned())?;
+        let mut variables = variables.clone();
+        variables.set("budget_class", budget.class);
+        variables.set("budget_rounds", budget.rounds.to_string());
+        variables.set("budget_tokens", budget.tokens.to_string());
+        variables.set("budget_wall_ms", budget.wall_ms.to_string());
+        let state_block = variables.get("state_block").map(str::to_owned);
+        // A pending variant is only valid while pending work remains. After a
+        // tool round clears the last item, the rebuild returns to the standard
+        // strategy instead of claiming work that no longer exists.
+        let variant = match self.prompt_variant.as_deref() {
+            Some("pending")
+                if variables
+                    .get("pending_summary")
+                    .is_some_and(|pending| pending != "none") =>
+            {
+                Some("pending".into())
+            }
+            Some("pending") => None,
+            Some(other) => Some(other.to_owned()),
+            None => None,
+        };
+        let request = PromptRequest {
+            application: "cm.turn".into(),
+            variant,
+            variables: variables.as_map().clone(),
+            state_block,
+            transcript: Vec::new(),
+            user_input: Some(plan.user_query.clone()),
+        };
+        prompts
+            .render_request(&request)
+            .map_err(|error| error.to_string())
     }
 
     /// Build the provider-neutral request for a plan and its current transcript.
@@ -527,6 +688,27 @@ fn split_text(text: &str, parts: usize) -> Vec<String> {
         index += take;
     }
     result
+}
+
+fn messages_from_instance(instance: &PromptInstance) -> Vec<Message> {
+    instance
+        .messages
+        .iter()
+        .map(|message: &PromptMessage| match message.role.as_str() {
+            "user" => Message::user(message.content.clone()),
+            "assistant" => Message::assistant(message.content.clone()),
+            _ => Message::system(message.content.clone()),
+        })
+        .collect()
+}
+
+fn default_prompt_store() -> Option<Arc<PromptStore>> {
+    let root = std::env::var_os("MM_PROMPT_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/prompts")
+        });
+    PromptStore::load(root).ok().map(Arc::new)
 }
 
 /// Whether the outcome completed successfully.

@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "cm.frame.v1"
+application = "frame"
+budget = "frame"
 version = 1
 description = "Frame utterance with state and one frame step."
 fragments = ["identity", "contract", "state", "frame_guidance", "style"]

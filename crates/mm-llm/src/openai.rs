@@ -53,10 +53,7 @@ impl std::fmt::Debug for TcpTransport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TcpTransport")
             .field("timeout_ms", &self.timeout_ms)
-            .field(
-                "api_key",
-                &self.api_key.as_ref().map(|_| "<redacted>"),
-            )
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -222,8 +219,8 @@ impl OpenAiClient {
                 "OPENAI_BASE_URL and OPENAI_API_KEY must both be set".into(),
             )
         })?;
-        let transport = TcpTransport::new(config.defaults.timeout_ms)
-            .with_api_key(env.api_key.clone());
+        let transport =
+            TcpTransport::new(config.defaults.timeout_ms).with_api_key(env.api_key.clone());
         Ok(OpenAiClient {
             env,
             config: config.clone(),
@@ -678,11 +675,9 @@ complexity_ceiling = "medium"
             String::from_utf8_lossy(&buf[..n]).to_string()
         });
 
-        let env = ProviderEnv::from_pairs(
-            Some(format!("http://{addr}/v1")),
-            Some("sk-test".into()),
-        )
-        .unwrap();
+        let env =
+            ProviderEnv::from_pairs(Some(format!("http://{addr}/v1")), Some("sk-test".into()))
+                .unwrap();
         let client = OpenAiClient::from_env(&config(), Some(env)).unwrap();
         let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
         assert_eq!(client.complete(&req).await.unwrap().text, "ok");

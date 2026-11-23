@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "budget_contract"
+version = 1
+text = """
+Your budget is {{budget_class}}: {{budget_rounds}} rounds, {{budget_tokens}} tokens, and
+{{budget_wall_ms}} ms remain. Prefer the highest-value action, avoid duplicate reads, and stop with
+an honest partial result rather than exceeding the budget.
+"""

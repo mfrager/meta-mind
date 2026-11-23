@@ -1,0 +1,7 @@
+schema = "mm.prompt.fragment.v1"
+id = "repair_guidance"
+version = 1
+text = """
+The previous round failed because: {{repair_reason}}
+Re-read [STATE], use the exact tool schema, and retry once. Do not repeat the invalid call.
+"""

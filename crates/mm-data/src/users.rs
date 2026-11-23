@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::engine::RdfEngine;
 use crate::error::{DataError, Result};
 use crate::rdf::{
-    self, now_ms, turtle_escape, user_graph, user_iri, USER_INDEX_GRAPH,
+    self, legacy_user_iri, now_ms, turtle_escape, user_graph, user_iri, USER_INDEX_GRAPH,
     USER_INDEX_GRAPH as _USER_INDEX,
 };
 
@@ -118,8 +118,17 @@ impl UserRegistry {
     }
 
     /// One user.
+    ///
+    /// The canonical `mmd:user/<id>` index entry is authoritative. A legacy
+    /// `urn:metamind:user:<id>` entry is still readable during migration, so an
+    /// upgrade does not hide users created before Phase 12.
     pub async fn get_user(&self, user_id: &str) -> Result<Option<UserRecord>> {
-        rdf::load_as(&self.engine, USER_INDEX_GRAPH, &user_iri(user_id)).await
+        if let Some(record) =
+            rdf::load_as(&self.engine, USER_INDEX_GRAPH, &user_iri(user_id)).await?
+        {
+            return Ok(Some(record));
+        }
+        rdf::load_as(&self.engine, USER_INDEX_GRAPH, &legacy_user_iri(user_id)).await
     }
 
     /// Require a user.
@@ -133,9 +142,22 @@ impl UserRegistry {
     }
 
     /// Every user, by name.
+    ///
+    /// Both canonical and legacy index entries are listed, deduplicated by the
+    /// stable user id. Subjects are visited in lexical order, so the canonical
+    /// entry wins whenever both spellings exist.
     pub async fn list_users(&self) -> Result<Vec<UserRecord>> {
-        let mut users: Vec<UserRecord> =
-            rdf::list_as(&self.engine, USER_INDEX_GRAPH, USER_CLASS).await?;
+        let subjects = rdf::subjects_of_class(&self.engine, USER_INDEX_GRAPH, USER_CLASS).await?;
+        let mut by_id: std::collections::BTreeMap<String, UserRecord> =
+            std::collections::BTreeMap::new();
+        for subject in subjects {
+            if let Some(record) =
+                rdf::load_as::<UserRecord>(&self.engine, USER_INDEX_GRAPH, &subject).await?
+            {
+                by_id.entry(record.user_id.clone()).or_insert(record);
+            }
+        }
+        let mut users = by_id.into_values().collect::<Vec<_>>();
         users.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.user_id.cmp(&b.user_id)));
         Ok(users)
     }

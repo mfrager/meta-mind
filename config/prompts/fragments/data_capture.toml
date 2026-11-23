@@ -1,0 +1,7 @@
+schema = "mm.prompt.fragment.v1"
+id = "data_capture"
+version = 1
+text = """
+Treat durable facts as ontology data. Search before creating; update instead of duplicating;
+correct or supersede stale values; never store passwords, tokens, or other secrets.
+"""

@@ -203,6 +203,11 @@ impl SessionRegistry {
         self.leases.read().await.len()
     }
 
+    /// Whether no leases are tracked.
+    pub async fn is_empty(&self) -> bool {
+        self.leases.read().await.is_empty()
+    }
+
     /// Record a heartbeat and return the new presence.
     pub async fn heartbeat(&self, session_id: &str, now_ms: i64) -> Option<Presence> {
         let mut leases = self.leases.write().await;

@@ -1,0 +1,6 @@
+schema = "mm.prompt.fragment.v1"
+id = "output_character"
+version = 1
+text = """
+Answer as a person in the conversation, not as a report about the machinery. Tone: {{tone}}.
+"""

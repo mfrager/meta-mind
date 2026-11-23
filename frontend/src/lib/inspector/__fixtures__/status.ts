@@ -1,0 +1,53 @@
+import type { StatusView } from "@/lib/wire/inspector.ts";
+
+export function statusFixture(revision = 5): StatusView {
+  return {
+    revision,
+    sessionId: "01SESSION",
+    generatedAt: 1_700_000_000_000,
+    stateRevision: 3,
+    dataRevision: 9,
+    state: {
+      revision: 3,
+      topic: "auth refresh",
+      depth: 2,
+      status: { phase: "working", tasks: ["reproduce flake"], next: [] },
+      updatedAt: 1_700_000_000_000,
+      updatedBy: "cm",
+    },
+    session: {
+      sessionId: "01SESSION",
+      userId: "mmd:current-user",
+      lifecycle: "active",
+      presence: "present",
+      working: true,
+      lastActivityAt: 1_700_000_000_000,
+      traces: ["main"],
+      traceCount: 1,
+      mainTraceId: "main",
+      sessionDir: null,
+      resumeEpoch: 0,
+      work: [],
+    },
+    frames: { revision: 3, frames: [], topFrameId: null, pendingUtterance: null },
+    prompt: null,
+    budget: { class: "standard", tokensUsed: 0, tokenCap: 0, turnsUsed: 0, turnCap: 0, estimated: false },
+    data: { dataRevision: 9, indexPending: 0, indexLagMs: 2, schemas: 3, namespaces: 9 },
+    plans: { items: [] },
+    actions: { scheduled: [], recent: [], nextRunAt: null },
+    automation: {
+      supervisor: "idle",
+      tickSecs: 30,
+      frameTimers: 0,
+      nextActionAt: null,
+      sessions: 0,
+      cronJobs: 0,
+      lastReason: null,
+    },
+    interjections: { policyId: "global.default", suppressed: false, reason: null, queue: 0 },
+    agents: [],
+    operations: [],
+    unavailable: { budget: "budget ledger is not attached to this session yet" },
+    updatedAt: 1_700_000_000_000,
+  };
+}

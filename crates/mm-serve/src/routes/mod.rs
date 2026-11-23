@@ -34,6 +34,7 @@ const LOCAL_ORIGINS: &[&str] = &[
 mod changesets;
 mod chat;
 pub(crate) mod cme;
+mod console;
 mod exec;
 pub(crate) mod focus;
 mod runs;
@@ -77,6 +78,96 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/cme/sessions/{session_id}/metrics", get(cme::metrics))
         .route("/api/cme/sessions/{session_id}/events", get(cme::events))
+        .route(
+            "/api/console/sessions",
+            get(console::list_sessions).post(console::create_session),
+        )
+        .route(
+            "/api/console/sessions/{session_id}",
+            get(console::get_session).delete(console::delete_session),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/presence",
+            post(console::presence),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/resume",
+            post(console::resume_session),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/end",
+            post(console::end_session),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/state",
+            get(console::state),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/status",
+            get(console::status),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/status/stream",
+            get(console::status_stream),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/operations",
+            get(console::operations),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/traces",
+            get(console::traces),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/logs",
+            get(console::logs),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/frames",
+            get(console::frames),
+        )
+        .route(
+            "/api/console/sessions/{session_id}/interjections",
+            get(console::session_interjections),
+        )
+        .route("/api/console/interjections", get(console::interjections))
+        .route("/api/console/files/tree", get(console::file_tree))
+        .route("/api/console/data/health", get(console::data_health))
+        .route("/api/console/data/entities", get(console::data_entities))
+        .route("/api/console/data/schemas", get(console::data_schemas))
+        .route(
+            "/api/console/data/namespaces",
+            get(console::data_namespaces),
+        )
+        .route("/api/console/plans", get(console::plans))
+        .route("/api/console/plans/{*plan_id}", get(console::plan_detail))
+        .route("/api/console/actions", get(console::actions))
+        .route(
+            "/api/console/actions/{*action_id}",
+            post(console::cancel_action),
+        )
+        .route("/api/console/automation", get(console::automation))
+        .route("/api/console/prompts", get(console::prompts))
+        .route("/api/agents", get(console::agents))
+        .route("/api/agents/{run_id}", get(console::agent_detail))
+        .route("/api/agents/{run_id}/events", get(console::agent_events))
+        .route("/api/agents/{run_id}/stream", get(console::agent_stream))
+        .route("/api/agents/{run_id}/cancel", post(console::agent_cancel))
+        .route(
+            "/api/agentstream/sessions",
+            get(console::agentstream_sessions),
+        )
+        .route(
+            "/api/agentstream/sessions/{session_id}/events",
+            get(console::agentstream_events),
+        )
+        .route(
+            "/api/agentstream/sessions/{session_id}/stream",
+            get(console::agentstream_stream),
+        )
+        .route("/api/metrics", get(console::metrics))
+        .route("/metrics", get(console::metrics))
+        .route("/api/status", get(console::latest_status))
         .route("/debug/cme", get(cme::debug))
         .route("/api/commands", get(exec::commands))
         .route("/api/exec", post(exec::exec))
@@ -113,6 +204,7 @@ async fn access_log(
     let response = next.run(req).await;
     let status = response.status().as_u16();
     let elapsed_ms = started.elapsed().as_millis() as u64;
+    state.metrics.record_request(status, elapsed_ms);
     let record = LogRecord::new(Level::Info, SERVE_REQUEST, "mm.serve")
         .with_field("http.method", method)
         .with_field("http.path", path)

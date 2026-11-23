@@ -1641,11 +1641,16 @@ name = "mm-agent"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "mm-data",
+ "mm-llm",
+ "mm-prompt",
+ "pi-codes",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
+ "toml",
 ]
 
 [[package]]
@@ -1679,6 +1684,7 @@ dependencies = [
  "mm-being",
  "mm-codex",
  "mm-core",
+ "mm-data",
  "mm-decision",
  "mm-epistemic",
  "mm-eventlog",
@@ -2136,6 +2142,7 @@ dependencies = [
  "clap",
  "futures",
  "http-body-util",
+ "mm-agent",
  "mm-being",
  "mm-cme",
  "mm-codex",
@@ -2164,6 +2171,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "toml",
  "tower",
  "ts-rs",
  "ulid",
@@ -2546,6 +2554,17 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "pi-codes"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b81f7883aedef7503f12916e9c465bff4cdbebd9cba3b575b5f0c4cef0083155"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "pin-project-lite"

@@ -17,7 +17,9 @@ use futures::stream::Stream;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
-use mm_cme::{ChunkKind, SessionSnapshot};
+use mm_cme::{
+    BudgetClass, BudgetLedger, ChunkKind, PromptVariables, SessionSnapshot, UserProjection,
+};
 
 use crate::chat::validate_attachments;
 use crate::cme::CONSOLE_USER;
@@ -54,7 +56,51 @@ pub async fn open(
         .await
         .map_err(|error| AppError::Internal(format!("conversation state: {error}")))?;
 
-    let executor = state.cme_executor();
+    if let Some(automation) = &state.automation {
+        automation.ensure(&session_id).await;
+    }
+    state.status_service.mark_dirty_many(
+        &session_id,
+        [
+            crate::status_service::StatusSection::State,
+            crate::status_service::StatusSection::Session,
+            crate::status_service::StatusSection::Frames,
+            crate::status_service::StatusSection::Prompt,
+            crate::status_service::StatusSection::Operations,
+            crate::status_service::StatusSection::Data,
+            crate::status_service::StatusSection::Plans,
+            crate::status_service::StatusSection::Actions,
+            crate::status_service::StatusSection::Agents,
+        ],
+    );
+    let bundle = state
+        .state_service
+        .load(&session_id)
+        .await
+        .map_err(|error| AppError::Internal(format!("conversation bundle: {error}")))?;
+    let budget = BudgetLedger::new(BudgetClass::Standard).snapshot();
+    let variables = PromptVariables::from_bundle(
+        &bundle,
+        UserProjection {
+            iri: "mmd:current-user".into(),
+            entity: bundle.session.user_id.clone(),
+            name: CONSOLE_USER.into(),
+            workspace: format!("workspace/{session_id}"),
+        },
+        budget,
+    )
+    .map_err(|error| AppError::Internal(format!("prompt variables: {error}")))?;
+    let variant = if bundle.conversation.status.contains_key("next")
+        || bundle.conversation.status.contains_key("blockers")
+    {
+        Some("pending")
+    } else {
+        None
+    };
+    let mut executor = state.cme_executor().with_prompt_variables(variables);
+    if let Some(variant) = variant {
+        executor = executor.with_prompt_variant(variant);
+    }
     let outcome = match state
         .cme
         .run_turn(&session_id, body.query.clone(), executor)
@@ -70,6 +116,29 @@ pub async fn open(
             return Err(error);
         }
     };
+    if state.automation.is_some() {
+        let _ = crate::automation::resume_frame_timer(
+            &state.state_service,
+            &session_id,
+            mm_data::rdf::now_ms(),
+        )
+        .await;
+    }
+    state.status_service.mark_dirty_many(
+        &session_id,
+        [
+            crate::status_service::StatusSection::State,
+            crate::status_service::StatusSection::Session,
+            crate::status_service::StatusSection::Frames,
+            crate::status_service::StatusSection::Prompt,
+            crate::status_service::StatusSection::Operations,
+            crate::status_service::StatusSection::Automation,
+            crate::status_service::StatusSection::Data,
+            crate::status_service::StatusSection::Plans,
+            crate::status_service::StatusSection::Actions,
+            crate::status_service::StatusSection::Agents,
+        ],
+    );
     let frames = frames_for(&state, &request_id, &session_id, &body.query, &outcome).await;
     let state_name = if outcome.is_success() {
         "completed"

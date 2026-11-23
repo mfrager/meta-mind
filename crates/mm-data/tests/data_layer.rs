@@ -3,7 +3,7 @@
 use mm_data::{
     initialize_data_layer, AgentstreamEvent, AppSpec, DatasetSpec, EntityId, EpisodicTurn,
     EventProvenance, EventType, InitConfig, ProjectId, ProjectSpec, SearchFilters, UserId,
-    UserSpec,
+    UserRecord, UserSpec,
 };
 use serde_json::json;
 
@@ -37,6 +37,77 @@ async fn phase0_shapes_parse_and_validate_an_empty_graph() {
             .unwrap_or_else(|error| panic!("{name}: {error}"));
         assert!(report.conforms, "{name}: {:?}", report.violations);
     }
+}
+
+#[tokio::test]
+async fn registries_mint_canonical_iris_and_read_legacy_rows() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data = initialize_data_layer(init_config(&temp))
+        .await
+        .expect("initialize");
+
+    let user = data
+        .users
+        .create_user(UserSpec {
+            name: "Legacy Reader".to_owned(),
+            ..UserSpec::default()
+        })
+        .await
+        .expect("create user");
+    assert_eq!(
+        mm_data::rdf::user_iri(&user.user_id),
+        format!("https://metamind.dev/data/user/{}", user.user_id)
+    );
+
+    // Simulate a row written before Phase 12: legacy subject, same payload.
+    let old = UserRecord {
+        user_id: "legacy-user".to_owned(),
+        name: "Old User".to_owned(),
+        email: None,
+        role: None,
+        home_dir: "users/legacy-user/home".to_owned(),
+        created_at: user.created_at,
+    };
+    let payload = serde_json::to_value(&old).expect("payload");
+    mm_data::rdf::upsert(
+        &data.engine,
+        mm_data::rdf::USER_INDEX_GRAPH,
+        &mm_data::rdf::legacy_user_iri(&old.user_id),
+        mm_data::users::USER_CLASS,
+        Some(&old.name),
+        &payload,
+    )
+    .await
+    .expect("legacy row");
+
+    let found = data
+        .users
+        .get_user(&old.user_id)
+        .await
+        .expect("get legacy user")
+        .expect("legacy user present");
+    assert_eq!(found.name, old.name);
+    assert_eq!(data.users.list_users().await.expect("list").len(), 2);
+
+    let aliases = data
+        .data_service
+        .migrate_legacy_identities()
+        .await
+        .expect("migrate identities");
+    assert!(aliases >= 1);
+    let expected_subject = format!("https://metamind.dev/data/user/{}", old.user_id);
+    let expected_object = mm_data::rdf::legacy_user_iri(&old.user_id);
+    let schema = data
+        .engine
+        .triples(mm_data::data::namespaces::SCHEMA_GRAPH)
+        .await
+        .expect("schema graph");
+    assert!(schema.iter().any(|row| {
+        row.get("s").and_then(mm_data::rdf::term_value) == Some(expected_subject.as_str())
+            && row.get("p").and_then(mm_data::rdf::term_value)
+                == Some("http://www.w3.org/2002/07/owl#sameAs")
+            && row.get("o").and_then(mm_data::rdf::term_value) == Some(expected_object.as_str())
+    }));
 }
 
 #[tokio::test]

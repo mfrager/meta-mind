@@ -8,9 +8,11 @@
 > **Companion documents.** [`user-guide.md`](./user-guide.md) — how to build, run, and use the system.
 > [`open-gaps.md`](./open-gaps.md) — the backlog of work the twelve phases left unbuilt.
 >
-> **State when written.** `HEAD = 0204d73` ("Initial 12 phase build complete"), working tree clean,
-> 2026-10-09. See ["How this was verified"](#how-this-was-verified) for the commands that reproduce every
-> number below.
+> **State when written.** Baseline: `HEAD = 0204d73` ("Initial 12 phase build complete"), working tree
+> clean, 2026-10-09. The conversation-manager and inspector build was layered on `integration/cme-rdf-backend`
+> through Phase 12 (2026-11-23); the sections added for it are marked "Phase 8–12" and the older counts
+> below remain baseline measurements. See ["How this was verified"](#how-this-was-verified) for the
+> commands that reproduce the baseline numbers.
 
 ---
 
@@ -466,6 +468,39 @@ and `mm-*` interfaces are the only public surface.
 `pi/extensions/metadata_emit.ts`, and the recorded sessions under `crates/mm-pi/fixtures/`. These are the
 inputs to the code-agent stage; the recorded session is what makes the qualification run deterministic.
 
+### 3.11 Conversation Manager v3 and Inspector (Phase 8–12)
+
+- **Purpose.** A bounded conversation manager over ontology data, plans, memory,
+  logs, internal actions, downstream agents, and a live inspector — the surface
+  described in [`design/conversation_manager_agent_inspector_plan.md`](../design/conversation_manager_agent_inspector_plan.md).
+- **Can do.** Exactly seventeen CM tools (`conversation.*`, `data.*`, `metamind.*`,
+  `agent.run`) with strict schemas and typed errors; deterministic prompt
+  strategies and frame templates under `config/prompts/`; revisioned conversation
+  state with topic/depth/status/frames; session presence, idle/expiry sweep, resume
+  and supersede; one automation supervisor per live session; durable scheduled
+  actions/cron with a plan monitor; RDF plans and plan control; private
+  `metamind.think`; multi-source `metamind.log`; user-workspace-confined
+  `agent.run` with Hermes and Pi backends; session-scoped status SSE; and the
+  full-screen `/inspector/:sessionId` UI with Status, Knowledge, Plan, and Trace
+  tabs.
+- **Limits.** No live provider has been exercised in this environment, so the CM
+  model path is proven by scripted/mock clients and deterministic executors. The
+  declared `MM_PROMPT_V1`/`MM_FRAMES_V1` flags are not read by the runtime: the
+  prompt tree and frame timers are governed by the CME path and
+  `MM_AUTOMATION_V1` instead. The CM tool surface is attached to the CME executor
+  only when `MM_CM_V3=true` (the default); `MM_CME_ENABLED` still chooses the CME
+  versus the legacy console route. Legacy `urn:metamind:*` user/project triples
+  are retained for audit and aliased with `owl:sameAs`; they are not rewritten or
+  deleted.
+- **Tested by.** `cargo test -p mm-serve --tests` (phase 1–10 suites plus parity
+  and wire compatibility), `cargo test -p mm-data`, `cargo test -p mm-search`,
+  frontend typecheck/Vitest/build, and `mm-cli data verify` on a fresh data root.
+- **Quality.** The tool contract and state invariants are the strongest part: the
+  seventeen schemas are embedded and count-checked, every state write is
+  revision-checked, and the index is verified against RDF. The weak part is
+  external validation — no live model, no live Hermes/Pi turn, and no measured
+  dual-run cost/latency (see [`phase12-dual-run.md`](./phase12-dual-run.md)).
+
 ---
 
 ## 4. Storage, ontology, and observability
@@ -631,6 +666,8 @@ commands.
 | Concurrency at scale | Single-writer stores are correct but untested under load | A load test against the SQLite pool and the graph actor |
 | Data migration/upgrade from an older `data/` dir | Only clean-boot and per-migration up/down are covered | Replay an older dump through the 12 migrations |
 | Token/cost realism | Accounting is exercised with mocks only | A live run with the provider's usage reporting |
+| CM v3 live model path | No `OPENAI_*` credentials in this environment | Run both routes with the same prompt set and fill [`phase12-dual-run.md`](./phase12-dual-run.md) |
+| Legacy user/project IRI migration at scale | Unit/integration coverage inserts legacy rows, but no full older data root was replayed | Copy an older data dir, boot it, and run `mm-cli data verify` |
 
 ---
 

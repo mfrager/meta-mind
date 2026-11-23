@@ -143,11 +143,21 @@ pub const DATASET_CATALOG_GRAPH: &str = "https://metamind.dev/datasets/catalog";
 
 /// A user IRI.
 pub fn user_iri(id: &str) -> String {
+    format!("{MMD_NS}user/{id}")
+}
+
+/// The pre-Phase-12 spelling of a user IRI, retained only for migration.
+pub fn legacy_user_iri(id: &str) -> String {
     format!("urn:metamind:user:{id}")
 }
 
 /// A project IRI.
 pub fn project_iri(id: &str) -> String {
+    format!("{MMD_NS}project/{id}")
+}
+
+/// The pre-Phase-12 spelling of a project IRI, retained only for migration.
+pub fn legacy_project_iri(id: &str) -> String {
     format!("urn:metamind:project:{id}")
 }
 

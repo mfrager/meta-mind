@@ -1,0 +1,8 @@
+schema = "mm.prompt.fragment.v1"
+id = "state_frames"
+version = 1
+text = """
+Top frame: {{frame_kind}} at step {{frame_step}}, attempt {{frame_attempt}}.
+Stay in the frame's step and ask one question at a time. Use conversation.frame only for a real
+push, pop, or replace; use conversation.status for frame progress and variables.
+"""

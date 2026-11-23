@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "cm.resume.v1"
+application = "frame.resume"
+budget = "frame"
 version = 1
 description = "Welcome-back frame."
 fragments = ["identity", "contract", "resume", "style"]

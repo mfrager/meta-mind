@@ -1,0 +1,9 @@
+schema = "mm.prompt.fragment.v1"
+id = "state_pending"
+version = 1
+text = """
+Pending work: {{pending_summary}}
+Inspect pending work before answering. If an item is actionable with a tool now, call that tool.
+If it needs the operator, ask a clear question. If it is complete, update the state.
+Never claim pending work is done because it is inconvenient; if you cannot finish, say what remains.
+"""

@@ -26,7 +26,7 @@ use crate::session::{SessionLease, SessionRegistry};
 use crate::status::{
     ActionsStatusView, AutomationStatusView, BudgetStatusView, DataStatusView, FrameStatusView,
     FramesStatusView, InterjectionsStatusView, PlansStatusView, SessionStatusView, StateStatusView,
-    StatusView,
+    StatusView, WorkStatusView,
 };
 
 /// The Phase 1 state facade.
@@ -38,6 +38,7 @@ pub struct StateService {
     directory: SessionDirectoryService,
     registry: SessionRegistry,
     agentstream: Arc<mm_data::AgentstreamStore>,
+    prompts: Arc<PromptStore>,
     mutations: Arc<RwLock<()>>,
 }
 
@@ -53,10 +54,11 @@ impl StateService {
         Ok(Self {
             conversation: ConversationStore::new(Arc::clone(&engine), Arc::clone(&agentstream)),
             sessions: RdfSessionStore::new(engine, Arc::clone(&agentstream), base_dir.clone()),
-            frames: FrameEngine::new(prompts),
+            frames: FrameEngine::new(Arc::clone(&prompts)),
             directory: SessionDirectoryService::new(base_dir),
             registry: SessionRegistry::default_config(),
             agentstream,
+            prompts,
             mutations: Arc::new(RwLock::new(())),
         })
     }
@@ -64,6 +66,16 @@ impl StateService {
     /// The live registry (a cache, never the source of truth).
     pub fn registry(&self) -> &SessionRegistry {
         &self.registry
+    }
+
+    /// The reviewed prompt tree.
+    pub fn prompts(&self) -> &Arc<PromptStore> {
+        &self.prompts
+    }
+
+    /// The agentstream store the state layer writes.
+    pub fn agentstream(&self) -> &Arc<mm_data::AgentstreamStore> {
+        &self.agentstream
     }
 
     /// Open a fresh session with an empty conversation state and the `intro`
@@ -695,6 +707,8 @@ impl StateService {
     ) -> Result<StatusView, StateServiceError> {
         let bundle = self.load(session_id).await?;
         let mut view = StatusView::empty(now_ms);
+        view.session_id = session_id.to_owned();
+        view.state_revision = bundle.conversation.revision;
         view.state = StateStatusView {
             revision: bundle.conversation.revision,
             topic: bundle.conversation.topic.clone(),
@@ -720,14 +734,35 @@ impl StateService {
             presence: format!("{:?}", bundle.session.presence).to_lowercase(),
             working: bundle.session.working(),
             last_activity_at: bundle.session.last_activity_at,
+            last_user_input_at: bundle.session.last_user_input_at,
+            last_work_activity_at: bundle.session.last_work_activity_at,
+            expires_at: bundle.session.expires_at,
             traces: bundle
                 .session
                 .traces
                 .iter()
                 .map(|trace| format!("{:?}", trace.kind).to_lowercase())
                 .collect(),
+            trace_count: u32::try_from(bundle.session.traces.len()).unwrap_or(u32::MAX),
+            main_trace_id: bundle.session.main_trace.clone(),
             session_dir: bundle.session.session_dir.clone(),
             resume_epoch: bundle.session.resume.epoch,
+            deleted_at: bundle.session.deleted_at,
+            work: bundle
+                .session
+                .work
+                .items()
+                .into_iter()
+                .take(8)
+                .map(|item| WorkStatusView {
+                    id: item.id.clone(),
+                    title: item.title.clone(),
+                    kind: format!("{:?}", item.kind).to_lowercase(),
+                    status: format!("{:?}", item.status).to_lowercase(),
+                    started_at: item.started_at,
+                    last_activity_at: item.last_activity_at,
+                })
+                .collect(),
         };
         view.frames = FramesStatusView {
             revision: bundle.frames.revision,
@@ -746,13 +781,21 @@ impl StateService {
                     expires_at: frame.expires_at,
                 })
                 .collect(),
+            top_frame_id: bundle.frames.top().map(|frame| frame.id.clone()),
+            pending_utterance: bundle
+                .session
+                .pending_utterance
+                .as_ref()
+                .and_then(|utterance| serde_json::to_value(utterance).ok()),
         };
         view.prompt = None;
         view.budget = BudgetStatusView {
+            class: "standard".into(),
             tokens_used: 0,
             token_cap: 0,
             turns_used: 0,
             turn_cap: 0,
+            estimated: false,
         };
         view.data = DataStatusView {
             data_revision: 0,
@@ -770,8 +813,11 @@ impl StateService {
         view.automation = AutomationStatusView {
             supervisor: "idle".into(),
             tick_secs: 30,
-            frame_timers: 0,
+            frame_timers: usize::from(bundle.session.pending_utterance.is_some()),
             next_action_at: None,
+            sessions: 0,
+            cron_jobs: 0,
+            last_reason: None,
         };
         view.interjections = InterjectionsStatusView {
             policy_id: "global.default".into(),

@@ -21,6 +21,9 @@ path = "src/main.rs"
 [dependencies]
 mm-core = { workspace = true }
 mm-log = { workspace = true }
+# `mm-cli data verify/reindex` opens the same managed-data root the server
+# uses, so it compares the lexical index against RDF with the real service.
+mm-data = { workspace = true }
 mm-codex = { workspace = true }
 mm-store-sqlite = { workspace = true }
 mm-store-graph = { workspace = true }

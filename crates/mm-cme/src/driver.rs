@@ -212,7 +212,7 @@ impl SessionDriver {
                 self.outcomes
                     .send(outcome.clone())
                     .map_err(|_| CmeError::ChannelClosed)?;
-                self.dispatch_session(SessionEvent::TurnCompleted(outcome))?;
+                self.dispatch_session(SessionEvent::TurnCompleted(Box::new(outcome)))?;
                 if let Some(observability) = &self.observability {
                     observability.observe_session(&self.session);
                 }

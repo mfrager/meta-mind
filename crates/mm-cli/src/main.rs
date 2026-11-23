@@ -8,6 +8,7 @@
 mod being;
 mod case_cmd;
 mod codex_cmd;
+mod data_cmd;
 mod decision;
 mod decision_cmd;
 mod doctor;
@@ -73,6 +74,11 @@ enum Command {
     Graph {
         #[command(subcommand)]
         command: GraphCommand,
+    },
+    /// Verify or rebuild the derived search index against RDF.
+    Data {
+        #[command(subcommand)]
+        command: DataCommand,
     },
     /// Inspect and verify the log and audit streams.
     Logs {
@@ -452,6 +458,22 @@ enum CodexCommand {
 }
 
 #[derive(Subcommand, Debug)]
+enum DataCommand {
+    /// Compare live RDF entities with the lexical index.
+    Verify {
+        /// Print the report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rebuild the lexical index from RDF.
+    Reindex {
+        /// Print the result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum GraphCommand {
     /// SHACL-validate a named graph; exits non-zero on any violation.
     Validate {
@@ -497,6 +519,12 @@ async fn main() -> ExitCode {
         Command::Replay { from, until, as_of } => {
             replay_cmd::run(cfg, from, until, as_of.as_deref()).await
         }
+        Command::Data {
+            command: DataCommand::Verify { json },
+        } => data_cmd::verify(cfg, json).await,
+        Command::Data {
+            command: DataCommand::Reindex { json },
+        } => data_cmd::reindex(cfg, json).await,
         Command::Graph {
             command: GraphCommand::Validate { graph },
         } => graph_cmd::validate(cfg, &graph).await,

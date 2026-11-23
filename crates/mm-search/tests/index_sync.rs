@@ -75,6 +75,41 @@ async fn upsert_finds_by_label_and_body_and_filters() {
 }
 
 #[tokio::test]
+async fn subjects_lists_every_distinct_indexed_subject() {
+    let temp = tempfile::tempdir().unwrap();
+    let index = SearchIndex::open(temp.path()).unwrap();
+    index
+        .upsert(&doc(
+            "https://metamind.dev/data/b",
+            "B",
+            "second",
+            "https://metamind.dev/ontology#Note",
+            "https://metamind.dev/graph/world",
+        ))
+        .await
+        .unwrap();
+    index
+        .upsert(&doc(
+            "https://metamind.dev/data/a",
+            "A",
+            "first",
+            "https://metamind.dev/ontology#Note",
+            "https://metamind.dev/graph/world",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        index.subjects().await.unwrap(),
+        vec!["https://metamind.dev/data/a", "https://metamind.dev/data/b"]
+    );
+    index.delete("https://metamind.dev/data/a").await.unwrap();
+    assert_eq!(
+        index.subjects().await.unwrap(),
+        vec!["https://metamind.dev/data/b"]
+    );
+}
+
+#[tokio::test]
 async fn upsert_replaces_rather_than_duplicates_a_subject() {
     let temp = tempfile::tempdir().unwrap();
     let index = SearchIndex::open(temp.path()).unwrap();

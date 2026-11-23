@@ -8,8 +8,10 @@ the plans' *intent* (and, for G3, against what the ontology promises), not red t
 **Provenance.** Derived by auditing each full plan's deliverables against the tree — reading the code
 behind every claim rather than trusting the plan or the phase gate. State when written:
 `HEAD = 0204d73` ("Initial 12 phase build complete"), working tree clean, `codex verify` →
-`39 modules conform` (exit 0). Line numbers are from that revision; re-anchor them with the commands in
-["How to refresh this list"](#how-to-refresh-this-list) before relying on them.
+`39 modules conform` (exit 0). The conversation-manager/inspector Phase 12 follow-ups (G7–G8) were
+added on `integration/cme-rdf-backend` (2026-11-23). Line numbers are from the baseline revision;
+re-anchor them with the commands in ["How to refresh this list"](#how-to-refresh-this-list) before
+relying on them.
 
 **Scope.** Only work that still needs a decision or an implementation. Deliberate degradations that are
 already recorded in the code are listed separately at the end so that nobody "fixes" them by accident.
@@ -24,6 +26,8 @@ already recorded in the code are listed separately at the end so that nobody "fi
 | G4 | `pi_editor.open` is still a refusing stub; Phase 11 wired `mm-pi` instead | Missing implementation or stale plan | Phase 10 → Phase 11 |
 | G5 | Tier-2/3 sandboxes have no runtime (gVisor / microVM) | Missing implementation, operator-installable | Phase 10, env-gated by design |
 | G6 | Hosted cores and LLM paths never executed against a live provider | Configuration/verification, not code | Operator |
+| G7 | No measured CM v3 dual-run cost/latency report | Verification, not code | Operator with provider credentials |
+| G8 | `MM_PROMPT_V1` and `MM_FRAMES_V1` are declared but never read | Implementation/doc inconsistency | Phase 8–12 follow-up |
 
 ---
 
@@ -272,6 +276,43 @@ gates ask for and this machine cannot perform.
 **To close:** configure the two environment variables, then run `mm-cli decide --core hosted`,
 `mm-cli conformance --core local --core hosted` and the loop's qualification scenario against the real
 endpoint, and record what the redaction/accounting checks observed on real traffic.
+
+---
+
+<a id="g7"></a>
+
+## G7 — The CM v3 dual-run has no measured cost or latency
+
+**What exists.** `MM_CM_V3` is on by default, the flag-off path still boots, and
+both the legacy controller suite and the CME suite pass. `llm_calls` already
+records cost, tokens, latency, cache hits, and failures.
+
+**What is missing.** No live provider was available in this environment, so
+[`phase12-dual-run.md`](./phase12-dual-run.md) contains the method and thresholds
+but no cost/latency numbers. Scripted runs are correctly not reported as a
+substitute.
+
+**Acceptance criteria.** Run the same prompt set against the legacy and new paths
+on separate data roots; fill the report with per-purpose `llm_calls` aggregates;
+record p50/p95 and failures; either keep the default or flip `MM_CM_V3=false` with
+the failing trace ids.
+
+<a id="g8"></a>
+
+## G8 — `MM_PROMPT_V1` and `MM_FRAMES_V1` are dead flags
+
+**What exists.** `FeatureFlags` declares `prompt_v1` and `frames_v1`, reads them
+from `MM_PROMPT_V1`/`MM_FRAMES_V1`, and documents them as toggles for the reviewed
+prompt tree and frame stack. Both default to `false`.
+
+**What is missing.** No runtime reads either field. The prompt tree is loaded by
+the CME prompt path regardless, and frame tools/timers are governed by
+`MM_AUTOMATION_V1` plus `config/automation.toml`. The behavior is therefore more
+capable than the flags imply, but the flags are misleading.
+
+**Decision needed.** Either wire them to real behavior (prompt-tree selection and
+frame-stack availability) or remove them from `FeatureFlags` and the docs. The
+operator guide describes the actual behavior today.
 
 ---
 

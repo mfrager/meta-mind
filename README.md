@@ -7,6 +7,13 @@
 >
 > **Companion documents.** [`components-and-status.md`](./infodocs/components-and-status.md) — what each component
 > can and cannot do, and what is tested. [`open-gaps.md`](./infodocs/open-gaps.md) — what is not implemented yet.
+> [`operator-guide.md`](./infodocs/operator-guide.md) — the Conversation Manager v3, its seventeen tools,
+> sessions, automation, and the inspector. [`phase12-dual-run.md`](./infodocs/phase12-dual-run.md) — the
+> dual-run and cost/latency record.
+>
+> **Phase 12 note.** The CLI examples below are the original twelve-phase baseline (`HEAD = 0204d73`).
+> The Phase 12 additions — `data verify`/`data reindex`, canonical user/project IRIs, and the CM v3
+> default — were run on `integration/cme-rdf-backend` and are documented in the operator guide.
 
 ---
 
@@ -52,6 +59,36 @@ Two practical consequences:
 | Run the whole autonomous loop | `loop run`, `loop status`, `loop replay`, `self-model report` |
 | Find architectural debt, and collect it | `debt scan`, `gc --apply` |
 | Hot-load a promoted capability (no restart) | `module load`, `module rollback` |
+| Run the live conversation manager and inspector | `mm-serve`, `frontend/` (see [operator guide](./infodocs/operator-guide.md)) |
+| Check or repair the managed-data search index | `data verify`, `data reindex` |
+
+### The console, Conversation Manager v3, and the inspector
+
+`mm-serve` is a local HTTP + SSE surface over the same kernel. It binds loopback
+only, takes `data/console.lock`, and serves the React console in `frontend/`.
+
+The Conversation Manager v3 contract is the seventeen-tool surface: five
+`conversation.*`/`agent.run` tools, seven `data.*` tools, and five
+`metamind.*` tools. `MM_CM_V3` is **on by default**; set it to `false` for the
+legacy tool-less CME round. `MM_CME_ENABLED` still chooses whether `/api/chat`
+uses the conversation engine or the legacy console controller, so a full rollback
+is `MM_CM_V3=false MM_CME_ENABLED=false`.
+
+```bash
+DATA=$(mktemp -d)
+cargo run -q -p mm-serve -- --data-dir "$DATA"   # http://127.0.0.1:8899
+cd frontend && npm ci && npm run dev             # inspector at /inspector
+```
+
+Sessions, presence/expiry/resume, frames, interjections, prompt templates,
+automation/cron, the plan monitor, user workspaces, Hermes/Pi configuration, and
+the inspector are covered in the [operator guide](./infodocs/operator-guide.md).
+The index check is:
+
+```bash
+mm-cli --data-dir "$DATA" data verify --json
+mm-cli --data-dir "$DATA" data reindex
+```
 
 ---
 

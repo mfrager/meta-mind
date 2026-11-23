@@ -52,10 +52,12 @@ pub mod engine;
 pub mod error;
 pub mod graphs;
 pub mod init;
+pub mod log;
 pub mod memory;
 pub mod migrate;
 pub mod ontology;
 pub mod plan;
+pub mod privacy;
 pub mod projects;
 pub mod rdf;
 pub mod session;
@@ -64,9 +66,9 @@ pub mod sqlite;
 pub mod users;
 
 pub use actions::{
-    ActionContext, ActionError, ActionOrigin, ActionReceipt, FormField, FormFieldKind, FormSchema,
-    FormValue, FormValues, InternalActionRegistry, InternalActionSpec, OutputChannel, ScheduleSpec,
-    ScheduledActionSpec, ScheduledActionStatus,
+    ActionContext, ActionError, ActionOrigin, ActionReceipt, ActionStore, FormField, FormFieldKind,
+    FormSchema, FormValue, FormValues, InternalActionRegistry, InternalActionSpec, OutputChannel,
+    Recurrence, ScheduleSpec, ScheduledAction, ScheduledActionSpec, ScheduledActionStatus,
 };
 pub use agentstream::{
     AgentstreamEvent, AgentstreamStore, EventProvenance, EventType, SessionFilter, SessionMetadata,
@@ -87,13 +89,14 @@ pub use data::{
     DataBroker, DataCreateRequest, DataDeleteMode, DataDeleteRequest, DataEntity, DataFilter,
     DataMutationResult, DataOutbox, DataPatch, DataQuery, DataQueryResult, DataSearchRequest,
     DataService, DataStatus, DataUpdateMode, DataUpdateRequest, DataValue, EntityStatus,
-    IndexHealth, NamespaceBinding, NamespaceRegistry, SchemaCatalog, SchemaDetail, SchemaInclude,
-    SchemaSpec, SchemaSummary, SearchHit, SearchResult as DataSearchResult, ShaclViolation,
-    ValidationTarget,
+    IndexHealth, IndexVerification, NamespaceBinding, NamespaceRegistry, SchemaCatalog,
+    SchemaDetail, SchemaInclude, SchemaSpec, SchemaSummary, SearchHit,
+    SearchResult as DataSearchResult, ShaclViolation, ValidationTarget,
 };
 pub use datasets::{DatasetCatalog, DatasetFile, DatasetRecord, DatasetSpec, DatasetVersion};
 pub use engine::RdfEngine;
 pub use error::{DataError, Result};
+pub use log::{LogEntry, LogError, LogFilter, LogLevel, LogOverview, LogPage, RdfLogService};
 pub use memory::contract::{
     ForgetRequest, ForgetSelector, MemoryContractError, MemoryKind, MemoryRecord, MemoryScope,
     MemoryScopeCount, MemoryService, MemoryStatus, RecallQuery, RecallResult, RememberRequest,
@@ -102,14 +105,17 @@ pub use memory::{
     ArtifactKind, ArtifactRef, ArtifactStatus, Commitment, CommitmentStatus, CompressedSegment,
     DecisionRecord, DecisionStatus, EntityId, EpisodicStore, EpisodicTurn, GoalProgress,
     GoalStatus, MemorySystem, MultiDeviceSync, OpenQuestion, PreferenceDimension, ProjectId,
-    ProjectMemory, ProjectMemoryStore, ProjectStatus, QuestionPriority, RuleId, SearchFilters,
-    SearchResult, SegmentId, SegmentStore, SessionContext, SessionId, Timestamp, Turn, TurnId,
-    UiChannel, UiMessage, UserId, UserMemory, UserMemoryStore,
+    ProjectMemory, ProjectMemoryStore, ProjectStatus, QuestionPriority, RdfMemoryService, RuleId,
+    SearchFilters, SearchResult, SegmentId, SegmentStore, SessionContext, SessionId, Timestamp,
+    Turn, TurnId, UiChannel, UiMessage, UserId, UserMemory, UserMemoryStore,
 };
 pub use plan::{
-    Plan, PlanCancellation, PlanControl, PlanControlReceipt, PlanControlRequest, PlanError,
-    PlanRegistry, PlanStatus, PlanStep, PlanStepStatus, PlanStore,
+    parse_structured_plan, Plan, PlanCancellation, PlanControl, PlanControlReceipt,
+    PlanControlRequest, PlanError, PlanFormat, PlanOwner, PlanRegistry, PlanRegistryView,
+    PlanStatus, PlanStep, PlanStepStatus, PlanStore, PlanVersion, PlanWrite, RdfPlanStore,
+    StructuredPlan, StructuredStep, PLAN_GRAPH, PLAN_REGISTRY_IRI,
 };
+pub use privacy::contains_secret;
 pub use projects::{ProjectRecord, ProjectRegistry, ProjectSpec};
 pub use session::{
     ConversationFrame, DeleteMode, FrameKind, FrameStack, FrameStatus, FrameUtterance, Presence,

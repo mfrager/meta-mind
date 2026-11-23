@@ -289,16 +289,22 @@ fn validate_value(
             }
         }
         Value::Number(number) => {
-            if let Some(minimum) = schema.get("minimum").and_then(Value::as_i64) {
-                if number.as_i64().is_none_or(|value| value < minimum) {
+            let value = number
+                .as_f64()
+                .ok_or_else(|| ToolArgumentError::InvalidArguments {
+                    field: field.map(str::to_owned),
+                    message: "must be a finite number".into(),
+                })?;
+            if let Some(minimum) = schema.get("minimum").and_then(Value::as_f64) {
+                if value < minimum {
                     return Err(ToolArgumentError::InvalidArguments {
                         field: field.map(str::to_owned),
                         message: format!("below minimum {minimum}"),
                     });
                 }
             }
-            if let Some(maximum) = schema.get("maximum").and_then(Value::as_i64) {
-                if number.as_i64().is_none_or(|value| value > maximum) {
+            if let Some(maximum) = schema.get("maximum").and_then(Value::as_f64) {
+                if value > maximum {
                     return Err(ToolArgumentError::InvalidArguments {
                         field: field.map(str::to_owned),
                         message: format!("above maximum {maximum}"),

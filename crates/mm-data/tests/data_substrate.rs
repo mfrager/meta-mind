@@ -453,6 +453,30 @@ async fn identity_minting_is_canonical_and_legacy_aliases_resolve() {
 }
 
 #[tokio::test]
+async fn index_verification_reports_missing_documents_and_reindex_repairs_them() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = initialize_data_layer(init_config(&temp)).await.unwrap();
+    let service = &data.data_service;
+    let note = create_entity(service, "mm:Note", "Verify me").await;
+    service.reindex().await.unwrap();
+    let clean = service.verify_index().await.unwrap();
+    assert!(clean.is_clean(), "{clean:?}");
+
+    service
+        .search_index()
+        .expect("index")
+        .delete(&note.entity.iri)
+        .await
+        .unwrap();
+    let dirty = service.verify_index().await.unwrap();
+    assert_eq!(dirty.missing, vec![note.entity.iri.clone()]);
+    assert!(dirty.orphaned.is_empty());
+
+    service.reindex().await.unwrap();
+    assert!(service.verify_index().await.unwrap().is_clean());
+}
+
+#[tokio::test]
 async fn a_second_being_is_refused_as_a_singleton() {
     let temp = tempfile::tempdir().unwrap();
     let data = initialize_data_layer(init_config(&temp)).await.unwrap();

@@ -410,12 +410,12 @@ impl StatusRef {
                 "ref id exceeds {MAX_REF_ID_CHARS} characters"
             )));
         }
-        if self.kind == RefKind::File {
-            if self.id.starts_with('/') || self.id.split('/').any(|part| part == "..") {
-                return Err(ConversationError::InvalidArguments(
-                    "file ref must be workspace-relative and normalized".into(),
-                ));
-            }
+        if self.kind == RefKind::File
+            && (self.id.starts_with('/') || self.id.split('/').any(|part| part == ".."))
+        {
+            return Err(ConversationError::InvalidArguments(
+                "file ref must be workspace-relative and normalized".into(),
+            ));
         }
         Ok(())
     }

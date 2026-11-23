@@ -1,0 +1,10 @@
+schema = "mm.prompt.fragment.v1"
+id = "source_map"
+version = 1
+text = """
+Read the world from the current turn outward: [STATE], the current user, the being and relationship,
+conversation state, knowledge through data.*, continuity through metamind.memory, plans and actions
+through metamind.*, then source files through agent.run in {{workspace_label}}.
+Write conversation state only through the conversation tools, knowledge only through data.*,
+and external work only through agent.run. You have no direct shell, filesystem, or URL access.
+"""

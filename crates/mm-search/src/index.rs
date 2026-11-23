@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use tantivy::collector::TopDocs;
-use tantivy::query::Query;
+use tantivy::query::{AllQuery, Query};
 use tantivy::schema::Value;
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term};
 use tokio::sync::Mutex;
@@ -84,6 +84,34 @@ impl SearchIndex {
     pub async fn num_docs(&self) -> Result<u64, SearchError> {
         let searcher = self.reader.searcher();
         Ok(searcher.num_docs())
+    }
+
+    /// Every subject currently in the index, for verification and repair.
+    ///
+    /// This is an operational scan, not a search path: it walks all committed
+    /// documents and returns their stored subject terms.
+    pub async fn subjects(&self) -> Result<Vec<String>, SearchError> {
+        let searcher = self.reader.searcher();
+        let limit = searcher.num_docs() as usize;
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let top = searcher
+            .search(&AllQuery, &TopDocs::with_limit(limit).order_by_score())
+            .map_err(|e| SearchError::Index(format!("scan subjects: {e}")))?;
+        let mut subjects = Vec::with_capacity(top.len());
+        for (_, address) in top {
+            let document: TantivyDocument = searcher
+                .doc(address)
+                .map_err(|e| SearchError::Index(format!("read document: {e}")))?;
+            let subject = text(&document, self.fields.subject);
+            if !subject.is_empty() {
+                subjects.push(subject);
+            }
+        }
+        subjects.sort();
+        subjects.dedup();
+        Ok(subjects)
     }
 
     /// Insert or replace one document, committing immediately.

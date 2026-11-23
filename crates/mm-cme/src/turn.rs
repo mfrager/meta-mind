@@ -254,6 +254,15 @@ pub struct TurnOutcome {
     /// Tool calls that ran, in order.
     #[serde(default)]
     pub tool_calls: Vec<ToolCallEmission>,
+    /// Immutable prompt instance used for the model call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_instance_id: Option<String>,
+    /// Prompt hash pinned for the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_hash: Option<String>,
+    /// Selected prompt variant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_variant: Option<String>,
 }
 
 impl TurnOutcome {
@@ -375,6 +384,12 @@ pub struct Turn {
     pub tool_calls: Vec<ToolCallEmission>,
     /// Optional transition observer, inherited by spawned chunks.
     pub observer: Option<crate::observability::ObserverHandle>,
+    /// Prompt instance used for this turn's model calls.
+    pub prompt_instance_id: Option<String>,
+    /// Pinned prompt hash.
+    pub prompt_hash: Option<String>,
+    /// Selected prompt variant.
+    pub prompt_variant: Option<String>,
 }
 
 impl Turn {
@@ -394,6 +409,9 @@ impl Turn {
             tool_results: Vec::new(),
             tool_calls: Vec::new(),
             observer: None,
+            prompt_instance_id: None,
+            prompt_hash: None,
+            prompt_variant: None,
         })
     }
 
@@ -403,6 +421,13 @@ impl Turn {
         self.session_id = plan.session_id.clone();
         self.plan = Some(plan.clone());
         self.sm.data_mut()["plan"] = serde_json::json!(plan);
+    }
+
+    /// Pin the prompt instance used by the model call.
+    pub fn set_prompt(&mut self, instance_id: String, hash: String, variant: Option<String>) {
+        self.prompt_instance_id = Some(instance_id);
+        self.prompt_hash = Some(hash);
+        self.prompt_variant = variant;
     }
 
     /// The current state.
@@ -608,6 +633,9 @@ impl Turn {
                 })
                 .collect(),
             tool_calls: self.tool_calls.clone(),
+            prompt_instance_id: self.prompt_instance_id.clone(),
+            prompt_hash: self.prompt_hash.clone(),
+            prompt_variant: self.prompt_variant.clone(),
         }
     }
 }

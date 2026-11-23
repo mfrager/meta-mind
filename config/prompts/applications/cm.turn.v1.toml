@@ -1,16 +1,59 @@
 schema = "mm.prompt.strategy.v1"
 id = "cm.turn.v1"
-version = 1
-description = "Primary CM turn: identity, tool contract, state, tools, style, and user task."
-fragments = ["identity", "contract", "state", "tools", "style", "turn_task"]
+application = "cm.turn"
+version = 2
+description = "Primary CM turn: character, current user, source map, tools, state, pending, memory, plans, budget, honesty, safety, and output."
+budget = "standard"
+variants = ["standard", "pending", "resume", "repair"]
+required_variables = [
+  "state_block",
+  "tools_summary",
+  "budget_class",
+  "pending_summary",
+  "frame_kind",
+  "frame_step",
+]
+fragments = [
+  "being",
+  "character",
+  "current_user",
+  "source_map",
+  "tools_contract",
+  "state_ownership",
+  "state_pending",
+  "state_frames",
+  "data_capture",
+  "metamind_division",
+  "memory_contract",
+  "budget_contract",
+  "honesty_contract",
+  "safety_contract",
+  "output_character",
+]
 slots = [
   "being_name",
+  "being_version",
+  "being_values",
   "user_name",
+  "user_iri",
+  "canonical_user",
+  "user_locale",
+  "user_timezone",
   "workspace_label",
+  "state_block",
   "state_json",
   "revision",
   "topic",
   "depth",
+  "pending_summary",
+  "frame_kind",
+  "frame_step",
+  "frame_attempt",
+  "memory_summary",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
   "tools_summary",
   "tone",
   "transcript_compact",

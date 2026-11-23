@@ -256,7 +256,7 @@ async fn frame_schedule_and_cancel_are_full_state_operations() {
 }
 
 #[tokio::test]
-async fn agent_run_is_natural_language_and_stubs_are_visible() {
+async fn agent_run_requires_a_runtime_and_stubs_are_visible() {
     let (state, session, _temp) = fixture().await;
     let tools = CmTools::new(state).with_session(session);
     let run = parse(
@@ -268,8 +268,7 @@ async fn agent_run_is_natural_language_and_stubs_are_visible() {
             .await
             .unwrap(),
     );
-    assert!(run["ok"].as_bool().unwrap());
-    assert_eq!(run["result"]["status"], "queued");
+    assert_eq!(run["error"]["code"], "NOT_AVAILABLE");
 
     let rejected = parse(
         &tools

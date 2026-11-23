@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::engine::RdfEngine;
 use crate::error::{DataError, Result};
-use crate::rdf::{self, now_ms, project_graph, project_iri, turtle_escape, PROJECT_INDEX_GRAPH};
+use crate::rdf::{
+    self, legacy_project_iri, now_ms, project_graph, project_iri, turtle_escape,
+    PROJECT_INDEX_GRAPH,
+};
 
 /// What to create.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -116,8 +119,21 @@ impl ProjectRegistry {
     }
 
     /// One project.
+    ///
+    /// Reads the canonical `mmd:project/<id>` entry first, then the legacy
+    /// `urn:metamind:project:<id>` entry so pre-Phase-12 projects remain visible.
     pub async fn get_project(&self, project_id: &str) -> Result<Option<ProjectRecord>> {
-        rdf::load_as(&self.engine, PROJECT_INDEX_GRAPH, &project_iri(project_id)).await
+        if let Some(record) =
+            rdf::load_as(&self.engine, PROJECT_INDEX_GRAPH, &project_iri(project_id)).await?
+        {
+            return Ok(Some(record));
+        }
+        rdf::load_as(
+            &self.engine,
+            PROJECT_INDEX_GRAPH,
+            &legacy_project_iri(project_id),
+        )
+        .await
     }
 
     /// Require a project.
@@ -131,9 +147,22 @@ impl ProjectRegistry {
     }
 
     /// Every project, by name.
+    ///
+    /// Canonical and legacy index entries are deduplicated by project id; the
+    /// canonical spelling wins because it sorts first.
     pub async fn list_projects(&self) -> Result<Vec<ProjectRecord>> {
-        let mut projects: Vec<ProjectRecord> =
-            rdf::list_as(&self.engine, PROJECT_INDEX_GRAPH, PROJECT_CLASS).await?;
+        let subjects =
+            rdf::subjects_of_class(&self.engine, PROJECT_INDEX_GRAPH, PROJECT_CLASS).await?;
+        let mut by_id: std::collections::BTreeMap<String, ProjectRecord> =
+            std::collections::BTreeMap::new();
+        for subject in subjects {
+            if let Some(record) =
+                rdf::load_as::<ProjectRecord>(&self.engine, PROJECT_INDEX_GRAPH, &subject).await?
+            {
+                by_id.entry(record.project_id.clone()).or_insert(record);
+            }
+        }
+        let mut projects = by_id.into_values().collect::<Vec<_>>();
         projects.sort_by(|a, b| {
             a.name
                 .cmp(&b.name)

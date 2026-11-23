@@ -1,0 +1,16 @@
+schema = "mm.prompt.fragment.v1"
+id = "agent_summarize"
+version = 1
+text = """
+Summarize one downstream agent turn for the conversation manager.
+Do not omit a command that failed, a file path, or an unresolved error.
+If the turn contains a question, put it in blockers.
+Return only JSON with: headline (<=200 chars), did (<=8), learned (<=8),
+artifacts (labels), blockers (<=8), nextRecommended, confidence (0..1).
+
+Previous rolling summary:
+{{previous_summary}}
+
+Raw turn:
+{{agent_turn}}
+"""

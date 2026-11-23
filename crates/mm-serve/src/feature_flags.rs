@@ -12,9 +12,9 @@
 //! | `MM_CME_PREFERENCE_LEARNING` | `true` | enable preference learning |
 //! | `MM_CME_IMPROVEMENT` | `false` | run the scheduled improvement loop |
 //! | `MM_CME_AGENTSTREAM_LOGGING` | `true` | log CME frames to agentstream |
-//! | `MM_CM_V3` | `false` | enable the Phase 1 conversation-manager contract path |
+//! | `MM_CM_V3` | `true` | enable the Phase 1 conversation-manager contract path |
 //! | `MM_PROMPT_V1` | `false` | load the reviewed prompt tree for CM turns |
-//! | `MM_AUTOMATION_V1` | `false` | enable session automation/frame timers |
+//! | `MM_AUTOMATION_V1` | `true` | enable session automation/frame timers |
 //! | `MM_FRAMES_V1` | `false` | enable frame stack execution |
 
 use mm_cme::VoiceTier;
@@ -56,7 +56,7 @@ impl Default for FeatureFlags {
             preference_learning_enabled: true,
             improvement_loop_enabled: false,
             agentstream_logging: true,
-            cm_v3: false,
+            cm_v3: true,
             prompt_v1: false,
             automation_v1: false,
             frames_v1: false,
@@ -92,7 +92,7 @@ impl FeatureFlags {
             ),
             cm_v3: env_bool("MM_CM_V3", defaults.cm_v3),
             prompt_v1: env_bool("MM_PROMPT_V1", defaults.prompt_v1),
-            automation_v1: env_bool("MM_AUTOMATION_V1", defaults.automation_v1),
+            automation_v1: env_bool("MM_AUTOMATION_V1", true),
             frames_v1: env_bool("MM_FRAMES_V1", defaults.frames_v1),
         }
     }
@@ -114,14 +114,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_keep_the_legacy_path_until_opted_in() {
+    fn defaults_enable_the_cm_contract_but_keep_the_legacy_route() {
         let flags = FeatureFlags::default();
         assert!(!flags.cme_enabled);
         assert!(flags.proactive_enabled);
         assert!(flags.memory_compression_enabled);
         assert!(flags.agentstream_logging);
         assert!(flags.voice_tier.is_none());
-        assert!(!flags.cm_v3);
+        assert!(flags.cm_v3);
         assert!(!flags.prompt_v1);
         assert!(!flags.automation_v1);
         assert!(!flags.frames_v1);

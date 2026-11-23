@@ -49,6 +49,12 @@ pub enum EventType {
     DepthUpdated,
     /// Conversation status variables changed.
     StatusUpdated,
+    /// One downstream agent turn completed.
+    AgentTurn,
+    /// A long downstream turn was summarized.
+    AgentTurnSummary,
+    /// A downstream agent run changed status.
+    AgentStatus,
     /// A durable session was opened.
     SessionOpened,
     /// An ended session was resumed into a new epoch.
@@ -90,6 +96,9 @@ impl EventType {
             Self::TopicUpdated => "topic_updated",
             Self::DepthUpdated => "depth_updated",
             Self::StatusUpdated => "status_updated",
+            Self::AgentTurn => "agent_turn",
+            Self::AgentTurnSummary => "agent_turn_summary",
+            Self::AgentStatus => "agent_status",
             Self::SessionOpened => "session_opened",
             Self::SessionResumed => "session_resumed",
             Self::SessionEnded => "session_ended",
@@ -329,7 +338,7 @@ impl AgentstreamStore {
         let mut events: Vec<AgentstreamEvent> =
             rdf::list_as(&self.engine, &graph, EVENT_CLASS).await?;
         events.retain(|event| event.session_id == session_id);
-        events.sort_by_key(|event| event.timestamp);
+        events.sort_by_key(|event| (event.timestamp, event.event_id.clone()));
         Ok(events)
     }
 
@@ -372,6 +381,9 @@ impl AgentstreamStore {
             .dir()
             .join("sessions")
             .join(format!("{session_id}.ttl"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(&path, turtle)?;
         Ok(path)
     }

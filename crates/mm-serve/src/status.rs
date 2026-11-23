@@ -71,12 +71,51 @@ pub struct SessionStatusView {
     pub working: bool,
     /// Last activity.
     pub last_activity_at: i64,
+    /// Last user input.
+    #[serde(default)]
+    pub last_user_input_at: Option<i64>,
+    /// Last work activity.
+    #[serde(default)]
+    pub last_work_activity_at: Option<i64>,
+    /// Explicit expiry.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
     /// Trace kinds.
     pub traces: Vec<String>,
+    /// Number of trace manifests.
+    #[serde(default)]
+    pub trace_count: u32,
+    /// Main trace id.
+    #[serde(default)]
+    pub main_trace_id: Option<String>,
     /// Session directory.
     pub session_dir: Option<String>,
     /// Resume epoch.
     pub resume_epoch: u32,
+    /// Soft-delete instant.
+    #[serde(default)]
+    pub deleted_at: Option<i64>,
+    /// Bounded work catalog, main first.
+    #[serde(default)]
+    pub work: Vec<WorkStatusView>,
+}
+
+/// One work-catalog row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkStatusView {
+    /// Stable item id; `main` for the foreground item.
+    pub id: String,
+    /// Operator-facing title.
+    pub title: String,
+    /// Work kind.
+    pub kind: String,
+    /// Work status.
+    pub status: String,
+    /// Start instant.
+    pub started_at: i64,
+    /// Last activity instant.
+    pub last_activity_at: i64,
 }
 
 /// Frame projection.
@@ -109,12 +148,21 @@ pub struct FramesStatusView {
     pub revision: u64,
     /// Root first, top last.
     pub frames: Vec<FrameStatusView>,
+    /// Top frame id, when the stack is non-empty.
+    #[serde(default)]
+    pub top_frame_id: Option<String>,
+    /// Pending frame utterance, when one is scheduled.
+    #[serde(default)]
+    pub pending_utterance: Option<Value>,
 }
 
 /// Budget projection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetStatusView {
+    /// Budget class.
+    #[serde(default)]
+    pub class: String,
     /// Tokens used.
     pub tokens_used: u64,
     /// Token cap.
@@ -123,6 +171,9 @@ pub struct BudgetStatusView {
     pub turns_used: u32,
     /// Turn cap.
     pub turn_cap: u32,
+    /// Whether the remaining values are estimates.
+    #[serde(default)]
+    pub estimated: bool,
 }
 
 /// Data/index projection.
@@ -225,6 +276,15 @@ pub struct AutomationStatusView {
     pub frame_timers: usize,
     /// Next action.
     pub next_action_at: Option<i64>,
+    /// Live supervisors in this process.
+    #[serde(default)]
+    pub sessions: usize,
+    /// Scheduled/cron action rows.
+    #[serde(default)]
+    pub cron_jobs: usize,
+    /// Last suppression reason, when the most recent decision suppressed.
+    #[serde(default)]
+    pub last_reason: Option<String>,
 }
 
 /// Interjections projection.
@@ -241,10 +301,59 @@ pub struct InterjectionsStatusView {
     pub queue: usize,
 }
 
+/// One agent run row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentStatusView {
+    /// Run id.
+    pub run_id: String,
+    /// Backend kind.
+    pub kind: String,
+    /// Run status.
+    pub status: String,
+    /// Owning session.
+    pub session_id: String,
+    /// Last update.
+    pub updated_at: i64,
+    /// Whether the run is still active.
+    pub active: bool,
+}
+
+/// One recent operation/log row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationStatusView {
+    /// Stable row id.
+    pub id: String,
+    /// Kind/event type.
+    pub kind: String,
+    /// Source.
+    pub source: String,
+    /// Instant.
+    pub at: i64,
+    /// Compact payload.
+    pub detail: Value,
+}
+
 /// The whole inspector status payload.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusView {
+    /// Status-service view revision.
+    #[serde(default)]
+    pub revision: u64,
+    /// Session id.
+    #[serde(default)]
+    pub session_id: String,
+    /// Generation instant.
+    #[serde(default)]
+    pub generated_at: i64,
+    /// Conversation-state revision.
+    #[serde(default)]
+    pub state_revision: u64,
+    /// Data-layer revision.
+    #[serde(default)]
+    pub data_revision: u64,
     /// Conversation state.
     pub state: StateStatusView,
     /// Session.
@@ -265,6 +374,15 @@ pub struct StatusView {
     pub automation: AutomationStatusView,
     /// Interjections.
     pub interjections: InterjectionsStatusView,
+    /// Recent agent runs for this session.
+    #[serde(default)]
+    pub agents: Vec<AgentStatusView>,
+    /// Recent operations for this session.
+    #[serde(default)]
+    pub operations: Vec<OperationStatusView>,
+    /// Sections that could not be read; the rest of the panel still renders.
+    #[serde(default)]
+    pub unavailable: BTreeMap<String, String>,
     /// Update instant.
     pub updated_at: i64,
 }
@@ -273,6 +391,11 @@ impl StatusView {
     /// A minimal empty status, useful for fixtures.
     pub fn empty(now_ms: i64) -> Self {
         Self {
+            revision: 1,
+            session_id: String::new(),
+            generated_at: now_ms,
+            state_revision: 1,
+            data_revision: 0,
             state: StateStatusView {
                 revision: 1,
                 topic: None,
@@ -288,20 +411,31 @@ impl StatusView {
                 presence: "absent".into(),
                 working: false,
                 last_activity_at: now_ms,
+                last_user_input_at: None,
+                last_work_activity_at: None,
+                expires_at: None,
                 traces: Vec::new(),
+                trace_count: 0,
+                main_trace_id: None,
                 session_dir: None,
                 resume_epoch: 0,
+                deleted_at: None,
+                work: Vec::new(),
             },
             frames: FramesStatusView {
                 revision: 1,
                 frames: Vec::new(),
+                top_frame_id: None,
+                pending_utterance: None,
             },
             prompt: None,
             budget: BudgetStatusView {
+                class: "standard".into(),
                 tokens_used: 0,
                 token_cap: 0,
                 turns_used: 0,
                 turn_cap: 0,
+                estimated: false,
             },
             data: DataStatusView {
                 data_revision: 0,
@@ -321,6 +455,9 @@ impl StatusView {
                 tick_secs: 30,
                 frame_timers: 0,
                 next_action_at: None,
+                sessions: 0,
+                cron_jobs: 0,
+                last_reason: None,
             },
             interjections: InterjectionsStatusView {
                 policy_id: "global.default".into(),
@@ -328,6 +465,9 @@ impl StatusView {
                 reason: None,
                 queue: 0,
             },
+            agents: Vec::new(),
+            operations: Vec::new(),
+            unavailable: BTreeMap::new(),
             updated_at: now_ms,
         }
     }

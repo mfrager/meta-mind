@@ -5,8 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+mm-data = { workspace = true }
+mm-llm = { workspace = true }
+mm-prompt = { workspace = true }
+pi-codes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
@@ -15,5 +20,5 @@ tokio = { workspace = true }
 tempfile = { workspace = true }
 
 [package.metadata.metamind]
-owned_by_phase = 0
+owned_by_phase = 6
 capability = "mm:AgentDelegation"

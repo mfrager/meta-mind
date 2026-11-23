@@ -53,6 +53,18 @@ pub struct PromptStrategy {
     /// Optional operator-facing description.
     #[serde(default)]
     pub description: String,
+    /// Application key, for example `cm.turn`.
+    #[serde(default)]
+    pub application: String,
+    /// Default budget class for this strategy.
+    #[serde(default)]
+    pub budget: String,
+    /// Supported variants, in selection order.
+    #[serde(default)]
+    pub variants: Vec<String>,
+    /// Variables that must be present at render time.
+    #[serde(default)]
+    pub required_variables: Vec<String>,
     /// Fragment ids in render order.
     pub fragments: Vec<String>,
     /// Every slot the fragments may use.
@@ -161,11 +173,41 @@ pub struct RenderedFragment {
     pub text: String,
 }
 
+/// One ordered message in a rendered prompt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptMessage {
+    /// `system`, `transcript`, or `user`.
+    pub role: String,
+    /// Rendered content.
+    pub content: String,
+}
+
+/// A request to select and render one strategy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptRequest {
+    /// Strategy id or application key.
+    pub application: String,
+    /// Optional `standard`, `pending`, `resume`, or `repair` variant.
+    pub variant: Option<String>,
+    /// Template variables.
+    pub variables: BTreeMap<String, String>,
+    /// Canonical `[STATE]` block, when the strategy leaves state out of its fragments.
+    pub state_block: Option<String>,
+    /// Compressed prior transcript.
+    pub transcript: Vec<PromptMessage>,
+    /// The operator's current message.
+    pub user_input: Option<String>,
+}
+
 /// An immutable, hash-addressed prompt rendering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PromptInstance {
     /// Strategy id.
     pub strategy: String,
+    /// Application key.
+    pub application: String,
+    /// Selected variant, when one was requested.
+    pub variant: Option<String>,
     /// Strategy version.
     pub strategy_version: u32,
     /// Lowercase SHA-256 over the canonical instance payload.
@@ -174,10 +216,30 @@ pub struct PromptInstance {
     pub instance_id: String,
     /// Rendered fragments in order.
     pub fragments: Vec<RenderedFragment>,
+    /// Ordered system/state/transcript/user messages.
+    pub messages: Vec<PromptMessage>,
     /// Joined text with blank lines between fragments.
     pub text: String,
     /// Input variables, sorted by key.
     pub variables: BTreeMap<String, String>,
+}
+
+impl PromptInstance {
+    /// The redacted audit record carried by logs and the inspector.
+    pub fn audit(&self) -> serde_json::Value {
+        serde_json::json!({
+            "instanceId": self.instance_id,
+            "strategy": self.strategy,
+            "application": self.application,
+            "variant": self.variant,
+            "strategyVersion": self.strategy_version,
+            "hash": self.hash,
+            "fragments": self.fragments.iter().map(|fragment| {
+                serde_json::json!({"id": fragment.id, "version": fragment.version})
+            }).collect::<Vec<_>>(),
+            "messageCount": self.messages.len(),
+        })
+    }
 }
 
 /// Loaded prompt tree.
@@ -336,6 +398,30 @@ impl PromptStore {
                     strategy.id
                 )));
             }
+            let mut seen_variants = BTreeSet::new();
+            for variant in &strategy.variants {
+                if !seen_variants.insert(variant) {
+                    return Err(PromptError::Invalid(format!(
+                        "strategy {} repeats variant {variant}",
+                        strategy.id
+                    )));
+                }
+            }
+            let mut seen_required = BTreeSet::new();
+            for variable in &strategy.required_variables {
+                if !seen_required.insert(variable) {
+                    return Err(PromptError::Invalid(format!(
+                        "strategy {} repeats required variable {variable}",
+                        strategy.id
+                    )));
+                }
+                if !strategy.slots.iter().any(|slot| slot == variable) {
+                    return Err(PromptError::Invalid(format!(
+                        "strategy {} requires undeclared variable {variable}",
+                        strategy.id
+                    )));
+                }
+            }
             let mut seen_slots = BTreeSet::new();
             for slot in &strategy.slots {
                 if !seen_slots.insert(slot) {
@@ -354,14 +440,14 @@ impl PromptStore {
                     }
                 })?;
                 for slot in placeholders(&fragment.text)? {
-                    if !declared.remove(slot.as_str()) {
-                        if !strategy.slots.iter().any(|item| item == &slot) {
-                            return Err(PromptError::MissingSlot {
-                                strategy: strategy.id.clone(),
-                                fragment: fragment.id.clone(),
-                                slot,
-                            });
-                        }
+                    if !declared.remove(slot.as_str())
+                        && !strategy.slots.iter().any(|item| item == &slot)
+                    {
+                        return Err(PromptError::MissingSlot {
+                            strategy: strategy.id.clone(),
+                            fragment: fragment.id.clone(),
+                            slot,
+                        });
                     }
                 }
             }
@@ -416,6 +502,47 @@ impl PromptStore {
         Ok(())
     }
 
+    /// Select a strategy by application and optional variant.
+    ///
+    /// The base strategy is the application's lowest-id strategy. A variant is
+    /// selected when an exact `{application}.{variant}.v1` or `cm.repair.v1`
+    /// strategy exists; otherwise the base strategy is used.
+    pub fn strategy_for(
+        &self,
+        application: &str,
+        variant: Option<&str>,
+    ) -> Result<&PromptStrategy> {
+        let exact = format!("{application}.v1");
+        let base = self
+            .strategies
+            .get(&exact)
+            .or_else(|| {
+                self.strategies
+                    .values()
+                    .filter(|strategy| {
+                        strategy.application == application
+                            || strategy.id == application
+                            || strategy.id.starts_with(&format!("{application}."))
+                    })
+                    .min_by_key(|strategy| strategy.id.as_str())
+            })
+            .ok_or_else(|| PromptError::UnknownStrategy(application.to_owned()))?;
+        let Some(variant) = variant.filter(|value| *value != "standard") else {
+            return Ok(base);
+        };
+        let candidates = [
+            format!("{application}.{variant}.v1"),
+            format!("cm.{variant}.v1"),
+            variant.to_string(),
+        ];
+        for candidate in candidates {
+            if let Some(strategy) = self.strategies.get(&candidate) {
+                return Ok(strategy);
+            }
+        }
+        Ok(base)
+    }
+
     /// Render one strategy with the supplied variables.
     pub fn render(
         &self,
@@ -426,6 +553,37 @@ impl PromptStore {
             .strategies
             .get(strategy_id)
             .ok_or_else(|| PromptError::UnknownStrategy(strategy_id.to_owned()))?;
+        self.render_selected(strategy, None, variables, None, &[], None)
+    }
+
+    /// Select and render a strategy, including the ordered message envelope.
+    pub fn render_request(&self, request: &PromptRequest) -> Result<PromptInstance> {
+        let strategy = self.strategy_for(&request.application, request.variant.as_deref())?;
+        self.render_selected(
+            strategy,
+            request.variant.clone(),
+            &request.variables,
+            request.state_block.as_deref(),
+            &request.transcript,
+            request.user_input.as_deref(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_selected(
+        &self,
+        strategy: &PromptStrategy,
+        variant: Option<String>,
+        variables: &BTreeMap<String, String>,
+        state_block: Option<&str>,
+        transcript: &[PromptMessage],
+        user_input: Option<&str>,
+    ) -> Result<PromptInstance> {
+        for required in &strategy.required_variables {
+            if !variables.contains_key(required) {
+                return Err(PromptError::MissingVariable(required.clone()));
+            }
+        }
         let mut fragments = Vec::with_capacity(strategy.fragments.len());
         for fragment_id in &strategy.fragments {
             let fragment =
@@ -441,12 +599,38 @@ impl PromptStore {
                 text: render_text(&fragment.text, variables)?,
             });
         }
-        let text = fragments
+        let fragment_text = fragments
             .iter()
             .map(|fragment| fragment.text.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
+        let text = match state_block {
+            Some(block) => format!("{fragment_text}\n\n{block}"),
+            None => fragment_text.clone(),
+        };
+        let mut messages: Vec<PromptMessage> = fragments
+            .iter()
+            .map(|fragment| PromptMessage {
+                role: "system".into(),
+                content: fragment.text.clone(),
+            })
+            .collect();
+        if let Some(block) = state_block {
+            messages.push(PromptMessage {
+                role: "system".into(),
+                content: block.into(),
+            });
+        }
+        messages.extend(transcript.iter().cloned());
+        if let Some(input) = user_input {
+            messages.push(PromptMessage {
+                role: "user".into(),
+                content: input.into(),
+            });
+        }
         let payload = serde_json::json!({
+            "application": strategy.application,
+            "variant": variant,
             "strategy": strategy.id,
             "strategyVersion": strategy.version,
             "fragments": fragments.iter().map(|fragment| {
@@ -456,16 +640,20 @@ impl PromptStore {
                     "text": fragment.text,
                 })
             }).collect::<Vec<_>>(),
+            "messages": messages,
             "variables": variables,
         });
         let canonical = serde_json::to_vec(&payload)?;
         let hash = hex_sha256(&canonical);
         Ok(PromptInstance {
             strategy: strategy.id.clone(),
+            application: strategy.application.clone(),
+            variant,
             strategy_version: strategy.version,
             instance_id: format!("sha256:{hash}"),
             hash,
             fragments,
+            messages,
             text,
             variables: variables.clone(),
         })

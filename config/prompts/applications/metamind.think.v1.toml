@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "metamind.think.v1"
+application = "think"
+budget = "think"
 version = 1
 description = "Private thinking."
 fragments = ["identity", "thought_guidance", "style"]

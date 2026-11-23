@@ -20,6 +20,7 @@ pub mod episodic;
 pub mod model;
 pub mod project;
 pub mod rdf_mapping;
+pub mod service;
 pub mod sync;
 pub mod user;
 
@@ -55,6 +56,7 @@ pub use cross_project::CrossProjectLearner;
 pub use episodic::{EpisodicStore, EpisodicTurn};
 pub use model::*;
 pub use project::{ProjectMemory, ProjectMemoryStore};
+pub use service::RdfMemoryService;
 pub use sync::{MultiDeviceSync, Turn, UiChannel, UiMessage};
 pub use user::{UserMemory, UserMemoryStore};
 

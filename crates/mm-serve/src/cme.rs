@@ -145,6 +145,26 @@ impl CmeRuntime {
         if !self.features.agentstream_logging {
             return;
         }
+        if let Some(instance_id) = &outcome.prompt_instance_id {
+            let prompt = AgentstreamEvent::new(
+                session_id,
+                EventType::Custom,
+                json!({
+                    "kind": "prompt_built",
+                    "instanceId": instance_id,
+                    "hash": outcome.prompt_hash,
+                    "variant": outcome.prompt_variant,
+                    "strategy": "cm.turn.v1",
+                }),
+                EventProvenance {
+                    source: "cme".into(),
+                    model: None,
+                },
+            )
+            .with_turn(outcome.turn_id.to_string());
+            self.log_event(prompt).await;
+        }
+
         let user = AgentstreamEvent::new(
             session_id,
             EventType::UserMessage,

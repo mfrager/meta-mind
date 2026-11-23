@@ -1,0 +1,28 @@
+schema = "mm.prompt.strategy.v1"
+id = "frame.utterance.v1"
+application = "frame"
+version = 1
+description = "One short frame utterance: character, frame step, budget, and honesty."
+budget = "frame"
+variants = ["standard"]
+fragments = [
+  "being",
+  "character",
+  "state_frames",
+  "budget_contract",
+  "honesty_contract",
+  "output_character",
+]
+slots = [
+  "being_name",
+  "being_version",
+  "being_values",
+  "frame_kind",
+  "frame_step",
+  "frame_attempt",
+  "budget_class",
+  "budget_rounds",
+  "budget_tokens",
+  "budget_wall_ms",
+  "tone",
+]

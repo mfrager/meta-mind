@@ -20,7 +20,7 @@ pub mod service;
 pub use namespaces::{NamespaceRegistry, BUILTINS, MINTED_KINDS};
 pub use outbox::{DataOutbox, OutboxEntry};
 pub use schema::{ParsedSchema, SchemaCatalog, SchemaSpec};
-pub use service::{DataService, DataStatus};
+pub use service::{DataService, DataStatus, IndexVerification};
 
 /// Maximum property filters per query.
 pub const MAX_DATA_FILTERS: usize = 16;

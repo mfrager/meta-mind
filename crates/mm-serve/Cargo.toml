@@ -27,6 +27,7 @@ path = "src/main.rs"
 
 [dependencies]
 mm-core = { workspace = true }
+mm-agent = { workspace = true }
 mm-cme = { workspace = true }
 mm-data = { workspace = true }
 mm-prompt = { workspace = true }
@@ -55,6 +56,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+toml = { workspace = true }
 clap = { workspace = true, features = ["env"] }
 ulid = { workspace = true }
 axum = "0.8"

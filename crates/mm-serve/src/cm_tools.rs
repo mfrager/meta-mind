@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use mm_agent::{
+    AgentCall, AgentError, AgentKind, AgentOrigin, AgentRunStatus, AgentRuntime, ExternalWorkPort,
+};
 use mm_cme::{CmeError, FrameError, Result as CmeResult, ToolHandler};
 use mm_data::{ConversationError, SessionError, StateOrigin, StatusValue};
 use mm_llm::ToolSchema;
@@ -18,6 +21,7 @@ use tokio::time::timeout;
 
 use crate::cme::CONSOLE_USER;
 use crate::data_tools::{is_data_tool, DataToolError, DataTools};
+use crate::metamind_tools::{is_metamind_tool, MetamindToolError, MetamindTools};
 use crate::state_service::{StateService, StateServiceError};
 use crate::tool_schemas::{
     IndexStatus, ToolArgumentError, ToolCatalog, ToolEnvelope, ToolErrorBody, ToolResultEnvelope,
@@ -26,7 +30,7 @@ use crate::tool_schemas::{
 /// State reads/writes must not stall a turn.
 const STATE_TOOL_TIMEOUT: Duration = Duration::from_secs(2);
 /// A downstream agent turn gets the design's one-turn budget.
-const AGENT_TOOL_TIMEOUT: Duration = Duration::from_secs(120);
+const AGENT_TOOL_TIMEOUT: Duration = Duration::from_secs(125);
 /// A data write is local RDF plus one index commit.
 const DATA_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Reads are a query or a bounded search.
@@ -59,6 +63,8 @@ const TOPOLOGY_KEYS: &[&str] = &[
 pub struct CmTools {
     state: Arc<StateService>,
     data: Option<DataTools>,
+    metamind: Option<MetamindTools>,
+    agent: Option<Arc<AgentRuntime>>,
     session_id: Option<String>,
 }
 
@@ -68,6 +74,8 @@ impl CmTools {
         Self {
             state,
             data: None,
+            metamind: None,
+            agent: None,
             session_id: None,
         }
     }
@@ -75,6 +83,35 @@ impl CmTools {
     /// Attach the managed-data service, enabling the seven `data.*` tools.
     pub fn with_data(mut self, service: Arc<mm_data::DataService>) -> Self {
         self.data = Some(DataTools::new(service));
+        self
+    }
+
+    /// Attach the downstream agent runtime, enabling `agent.run`.
+    pub fn with_agent(mut self, agent: Arc<AgentRuntime>) -> Self {
+        if let Some(metamind) = &mut self.metamind {
+            metamind.set_agent(Arc::clone(&agent));
+        }
+        self.agent = Some(agent);
+        self
+    }
+
+    /// Attach the metamind services, enabling the five `metamind.*` tools.
+    pub fn with_metamind(
+        mut self,
+        engine: Arc<mm_data::RdfEngine>,
+        data: Arc<mm_data::DataService>,
+        prompts: Arc<mm_prompt::PromptStore>,
+        client: Option<Arc<dyn mm_llm::LlmClient>>,
+        model: Option<String>,
+    ) -> Self {
+        self.metamind = Some(MetamindTools::new(
+            engine,
+            data,
+            Arc::clone(&self.state),
+            prompts,
+            client,
+            model,
+        ));
         self
     }
 
@@ -88,6 +125,11 @@ impl CmTools {
     /// The state service behind the tools.
     pub fn state(&self) -> &Arc<StateService> {
         &self.state
+    }
+
+    /// The default session bound for direct tool calls.
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 
     /// The advertised schemas, without requiring the trait in scope.
@@ -113,7 +155,7 @@ impl CmTools {
             "conversation.depth" => self.depth(session_id, arguments, action).await,
             "conversation.status" => self.status(session_id, arguments, action).await,
             "conversation.frame" => self.frame(session_id, arguments, action).await,
-            "agent.run" => self.agent_run(arguments).await,
+            "agent.run" => self.agent_run(session_id, arguments).await,
             name if is_data_tool(name) => match &self.data {
                 Some(data) => data
                     .dispatch(name, arguments)
@@ -122,6 +164,16 @@ impl CmTools {
                 None => Err(ToolFailure::new(
                     "NOT_AVAILABLE",
                     format!("{name} requires the managed-data service"),
+                )),
+            },
+            name if is_metamind_tool(name) => match &self.metamind {
+                Some(metamind) => metamind
+                    .dispatch(session_id, name, arguments)
+                    .await
+                    .map_err(ToolFailure::from),
+                None => Err(ToolFailure::new(
+                    "NOT_AVAILABLE",
+                    format!("{name} requires the metamind services"),
                 )),
             },
             _ => Err(ToolFailure::new(
@@ -422,31 +474,83 @@ impl CmTools {
         }
     }
 
-    async fn agent_run(&self, arguments: &Value) -> std::result::Result<Value, ToolFailure> {
-        let input = string_field(arguments, "input")?;
-        if input.trim().is_empty() {
+    async fn agent_run(
+        &self,
+        session_id: &str,
+        arguments: &Value,
+    ) -> std::result::Result<Value, ToolFailure> {
+        let input = string_field(arguments, "input")?.trim().to_owned();
+        if input.is_empty() {
             return Err(ToolFailure::invalid(
                 Some("input"),
                 "agent input must not be empty",
             ));
         }
-        // Phase 2 only reserves the typed entry point. The downstream Hermes/Pi
-        // turn loop lands in Phase 8; no shell, URL, or model call runs here.
+        if input.chars().count() > 8_000 {
+            return Err(ToolFailure::invalid(
+                Some("input"),
+                "agent input exceeds 8000 characters",
+            ));
+        }
+        let kind = match arguments.get("agent").and_then(Value::as_str) {
+            None | Some("hermes") => AgentKind::Hermes,
+            Some("pi") => AgentKind::Pi,
+            Some(other) => {
+                return Err(ToolFailure::invalid(
+                    Some("agent"),
+                    format!("unknown agent {other}"),
+                ))
+            }
+        };
         let run_id = arguments
             .get("run_id")
             .and_then(Value::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(mm_data::rdf::new_id);
-        let agent = arguments
-            .get("agent")
+            .map(str::to_owned);
+        let workspace = arguments
+            .get("workspace")
             .and_then(Value::as_str)
-            .unwrap_or("hermes");
+            .map(std::path::PathBuf::from);
+        let agent = self.agent.as_ref().ok_or_else(|| {
+            ToolFailure::new(
+                "NOT_AVAILABLE",
+                "agent.run requires the downstream agent runtime",
+            )
+        })?;
+        let result = agent
+            .run(AgentCall {
+                input,
+                run_id,
+                kind,
+                workspace,
+                parent_session: session_id.to_owned(),
+                user_id: CONSOLE_USER.to_owned(),
+                origin: AgentOrigin::Cm,
+            })
+            .await
+            .map_err(agent_failure)?;
         Ok(json!({
-            "runId": run_id,
-            "agent": agent,
-            "status": "queued",
-            "input": input,
-            "summary": "The agent backend is not connected until Phase 8.",
+            "runId": result.run_id,
+            "kind": match kind {
+                AgentKind::Hermes => "hermes",
+                AgentKind::Pi => "pi",
+            },
+            "status": serde_json::to_value(result.status).unwrap_or_else(|_| json!("unknown")),
+            "turn": result.turn,
+            "workspace": result.workspace.display().to_string(),
+            "next": next_label(result.status, result.next.as_deref()),
+            "message": result.message,
+            "compactSummary": result.summary,
+            "summary": result.summary_detail,
+            "artifacts": result.artifacts,
+            "toolCalls": result.tool_calls,
+            "usage": {
+                "promptTokens": result.usage.prompt_tokens,
+                "completionTokens": result.usage.completion_tokens,
+            },
+            "streamed": result.streamed,
+            "model": result.model,
+            "rawRef": result.raw_ref,
+            "error": result.error,
         }))
     }
 
@@ -572,6 +676,27 @@ impl ToolHandler for CmTools {
                 DATA_WRITE_TIMEOUT
             }
             "data.query" | "data.search" => DATA_READ_TIMEOUT,
+            "metamind.plan" | "metamind.think" => Duration::from_secs(90),
+            "metamind.memory" => match action.as_deref() {
+                Some("remember") | Some("forget") => DATA_WRITE_TIMEOUT,
+                _ => DATA_READ_TIMEOUT,
+            },
+            "metamind.log" => match action.as_deref() {
+                Some("append") => DATA_WRITE_TIMEOUT,
+                _ => DATA_READ_TIMEOUT,
+            },
+            "metamind.act" => match action.as_deref() {
+                Some("plan_start")
+                | Some("plan_stop")
+                | Some("plan_pause")
+                | Some("plan_resume")
+                | Some("plan_retry_step")
+                | Some("plan_advance_step")
+                | Some("plan_complete")
+                | Some("plan_abandon")
+                | Some("cancel") => DATA_READ_TIMEOUT,
+                _ => Duration::from_secs(30),
+            },
             _ => STUB_TOOL_TIMEOUT,
         };
         let action_for_call = action.clone();
@@ -734,6 +859,18 @@ impl ToolFailure {
     }
 }
 
+impl From<MetamindToolError> for ToolFailure {
+    fn from(error: MetamindToolError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            field: error.field,
+            retryable: error.retryable,
+            next: error.next,
+        }
+    }
+}
+
 impl From<DataToolError> for ToolFailure {
     fn from(error: DataToolError) -> Self {
         Self {
@@ -775,6 +912,71 @@ impl From<ConversationError> for ToolFailure {
 impl From<ToolFailure> for ToolErrorBody {
     fn from(failure: ToolFailure) -> Self {
         failure.body()
+    }
+}
+
+fn next_label(status: AgentRunStatus, next: Option<&str>) -> String {
+    match status {
+        AgentRunStatus::Running | AgentRunStatus::Waiting => next.unwrap_or("continue").to_owned(),
+        AgentRunStatus::WaitingInput => "wait_for_user".into(),
+        AgentRunStatus::Done => "done".into(),
+        AgentRunStatus::Failed => "failed".into(),
+        AgentRunStatus::Cancelled => "cancelled".into(),
+        AgentRunStatus::Queued => "continue".into(),
+    }
+}
+
+fn agent_failure(error: AgentError) -> ToolFailure {
+    match error {
+        AgentError::Unavailable(reason) => ToolFailure {
+            code: "UNAVAILABLE".into(),
+            message: format!("agent backend unavailable: {reason}"),
+            field: None,
+            retryable: true,
+            next: Some("start or check the configured Hermes service and retry".into()),
+        },
+        AgentError::Rejected(reason) => {
+            ToolFailure::invalid(None, format!("agent request rejected: {reason}"))
+        }
+        AgentError::Timeout(ms) => ToolFailure {
+            code: "TIMEOUT".into(),
+            message: format!("agent turn timed out after {ms} ms"),
+            field: None,
+            retryable: true,
+            next: Some(
+                "call agent.run again with the same run_id to check the turn; it will not start a duplicate"
+                    .into(),
+            ),
+        },
+        AgentError::NotFound { run_id, active } => ToolFailure {
+            code: "NOT_FOUND".into(),
+            message: format!("unknown agent run {run_id}"),
+            field: Some("run_id".into()),
+            retryable: false,
+            next: Some(if active.is_empty() {
+                "omit run_id to start a new run".into()
+            } else {
+                format!("active runs: {}", active.join(", "))
+            }),
+        },
+        AgentError::RunTerminal(run) => ToolFailure {
+            code: "RUN_TERMINAL".into(),
+            message: format!("agent run {} is already terminal", run.run_id),
+            field: Some("run_id".into()),
+            retryable: false,
+            next: Some("omit run_id to start a new run".into()),
+        },
+        AgentError::Budget(reason) => ToolFailure::new("BUDGET", reason),
+        AgentError::WorkspaceEscape { path, root } => ToolFailure::new(
+            "FORBIDDEN",
+            format!(
+                "workspace {} is outside the allowed root {}",
+                path.display(),
+                root.display()
+            ),
+        ),
+        AgentError::Prompt(reason) => ToolFailure::new("PROMPT_UNAVAILABLE", reason),
+        AgentError::Other(reason) => ToolFailure::new("INTERNAL", reason),
     }
 }
 

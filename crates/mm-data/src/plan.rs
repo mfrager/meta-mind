@@ -6,16 +6,90 @@
 //! representation and planner loop arrive later.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::engine::RdfEngine;
+use crate::rdf::{self, iri, lit, next_revision, now_ms, typed_lit, MMD_NS, MM_NS, XSD_NS};
 
 /// Maximum steps in one plan.
 pub const MAX_PLAN_STEPS: usize = 64;
 /// Maximum direct dependencies per step.
 pub const MAX_STEP_DEPENDENCIES: usize = 8;
 /// Maximum goal length.
-pub const MAX_GOAL_CHARS: usize = 500;
+pub const MAX_GOAL_CHARS: usize = 4_000;
+/// Maximum plan body length.
+pub const MAX_PLAN_BODY_CHARS: usize = 128_000;
+
+/// The `plan` graph alias.
+pub const PLAN_GRAPH: &str = "plan";
+/// `mm:Plan`.
+pub const MM_PLAN: &str = "https://metamind.dev/ontology#Plan";
+/// `mm:PlanVersion`.
+pub const MM_PLAN_VERSION: &str = "https://metamind.dev/ontology#PlanVersion";
+/// `mm:PlanRegistry`.
+pub const MM_PLAN_REGISTRY: &str = "https://metamind.dev/ontology#PlanRegistry";
+/// The singleton registry IRI.
+pub const PLAN_REGISTRY_IRI: &str = "https://metamind.dev/data/plan-registry";
+/// The `mm:hasPlan` predicate.
+pub const MM_HAS_PLAN: &str = "https://metamind.dev/ontology#hasPlan";
+/// The `mm:currentVersion` predicate.
+pub const MM_CURRENT_VERSION: &str = "https://metamind.dev/ontology#currentVersion";
+
+/// How a plan is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanFormat {
+    /// A markdown body.
+    #[default]
+    Markdown,
+    /// An `mm.plan.v1` object.
+    Structured,
+}
+
+impl PlanFormat {
+    /// Parse the tool's `format` value.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "markdown" => Some(Self::Markdown),
+            "structured" => Some(Self::Structured),
+            _ => None,
+        }
+    }
+}
+
+/// Who owns a plan or step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanOwner {
+    /// The conversation manager.
+    #[default]
+    Cm,
+    /// A delegated agent run.
+    Agent,
+    /// The operator.
+    Operator,
+    /// A scheduled internal action.
+    Action,
+    /// The user.
+    User,
+}
+
+impl PlanOwner {
+    /// Parse the tool value.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "cm" => Some(Self::Cm),
+            "agent" => Some(Self::Agent),
+            "operator" => Some(Self::Operator),
+            "action" => Some(Self::Action),
+            "user" => Some(Self::User),
+            _ => None,
+        }
+    }
+}
 
 /// Plan status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +107,12 @@ pub enum PlanStatus {
     Cancelled,
     /// A step failed.
     Failed,
+    /// Stopped by a plan control; resumable.
+    Stopped,
+    /// Completed successfully.
+    Completed,
+    /// Abandoned without success.
+    Abandoned,
 }
 
 impl PlanStatus {
@@ -43,7 +123,10 @@ impl PlanStatus {
 
     /// Whether the plan is finished.
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Done | Self::Cancelled | Self::Failed)
+        matches!(
+            self,
+            Self::Done | Self::Cancelled | Self::Failed | Self::Completed | Self::Abandoned
+        )
     }
 }
 
@@ -63,6 +146,8 @@ pub enum PlanStepStatus {
     Skipped,
     /// Waiting on a dependency/input.
     Blocked,
+    /// Cancelled by a stop control.
+    Cancelled,
 }
 
 impl PlanStepStatus {
@@ -104,6 +189,30 @@ pub struct PlanStep {
     /// Last run instant.
     #[serde(default)]
     pub last_run_at: Option<i64>,
+    /// Who must execute the step.
+    #[serde(default)]
+    pub owner: PlanOwner,
+    /// How completion is verified.
+    #[serde(default)]
+    pub verification: Option<String>,
+    /// Last error, preserved across retries.
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// Agent run currently executing the step.
+    #[serde(default)]
+    pub agent_run_id: Option<String>,
+    /// Step start instant.
+    #[serde(default)]
+    pub started_at: Option<i64>,
+    /// Step finish instant.
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+    /// Earliest retry instant after a failed attempt.
+    #[serde(default)]
+    pub next_attempt_at: Option<i64>,
+    /// Last monitor decision instant.
+    #[serde(default)]
+    pub last_monitor_at: Option<i64>,
 }
 
 impl PlanStep {
@@ -120,6 +229,14 @@ impl PlanStep {
             attempts: 0,
             runs: 0,
             last_run_at: None,
+            owner: PlanOwner::Cm,
+            verification: None,
+            last_error: None,
+            agent_run_id: None,
+            started_at: None,
+            finished_at: None,
+            next_attempt_at: None,
+            last_monitor_at: None,
         }
     }
 }
@@ -163,6 +280,32 @@ pub struct Plan {
     pub cancellation: PlanCancellation,
     /// Final result summary.
     pub result: Option<String>,
+    /// Markdown or structured.
+    #[serde(default)]
+    pub format: PlanFormat,
+    /// The current version's body (markdown or canonical JSON).
+    #[serde(default)]
+    pub body: String,
+    /// Current immutable version number.
+    #[serde(default = "one")]
+    pub current_version: u32,
+    /// Plan owner.
+    #[serde(default)]
+    pub owner: PlanOwner,
+    /// Whether the monitor may advance it.
+    #[serde(default = "yes")]
+    pub monitor: bool,
+    /// Last plan-monitor decision instant.
+    #[serde(default)]
+    pub last_monitor_at: Option<i64>,
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Plan {
@@ -185,6 +328,12 @@ impl Plan {
             updated_at: now_ms,
             cancellation: PlanCancellation::default(),
             result: None,
+            format: PlanFormat::Markdown,
+            body: String::new(),
+            current_version: 1,
+            owner: PlanOwner::Cm,
+            monitor: true,
+            last_monitor_at: None,
         }
     }
 
@@ -225,6 +374,12 @@ impl Plan {
             return Err(PlanError::Invalid(format!(
                 "goal must be 1–{MAX_GOAL_CHARS} characters"
             )));
+        }
+        if self.body.chars().count() > MAX_PLAN_BODY_CHARS {
+            return Err(PlanError::Invalid("plan body exceeds its limit".into()));
+        }
+        if self.current_version == 0 {
+            return Err(PlanError::Invalid("version must be positive".into()));
         }
         if self.steps.len() > MAX_PLAN_STEPS {
             return Err(PlanError::TooManySteps);
@@ -325,6 +480,7 @@ impl Plan {
             .find(|step| step.id == step_id)
             .ok_or_else(|| PlanError::UnknownStep(step_id.to_owned()))?;
         step.status = PlanStepStatus::Running;
+        step.started_at = Some(now_ms);
         self.current_step = Some(step_id.to_owned());
         self.touch(now_ms);
         Ok(())
@@ -356,6 +512,10 @@ impl Plan {
             .ok_or_else(|| PlanError::UnknownStep(step_id.to_owned()))?;
         step.status = status;
         step.result = result;
+        if status == PlanStepStatus::Failed {
+            step.last_error = step.result.clone();
+        }
+        step.finished_at = Some(now_ms);
         if self.current_step.as_deref() == Some(step_id) {
             self.current_step = None;
         }
@@ -427,6 +587,8 @@ pub enum PlanControl {
         /// Step id.
         step_id: String,
     },
+    /// Stop the plan; resumable.
+    Stop,
     /// Cancel the plan.
     Cancel,
     /// Abandon the plan without success.
@@ -508,12 +670,20 @@ impl PlanRegistry {
         }
         match &request.control {
             PlanControl::Start => {
-                if !matches!(plan.status, PlanStatus::Draft | PlanStatus::Paused) {
+                if !matches!(
+                    plan.status,
+                    PlanStatus::Draft | PlanStatus::Paused | PlanStatus::Stopped
+                ) {
                     return Err(PlanError::Invalid(
                         "plan cannot start from its current status".into(),
                     ));
                 }
                 plan.status = PlanStatus::Active;
+                for step in &mut plan.steps {
+                    if step.status == PlanStepStatus::Blocked {
+                        step.status = PlanStepStatus::Pending;
+                    }
+                }
             }
             PlanControl::Pause => {
                 if plan.status != PlanStatus::Active {
@@ -527,11 +697,25 @@ impl PlanRegistry {
                 }
                 plan.status = PlanStatus::Active;
             }
+            PlanControl::Stop => {
+                if !matches!(plan.status, PlanStatus::Active | PlanStatus::Paused) {
+                    return Err(PlanError::Invalid(
+                        "only an active or paused plan can stop".into(),
+                    ));
+                }
+                plan.status = PlanStatus::Stopped;
+                for step in &mut plan.steps {
+                    if step.status == PlanStepStatus::Running {
+                        step.status = PlanStepStatus::Cancelled;
+                    }
+                }
+                plan.current_step = None;
+            }
             PlanControl::Complete => {
                 if !plan.all_steps_satisfied() {
                     return Err(PlanError::Invalid("plan has unsatisfied steps".into()));
                 }
-                plan.status = PlanStatus::Done;
+                plan.status = PlanStatus::Completed;
                 plan.current_step = None;
                 plan.result = request.note.clone();
             }
@@ -539,8 +723,23 @@ impl PlanRegistry {
                 if plan.status != PlanStatus::Active {
                     return Err(PlanError::Invalid("plan is not active".into()));
                 }
-                if let Some(step) = plan.ready_steps().first().map(|step| step.id.clone()) {
-                    plan.start_step(&step, now_ms)?;
+                let step = plan
+                    .current_step
+                    .clone()
+                    .or_else(|| plan.ready_steps().first().map(|step| step.id.clone()));
+                if let Some(step_id) = step {
+                    let step = plan
+                        .steps
+                        .iter_mut()
+                        .find(|step| step.id == step_id)
+                        .ok_or_else(|| PlanError::UnknownStep(step_id.clone()))?;
+                    step.status = PlanStepStatus::Done;
+                    step.result = request.note.clone();
+                    step.finished_at = Some(now_ms);
+                    plan.current_step = None;
+                    if plan.all_steps_satisfied() {
+                        plan.status = PlanStatus::Done;
+                    }
                 } else if plan.all_steps_satisfied() {
                     plan.status = PlanStatus::Done;
                 } else {
@@ -563,6 +762,7 @@ impl PlanRegistry {
                 }
                 step.status = PlanStepStatus::Pending;
                 step.attempts = step.attempts.saturating_add(1);
+                step.finished_at = None;
                 plan.status = PlanStatus::Active;
                 plan.current_step = None;
             }
@@ -574,7 +774,10 @@ impl PlanRegistry {
                 plan.cancellation.reason = request.note.clone();
             }
             PlanControl::Abandon => {
-                plan.status = PlanStatus::Failed;
+                if plan.status.is_terminal() {
+                    return Err(PlanError::Invalid("plan is already terminal".into()));
+                }
+                plan.status = PlanStatus::Abandoned;
                 plan.current_step = None;
                 plan.result = request.note.clone();
             }
@@ -593,6 +796,133 @@ impl PlanRegistry {
     }
 }
 
+/// One immutable plan version.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanVersion {
+    /// Owning plan.
+    pub plan_id: String,
+    /// One-based version.
+    pub version: u32,
+    /// Markdown or structured.
+    pub format: PlanFormat,
+    /// Markdown body or canonical `mm.plan.v1` JSON.
+    pub body: String,
+    /// Structured steps (empty for markdown).
+    #[serde(default)]
+    pub steps: Vec<PlanStep>,
+    /// Creation instant.
+    pub created_at: i64,
+    /// `cm`, `user`, or `action`.
+    pub created_by: String,
+}
+
+impl PlanVersion {
+    /// Validate the version envelope.
+    pub fn validate(&self) -> Result<(), PlanError> {
+        if self.plan_id.trim().is_empty() {
+            return Err(PlanError::Invalid("version must name a plan".into()));
+        }
+        if self.version == 0 {
+            return Err(PlanError::Invalid("version must be positive".into()));
+        }
+        if self.body.chars().count() > MAX_PLAN_BODY_CHARS {
+            return Err(PlanError::Invalid("plan body exceeds its limit".into()));
+        }
+        if self.format == PlanFormat::Structured {
+            parse_structured_plan(&self.body, &self.plan_id, 1)?;
+        }
+        Ok(())
+    }
+}
+
+/// A parsed `mm.plan.v1` document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StructuredPlan {
+    /// Schema id; must be `mm.plan.v1`.
+    pub schema: String,
+    /// Goal statement.
+    pub goal: String,
+    /// Assumptions.
+    #[serde(default)]
+    pub assumptions: Vec<String>,
+    /// Steps.
+    pub steps: Vec<StructuredStep>,
+    /// Risks.
+    #[serde(default)]
+    pub risks: Vec<String>,
+    /// Open questions.
+    #[serde(default)]
+    pub open_questions: Vec<String>,
+    /// Success criteria.
+    #[serde(default)]
+    pub success_criteria: Vec<String>,
+}
+
+/// One step in a structured plan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StructuredStep {
+    /// Stable id.
+    pub id: String,
+    /// Short title.
+    pub title: String,
+    /// Optional detail.
+    #[serde(default)]
+    pub detail: Option<String>,
+    /// Dependencies.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// Verification text.
+    #[serde(default)]
+    pub verification: Option<String>,
+    /// Owner (`cm`, `agent`, `operator`).
+    #[serde(default)]
+    pub owner: Option<String>,
+}
+
+/// Parse and validate an `mm.plan.v1` body into executable steps.
+pub fn parse_structured_plan(body: &str, plan_id: &str, revision: u64) -> Result<Plan, PlanError> {
+    let structured: StructuredPlan = serde_json::from_str(body)
+        .map_err(|error| PlanError::Invalid(format!("invalid structured plan: {error}")))?;
+    if structured.schema != "mm.plan.v1" {
+        return Err(PlanError::Invalid(
+            "structured plan schema must be mm.plan.v1".into(),
+        ));
+    }
+    let mut plan = Plan::new(plan_id, "unknown", structured.goal.clone(), now_ms());
+    plan.format = PlanFormat::Structured;
+    plan.body = body.to_owned();
+    plan.revision = revision.max(1);
+    plan.steps = structured
+        .steps
+        .into_iter()
+        .map(|step| {
+            let mut out = PlanStep::new(step.id, step.title);
+            out.detail = step.detail;
+            out.depends_on = step.depends_on;
+            out.verification = step.verification;
+            if let Some(owner) = step.owner.as_deref() {
+                out.owner = PlanOwner::parse(owner)
+                    .ok_or_else(|| PlanError::Invalid(format!("unknown step owner {owner:?}")))?;
+            }
+            Ok(out)
+        })
+        .collect::<Result<Vec<_>, PlanError>>()?;
+    plan.validate()?;
+    Ok(plan)
+}
+
+/// A validated plan write ready for storage.
+pub struct PlanWrite {
+    /// The plan header.
+    pub plan: Plan,
+    /// The new immutable version.
+    pub version: PlanVersion,
+    /// Revision the caller read before building this write.
+    pub expected_revision: u64,
+}
+
 /// Persistence seam for plans. Phase 1 implements the RDF-backed store.
 #[async_trait::async_trait]
 pub trait PlanStore: Send + Sync {
@@ -602,6 +932,308 @@ pub trait PlanStore: Send + Sync {
     async fn save(&self, plan: &Plan, expected_revision: u64) -> Result<Plan, PlanError>;
     /// List plans for a session.
     async fn list(&self, session_id: &str) -> Result<Vec<Plan>, PlanError>;
+    /// Save a plan and one immutable version atomically.
+    async fn save_version(&self, write: &PlanWrite) -> Result<Plan, PlanError>;
+    /// Load one version.
+    async fn load_version(
+        &self,
+        plan_id: &str,
+        version: u32,
+    ) -> Result<Option<PlanVersion>, PlanError>;
+    /// Every version, oldest first.
+    async fn versions(&self, plan_id: &str) -> Result<Vec<PlanVersion>, PlanError>;
+    /// Apply one lifecycle control with revision checking.
+    async fn control(&self, request: &PlanControlRequest) -> Result<PlanControlReceipt, PlanError>;
+}
+
+/// The RDF-backed plan store and registry writer.
+#[derive(Debug, Clone)]
+pub struct RdfPlanStore {
+    engine: Arc<RdfEngine>,
+}
+
+impl RdfPlanStore {
+    /// Build over the data layer's engine.
+    pub fn new(engine: Arc<RdfEngine>) -> Self {
+        Self { engine }
+    }
+
+    /// Load the singleton registry projection.
+    pub async fn registry(&self) -> Result<PlanRegistryView, PlanError> {
+        if let Some(mut payload) =
+            rdf::load_as::<PlanRegistryView>(&self.engine, PLAN_GRAPH, PLAN_REGISTRY_IRI)
+                .await
+                .map_err(store_error)?
+        {
+            payload.plans.sort();
+            return Ok(payload);
+        }
+        let mut plans: Vec<String> = self
+            .list_plans()
+            .await?
+            .into_iter()
+            .filter(|plan| !plan.status.is_terminal())
+            .map(|plan| plan.id)
+            .collect();
+        plans.sort();
+        Ok(PlanRegistryView { revision: 1, plans })
+    }
+
+    async fn write_plan(
+        &self,
+        plan: &Plan,
+        expected_revision: u64,
+        version: Option<&PlanVersion>,
+    ) -> Result<Plan, PlanError> {
+        plan.validate()?;
+        let current = self.load(&plan.id).await?;
+        let current_revision = current.as_ref().map_or(0, |value| value.revision);
+        if expected_revision != current_revision {
+            return Err(PlanError::Conflict {
+                expected: expected_revision,
+                current: current_revision,
+            });
+        }
+        if let Some(version) = version {
+            version.validate()?;
+            if version.version != plan.current_version || version.plan_id != plan.id {
+                return Err(PlanError::Invalid(
+                    "version does not match the plan header".into(),
+                ));
+            }
+        }
+
+        let plan_graph = crate::graphs::resolve_graph(PLAN_GRAPH);
+        let subject = plan_subject(&plan.id);
+        let mut inserts = entity_quads(
+            &plan_graph,
+            &subject,
+            MM_PLAN,
+            Some(&plan.goal),
+            &serde_json::to_value(plan).map_err(|error| PlanError::Invalid(error.to_string()))?,
+        );
+        inserts.push(RdfEngine::quad(
+            &plan_graph,
+            &subject,
+            MM_CURRENT_VERSION,
+            iri(plan_version_subject(&plan.id, plan.current_version)),
+        ));
+        let mut deletes = self
+            .engine
+            .store()
+            .quads_for_subject(&plan_graph, &subject)
+            .await
+            .map_err(store_error)?;
+
+        if let Some(version) = version {
+            inserts.extend(entity_quads(
+                &plan_graph,
+                &plan_version_subject(&plan.id, version.version),
+                MM_PLAN_VERSION,
+                Some(&format!("{} v{}", plan.goal, version.version)),
+                &serde_json::to_value(version)
+                    .map_err(|error| PlanError::Invalid(error.to_string()))?,
+            ));
+        }
+
+        let mut plans: BTreeSet<String> = self
+            .list_plans()
+            .await?
+            .into_iter()
+            .map(|existing| existing.id)
+            .collect();
+        if plan.status.is_terminal() && plan.status != PlanStatus::Stopped {
+            plans.remove(&plan.id);
+        } else {
+            plans.insert(plan.id.clone());
+        }
+        let registry_revision = self
+            .registry()
+            .await
+            .map(|registry| registry.revision.saturating_add(1))
+            .unwrap_or(1);
+        let registry = PlanRegistryView {
+            revision: registry_revision,
+            plans: plans.into_iter().collect(),
+        };
+        let registry_graph = crate::graphs::resolve_graph(PLAN_GRAPH);
+        deletes.extend(
+            self.engine
+                .store()
+                .quads_for_subject(&registry_graph, PLAN_REGISTRY_IRI)
+                .await
+                .map_err(store_error)?,
+        );
+        inserts.extend(entity_quads(
+            &registry_graph,
+            PLAN_REGISTRY_IRI,
+            MM_PLAN_REGISTRY,
+            Some("Plan registry"),
+            &serde_json::to_value(&registry)
+                .map_err(|error| PlanError::Invalid(error.to_string()))?,
+        ));
+        for plan_id in &registry.plans {
+            inserts.push(RdfEngine::quad(
+                &registry_graph,
+                PLAN_REGISTRY_IRI,
+                MM_HAS_PLAN,
+                iri(plan_subject(plan_id)),
+            ));
+        }
+
+        self.engine
+            .store()
+            .handle()
+            .apply_batch(mm_store_graph::GraphBatch { deletes, inserts })
+            .await
+            .map_err(store_error)?;
+        Ok(plan.clone())
+    }
+
+    async fn list_plans(&self) -> Result<Vec<Plan>, PlanError> {
+        let mut plans: Vec<Plan> = rdf::list_as(&self.engine, PLAN_GRAPH, MM_PLAN)
+            .await
+            .map_err(store_error)?;
+        plans.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(plans)
+    }
+}
+
+/// The registry projection stored alongside the plan graph.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanRegistryView {
+    /// Registry revision.
+    pub revision: u64,
+    /// Current non-terminal plan ids.
+    pub plans: Vec<String>,
+}
+
+pub(crate) fn plan_subject(plan_id: &str) -> String {
+    if plan_id.starts_with("http") || plan_id.starts_with("urn:") {
+        plan_id.to_owned()
+    } else {
+        format!("{MMD_NS}plan/{plan_id}")
+    }
+}
+
+fn plan_version_subject(plan_id: &str, version: u32) -> String {
+    format!("{}/version/{version}", plan_subject(plan_id))
+}
+
+pub(crate) fn entity_quads(
+    graph: &str,
+    subject: &str,
+    class: &str,
+    name: Option<&str>,
+    payload: &serde_json::Value,
+) -> Vec<oxrdf::Quad> {
+    let mut stamped = payload.clone();
+    if let serde_json::Value::Object(map) = &mut stamped {
+        map.insert("_rev".to_owned(), serde_json::Value::from(next_revision()));
+    }
+    let mut quads = vec![
+        RdfEngine::quad(graph, subject, rdf::RDF_TYPE, iri(class)),
+        RdfEngine::quad(
+            graph,
+            subject,
+            rdf::PAYLOAD,
+            lit(serde_json::to_string(&stamped).unwrap_or_default()),
+        ),
+        RdfEngine::quad(
+            graph,
+            subject,
+            rdf::REVISION,
+            typed_lit(
+                next_revision().to_string(),
+                &format!("{XSD_NS}unsignedLong"),
+            ),
+        ),
+        RdfEngine::quad(
+            graph,
+            subject,
+            rdf::UPDATED_AT,
+            typed_lit(now_ms().to_string(), &format!("{XSD_NS}dateTime")),
+        ),
+    ];
+    if let Some(name) = name {
+        quads.push(RdfEngine::quad(
+            graph,
+            subject,
+            &format!("{MM_NS}name"),
+            lit(name),
+        ));
+    }
+    quads
+}
+
+fn store_error(error: impl std::fmt::Display) -> PlanError {
+    PlanError::Unavailable(error.to_string())
+}
+
+#[async_trait::async_trait]
+impl PlanStore for RdfPlanStore {
+    async fn load(&self, plan_id: &str) -> Result<Option<Plan>, PlanError> {
+        rdf::load_as(&self.engine, PLAN_GRAPH, &plan_subject(plan_id))
+            .await
+            .map_err(store_error)
+    }
+
+    async fn save(&self, plan: &Plan, expected_revision: u64) -> Result<Plan, PlanError> {
+        self.write_plan(plan, expected_revision, None).await
+    }
+
+    async fn list(&self, session_id: &str) -> Result<Vec<Plan>, PlanError> {
+        let mut plans = self.list_plans().await?;
+        plans.retain(|plan| plan.session_id == session_id);
+        Ok(plans)
+    }
+
+    async fn save_version(&self, write: &PlanWrite) -> Result<Plan, PlanError> {
+        self.write_plan(&write.plan, write.expected_revision, Some(&write.version))
+            .await
+    }
+
+    async fn load_version(
+        &self,
+        plan_id: &str,
+        version: u32,
+    ) -> Result<Option<PlanVersion>, PlanError> {
+        rdf::load_as(
+            &self.engine,
+            PLAN_GRAPH,
+            &plan_version_subject(plan_id, version),
+        )
+        .await
+        .map_err(store_error)
+    }
+
+    async fn versions(&self, plan_id: &str) -> Result<Vec<PlanVersion>, PlanError> {
+        let mut versions: Vec<PlanVersion> =
+            rdf::list_as(&self.engine, PLAN_GRAPH, MM_PLAN_VERSION)
+                .await
+                .map_err(store_error)?;
+        versions.retain(|version| version.plan_id == plan_id);
+        versions.sort_by_key(|version| version.version);
+        Ok(versions)
+    }
+
+    async fn control(&self, request: &PlanControlRequest) -> Result<PlanControlReceipt, PlanError> {
+        let plan = self
+            .load(&request.plan_id)
+            .await?
+            .ok_or_else(|| PlanError::NotFound(request.plan_id.clone()))?;
+        let mut registry = PlanRegistry::new();
+        registry.upsert(plan)?;
+        let receipt = registry.control(request, now_ms())?;
+        let updated = registry
+            .get(&request.plan_id)
+            .cloned()
+            .ok_or_else(|| PlanError::Invalid("plan disappeared from the registry".into()))?;
+        self.write_plan(&updated, request.expected_revision, None)
+            .await?;
+        Ok(receipt)
+    }
 }
 
 /// Plan failures.
@@ -613,6 +1245,9 @@ pub enum PlanError {
     /// Step or plan confusion.
     #[error("unknown step {0}")]
     UnknownStep(String),
+    /// Plan missing.
+    #[error("unknown plan {0}")]
+    NotFound(String),
     /// A dependency is missing.
     #[error("step {step} depends on unknown step {dependency}")]
     UnknownDependency {

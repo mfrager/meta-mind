@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "metamind.memory.v1"
+application = "memory"
+budget = "memory"
 version = 1
 description = "Memory recall/write."
 fragments = ["identity", "memory_guidance", "style"]

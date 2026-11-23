@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "cm.tutorial.v1"
+application = "frame.tutorial"
+budget = "frame"
 version = 1
 description = "Tutorial walkthrough."
 fragments = ["identity", "contract", "tutorial", "style"]

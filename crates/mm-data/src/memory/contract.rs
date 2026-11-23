@@ -14,7 +14,7 @@ pub const MAX_RECALL: usize = 50;
 pub const MAX_MEMORY_VALUE: usize = 8_192;
 
 /// Memory scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryScope {
     /// Current session.

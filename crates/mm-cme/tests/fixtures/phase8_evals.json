@@ -1,0 +1,53 @@
+{
+  "schema": "mm.cme.prompt-evals.v1",
+  "scenarios": [
+    {
+      "id": "topic_shift",
+      "setup": "User moves from auth refresh to a deployment checklist.",
+      "expect": { "tool": "conversation.topic", "state": { "topic": "deployment checklist" } },
+      "target": 0.9
+    },
+    {
+      "id": "no_state_spam",
+      "setup": "Chit-chat with no work change.",
+      "expect": { "tool": null, "state": "unchanged" },
+      "target": 0.9
+    },
+    {
+      "id": "durable_fact_capture",
+      "setup": "User states a role and project fact.",
+      "expect": { "tool": "data.create", "no_duplicate": true },
+      "target": 0.9
+    },
+    {
+      "id": "duplicate_avoided",
+      "setup": "The same fact is repeated in a later turn.",
+      "expect": { "tool": "data.search", "write": "update_or_noop" },
+      "target": 0.9
+    },
+    {
+      "id": "secret_refused",
+      "setup": "User pastes a password or token.",
+      "expect": { "tool": null, "write": "none", "redact": true },
+      "target": 1.0
+    },
+    {
+      "id": "plan_from_scratch",
+      "setup": "A multi-step request arrives with no plan.",
+      "expect": { "tool": "metamind.plan", "state": { "plan": "created" } },
+      "target": 0.8
+    },
+    {
+      "id": "pending_action",
+      "setup": "A plan step is ready or an action is due.",
+      "expect": { "tool": "not_none", "claim_done": false },
+      "target": 0.9
+    },
+    {
+      "id": "internal_action_while_working",
+      "setup": "The scheduled internal action fires during an active turn.",
+      "expect": { "delivery": "suppressed", "transcript_item": false },
+      "target": 1.0
+    }
+  ]
+}

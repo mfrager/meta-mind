@@ -8,8 +8,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use mm_data::{ConversationState, FrameStack, SessionState};
-use mm_prompt::{PromptError, PromptInstance, PromptStore};
+use mm_data::{ConversationState, FrameStack, SessionBundle, SessionState};
+use mm_prompt::{PromptError, PromptInstance, PromptRequest, PromptStore};
+
+use crate::budget::BudgetSnapshot;
+use crate::session::SessionContext;
+use crate::state_block::{BudgetProjection, StateView, UserProjection};
 use thiserror::Error;
 
 /// The complete slot map for one prompt rendering.
@@ -61,6 +65,36 @@ impl PromptVariables {
         variables.set("session_id", &session.session_id);
         variables.set("user_id", &session.user_id);
         variables.set("state_json", conversation.status_json()?);
+        let user = UserProjection {
+            iri: "mmd:current-user".into(),
+            entity: session.user_id.clone(),
+            name: session.user_id.clone(),
+            workspace: String::new(),
+        };
+        let budget = BudgetSnapshot {
+            class: "standard",
+            rounds: 32,
+            steps: 96,
+            tokens: 120_000,
+            wall_ms: 600_000,
+            estimated: false,
+        };
+        let view = StateView::from_parts(
+            conversation,
+            session,
+            frames,
+            user,
+            BudgetProjection::from(budget),
+        );
+        variables.set_view(&view)?;
+        variables.set("being_name", "Metamind");
+        variables.set("being_version", "1");
+        variables.set("being_values", "honesty, continuity, care");
+        variables.set(
+            "tools_summary",
+            "conversation.*, data.*, metamind.*, agent.run",
+        );
+        variables.set("tone", "warm, direct, honest");
         variables.set("topic", conversation.topic.clone().unwrap_or_default());
         variables.set("depth", conversation.depth.to_string());
         variables.set("revision", conversation.revision.to_string());
@@ -101,6 +135,120 @@ impl PromptVariables {
         self.set(key, value);
         self
     }
+
+    /// Project a bounded state view into prompt slots.
+    pub fn set_view(&mut self, view: &StateView) -> Result<(), PromptingError> {
+        let block = view
+            .render()
+            .map_err(|error| PromptingError::State(error.to_string()))?;
+        self.set("state_block", block.text);
+        self.set(
+            "state_json",
+            serde_json::to_string(view)
+                .map_err(|error| PromptingError::State(error.to_string()))?,
+        );
+        self.set("revision", view.revision.to_string());
+        self.set("topic", view.topic.clone().unwrap_or_default());
+        self.set("depth", view.depth.to_string());
+        self.set("pending_summary", view.pending_summary());
+        self.set("frame_kind", view.frames.top.clone().unwrap_or_default());
+        self.set("frame_step", view.frames.step.clone().unwrap_or_default());
+        self.set("frame_attempt", view.frames.attempt.to_string());
+        self.set("user_name", view.user.name.clone());
+        self.set("user_iri", view.user.iri.clone());
+        self.set("canonical_user", view.user.entity.clone());
+        self.set("workspace_label", view.user.workspace.clone());
+        self.set("budget_class", view.budget.class.clone());
+        self.set("budget_rounds", view.budget.rounds.to_string());
+        self.set("budget_tokens", view.budget.tokens.to_string());
+        self.set("budget_wall_ms", view.budget.wall_ms.to_string());
+        self.set(
+            "memory_summary",
+            format!(
+                "{} episodic memories, {} segments",
+                view.memory.episodic, view.memory.segments
+            ),
+        );
+        Ok(())
+    }
+
+    /// A safe set for direct executor tests and callers without a state store.
+    /// The state block is explicitly unavailable rather than invented.
+    pub fn for_turn(plan: &crate::turn::TurnPlan, session: &SessionContext) -> Self {
+        let mut variables = Self::new();
+        variables.set("user_input", truncate(&plan.user_query, 8_000));
+        variables.set("session_id", plan.session_id.to_string());
+        variables.set("user_id", "operator");
+        variables.set(
+            "project_name",
+            session
+                .memory
+                .project_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
+        );
+        variables.set(
+            "previous_summary",
+            session.memory.project_summary.clone().unwrap_or_default(),
+        );
+        variables.set("previous_topics", session.memory.previous_topics.join("; "));
+        variables.set(
+            "state_block",
+            crate::state_block::StateBlock::unavailable(
+                "conversation state was not supplied to this executor",
+            )
+            .text,
+        );
+        variables.set("being_name", "Metamind");
+        variables.set("being_version", "1");
+        variables.set("being_values", "honesty, continuity, care");
+        variables.set("user_name", "operator");
+        variables.set("user_iri", "mmd:current-user");
+        variables.set("canonical_user", "mmd:current-user");
+        variables.set("user_locale", "en");
+        variables.set("user_timezone", "UTC");
+        variables.set("workspace_label", "workspace");
+        variables.set(
+            "tools_summary",
+            "conversation.*, data.*, metamind.*, agent.run",
+        );
+        variables.set("tone", "warm, direct, honest");
+        variables.set("pending_summary", "none");
+        variables.set("frame_kind", "work");
+        variables.set("frame_step", "task");
+        variables.set("frame_attempt", "0");
+        variables.set("memory_summary", "no recall supplied");
+        variables.set("budget_class", "standard");
+        variables.set("budget_rounds", "32");
+        variables.set("budget_tokens", "120000");
+        variables.set("budget_wall_ms", "600000");
+        variables
+    }
+
+    /// Build a turn variable map from a loaded session bundle and budget.
+    pub fn from_bundle(
+        bundle: &SessionBundle,
+        user: UserProjection,
+        budget: BudgetSnapshot,
+    ) -> Result<Self, PromptingError> {
+        let mut variables = Self::new();
+        let view = StateView::from_bundle(bundle, user, BudgetProjection::from(budget));
+        variables.set_view(&view)?;
+        variables.set("session_id", bundle.session.session_id.clone());
+        variables.set("user_id", bundle.session.user_id.clone());
+        variables.set("being_name", "Metamind");
+        variables.set("being_version", "1");
+        variables.set("being_values", "honesty, continuity, care");
+        variables.set("user_locale", "en");
+        variables.set("user_timezone", "UTC");
+        variables.set(
+            "tools_summary",
+            "conversation.*, data.*, metamind.*, agent.run",
+        );
+        variables.set("tone", "warm, direct, honest");
+        Ok(variables)
+    }
 }
 
 /// Slots the common prompt tree may reference. A strategy may declare more.
@@ -108,8 +256,15 @@ pub const STANDARD_SLOTS: &[&str] = &[
     "session_id",
     "user_id",
     "user_name",
+    "user_iri",
+    "canonical_user",
+    "user_locale",
+    "user_timezone",
     "being_name",
+    "being_version",
+    "being_values",
     "workspace_label",
+    "state_block",
     "state_json",
     "topic",
     "depth",
@@ -138,6 +293,13 @@ pub const STANDARD_SLOTS: &[&str] = &[
     "plan_state",
     "memory_query",
     "memory_context",
+    "memory_summary",
+    "pending_summary",
+    "budget_class",
+    "budget_rounds",
+    "budget_tokens",
+    "budget_wall_ms",
+    "repair_reason",
     "thought_question",
     "log_query",
     "log_entries",
@@ -170,6 +332,14 @@ impl CmePromptManager {
         variables: &PromptVariables,
     ) -> Result<PromptInstance, PromptingError> {
         Ok(self.store.render(strategy, variables.as_map())?)
+    }
+
+    /// Select a strategy and render the complete message envelope.
+    pub fn render_request(
+        &self,
+        request: &PromptRequest,
+    ) -> Result<PromptInstance, PromptingError> {
+        Ok(self.store.render_request(request)?)
     }
 
     /// Render with a set of non-standard slots added to the standard map.

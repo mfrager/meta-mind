@@ -44,6 +44,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod budget;
 pub mod chunk;
 pub mod dashboard;
 pub mod driver;
@@ -62,16 +63,19 @@ pub mod regions;
 pub mod report;
 pub mod routing;
 pub mod session;
+pub mod state_block;
+pub mod subagent;
 pub mod turn;
 pub mod voice;
 
+pub use budget::{BudgetClass, BudgetError, BudgetLedger, BudgetLimits, BudgetSnapshot};
 pub use chunk::{Chunk, ChunkDirective, ChunkEvent, ChunkId, ChunkKind, ChunkState};
 pub use dashboard::{Dashboard, Panel, PanelKind, ViewingContext};
 pub use driver::{DriverMessage, SessionDriver};
 pub use error::{CmeError, Result};
 pub use executor::{
-    ConfirmationHandler, DenyUnconfirmed, ToolHandler, TurnExecutor, TurnLoopPolicy,
-    UnavailableTools,
+    ConfirmationHandler, DenyUnconfirmed, PromptContextProvider, ToolHandler, TurnExecutor,
+    TurnLoopPolicy, UnavailableTools,
 };
 pub use frames::{FrameEngine, FrameError, FrameTimerView};
 pub use hill_climb::{climb, HillClimbConfig, HillClimbResult, HillClimbStep, Optimizable};
@@ -113,6 +117,16 @@ pub use routing::{ConversationRouter, ConversationRoutingRequest, RoutingTable};
 pub use session::{
     AffectState, MemoryContext, PreferenceProfile, Session, SessionBudgets, SessionContext,
     SessionEvent, SessionState, REGION_NAMES,
+};
+pub use state_block::{
+    ActionsProjection, AgentProjection, BudgetProjection, DataProjection, FramesProjection,
+    MemoryProjection, PendingItem, PlansProjection, SessionProjection, StateBlock, StateBlockError,
+    StateView, UserProjection, WorkProjection, MAX_STATE_BLOCK_BYTES,
+};
+pub use subagent::{
+    control_request, read_only_schemas, IntrospectionFinding, IntrospectionReport,
+    IntrospectionService, PlanResult, PlanService, SubagentError, ThinkEvidence, ThinkFinding,
+    ThinkResult, ThinkService,
 };
 pub use turn::{
     ChunkEmission, ToolCallEmission, Turn, TurnEvent, TurnOutcome, TurnPlan, TurnPlanMetadata,

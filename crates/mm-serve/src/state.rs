@@ -9,20 +9,31 @@
 //! and `OPENAI_API_KEY` (already loaded from `<repo>/.env` by `main`).
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use std::time::Duration;
 
+use async_trait::async_trait;
+use mm_agent::{AgentRuntime, ExternalWorkPort, TurnSummarizer};
 use mm_being::BeingFacade;
-use mm_cme::{ConversationRouter, RoutingTable, TurnExecutor};
+use mm_cme::{
+    BudgetClass, BudgetLedger, ConversationRouter, FrameEngine, PromptContextProvider,
+    PromptVariables, RoutingTable, TurnExecutor, UserProjection,
+};
 use mm_core::{Config, MmError, UlidFactory};
 use mm_data::{
-    initialize_data_layer, AgentstreamStore, InitConfig, InitResult, MemorySystem, RdfEngine,
+    initialize_data_layer, ActionStore, AgentstreamStore, InitConfig, InitResult,
+    InternalActionRegistry, MemorySystem, RdfEngine, RdfLogService, RdfPlanStore,
 };
 use mm_eventlog::EventLog;
-use mm_llm::{LlmConfig, ProviderEnv, ThresholdRouter};
+use mm_llm::{LlmClient, LlmConfig, OpenAiClient, ProviderEnv, ThresholdRouter};
 use mm_log::Logger;
 use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
 
+use crate::automation::{
+    ActionExecutor, AutomationConfig, AutomationDeps, AutomationManager, PromptActionExecutor,
+    PromptFrameExecutor,
+};
 use crate::chat::ChatCatalog;
 use crate::cm_tools::CmTools;
 use crate::cme::CmeRuntime;
@@ -33,7 +44,11 @@ use crate::dto::{
 };
 use crate::error::AppError;
 use crate::feature_flags::FeatureFlags;
+use crate::interjection::InterjectionRouter;
+use crate::metrics::Metrics;
+use crate::plan_monitor::PlanMonitor;
 use crate::state_service::StateService;
+use crate::status_service::StatusService;
 use crate::trees::TreeCatalog;
 
 /// Everything the request handlers share.
@@ -78,12 +93,26 @@ pub struct AppState {
     pub rdf_engine: Arc<RdfEngine>,
     /// The data layer's agentstream store.
     pub agentstream: Arc<AgentstreamStore>,
+    /// Phase 6 downstream agent runs (Hermes).
+    pub agent: Arc<AgentRuntime>,
     /// Phase 7 feature flags.
     pub features: FeatureFlags,
     /// Conversation-engine sessions and their drivers.
     pub cme: Arc<CmeRuntime>,
     /// Phase 1/2 conversation state and session operations.
     pub state_service: Arc<StateService>,
+    /// Phase 9 per-session automation supervisors.
+    pub automation: Option<Arc<AutomationManager>>,
+    /// Phase 9 global plan monitor.
+    pub plan_monitor: Option<Arc<PlanMonitor>>,
+    /// RDF plan store used by the monitor and the inspector.
+    pub plans: Arc<RdfPlanStore>,
+    /// Scheduled-action store used by automation and the inspector.
+    pub actions: Arc<ActionStore>,
+    /// Phase 10 dirty-section status service and SSE broadcast.
+    pub status_service: Arc<StatusService>,
+    /// Process metrics.
+    pub metrics: Arc<Metrics>,
 }
 
 impl AppState {
@@ -176,19 +205,110 @@ impl AppState {
         let rdf_engine = Arc::clone(&data.engine);
         let agentstream = Arc::clone(&data.agentstream);
         let cme = Arc::new(CmeRuntime::new(Arc::clone(&memory_system), features));
-        let prompts = mm_prompt::PromptStore::load(Config::repo_root().join("config/prompts"))
-            .map_err(|error| MmError::Internal(format!("prompt tree failed: {error}")))?;
+        let prompts = Arc::new(
+            mm_prompt::PromptStore::load(Config::repo_root().join("config/prompts"))
+                .map_err(|error| MmError::Internal(format!("prompt tree failed: {error}")))?,
+        );
         let state_service = Arc::new(
             StateService::new(
                 Arc::clone(&rdf_engine),
                 Arc::clone(&agentstream),
-                Arc::new(prompts),
+                Arc::clone(&prompts),
                 data.base_dir.clone(),
             )
             .map_err(|error| {
                 MmError::Internal(format!("conversation state service failed: {error}"))
             })?,
         );
+        let llm_config = LlmConfig::load_or_default(&Config::repo_root().join("config/llm.toml"))
+            .unwrap_or_default();
+        let summarizer_client = OpenAiClient::new(&llm_config)
+            .ok()
+            .map(|client| Arc::new(client) as Arc<dyn LlmClient>);
+        let action_client = summarizer_client.clone();
+        let summarizer = TurnSummarizer::new(
+            summarizer_client,
+            Arc::clone(&prompts),
+            llm_config.defaults.default_model.clone(),
+        );
+        let agents_path = Config::repo_root().join("config/agents.toml");
+        let agent = Arc::new(
+            AgentRuntime::from_env(
+                Arc::clone(&agentstream),
+                Arc::clone(&prompts),
+                data.base_dir.clone(),
+                summarizer,
+                Some(&agents_path),
+            )
+            .await,
+        );
+        let action_registry = Arc::new(InternalActionRegistry::builtin());
+        let actions = Arc::new(ActionStore::new(
+            Arc::clone(&rdf_engine),
+            Arc::clone(&action_registry),
+        ));
+        let logs = Arc::new(RdfLogService::new(Arc::clone(&rdf_engine)));
+        let plans: Arc<RdfPlanStore> = Arc::new(RdfPlanStore::new(Arc::clone(&rdf_engine)));
+        let automation = features.automation_v1.then(|| {
+            let config =
+                AutomationConfig::load(&Config::repo_root().join("config/automation.toml"));
+            let action_executor = Arc::new(PromptActionExecutor::new(
+                Arc::clone(&state_service),
+                Arc::clone(&logs),
+                Arc::clone(&prompts),
+                Arc::clone(&action_registry),
+                action_client.clone(),
+                llm_config.defaults.default_model.clone(),
+            )) as Arc<dyn ActionExecutor>;
+            let frame_executor = Arc::new(PromptFrameExecutor::new(
+                FrameEngine::new(Arc::clone(&prompts)),
+                action_client.clone(),
+                llm_config.defaults.default_model.clone(),
+            )) as Arc<dyn crate::automation::FrameExecutor>;
+            let interjections = Arc::new(
+                InterjectionRouter::defaults()
+                    .map_err(|error| MmError::Internal(format!("interjection policy: {error}")))?,
+            );
+            Ok::<Arc<AutomationManager>, MmError>(Arc::new(AutomationManager::new(
+                AutomationDeps {
+                    state: Arc::clone(&state_service),
+                    actions: Arc::clone(&actions),
+                    logs: Arc::clone(&logs),
+                    frames: FrameEngine::new(Arc::clone(&prompts)),
+                    action_executor,
+                    frame_executor,
+                    interjections,
+                    disabled_kinds: AutomationConfig::disabled_kinds(),
+                    config,
+                },
+            )))
+        });
+        let automation = match automation {
+            Some(Ok(automation)) => Some(automation),
+            Some(Err(error)) => return Err(error),
+            None => None,
+        };
+        let plan_monitor = if features.automation_v1 {
+            Some(Arc::new(PlanMonitor::new(
+                Arc::clone(&plans),
+                Arc::clone(&state_service),
+                Arc::clone(&agent) as Arc<dyn ExternalWorkPort>,
+            )))
+        } else {
+            None
+        };
+        let metrics = Arc::new(Metrics::default());
+        let status_service = Arc::new(StatusService::new(
+            Arc::clone(&state_service),
+            Arc::clone(&data.data_service),
+            Arc::clone(&agent),
+            Arc::clone(&plans),
+            Arc::clone(&actions),
+            Arc::clone(&logs),
+            Arc::clone(&prompts),
+            automation.clone(),
+            Arc::clone(&metrics),
+        ));
 
         logger
             .emit(
@@ -199,7 +319,7 @@ impl AppState {
             )
             .await?;
 
-        Ok(Self {
+        let state = Self {
             started_at: now_ms(),
             cfg,
             sqlite,
@@ -220,10 +340,68 @@ impl AppState {
             memory_system,
             rdf_engine,
             agentstream,
+            agent,
             features,
             cme,
             state_service,
-        })
+            automation,
+            plan_monitor,
+            plans,
+            actions,
+            status_service,
+            metrics,
+        };
+        if let Some(automation) = &state.automation {
+            let mut events = automation.subscribe();
+            let status = Arc::downgrade(&state.status_service);
+            tokio::spawn(async move {
+                loop {
+                    match events.recv().await {
+                        Ok(event) => {
+                            let Some(status) = status.upgrade() else {
+                                break;
+                            };
+                            if matches!(event.kind.as_str(), "action" | "frame") {
+                                status.metrics().automation_emission();
+                            }
+                            status.mark_dirty_many(
+                                &event.session_id,
+                                [
+                                    crate::status_service::StatusSection::Automation,
+                                    crate::status_service::StatusSection::Actions,
+                                    crate::status_service::StatusSection::Frames,
+                                ],
+                            );
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+        }
+        if let Some(monitor) = &state.plan_monitor {
+            let monitor = Arc::downgrade(monitor);
+            tokio::spawn(async move {
+                // Do not hold the monitor through an idle wait; a dropped
+                // console must release the graph store immediately.
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                loop {
+                    let Some(monitor) = monitor.upgrade() else {
+                        break;
+                    };
+                    let decisions = monitor.tick(mm_data::rdf::now_ms()).await;
+                    drop(monitor);
+                    for decision in decisions {
+                        eprintln!(
+                            "mm-serve: plan monitor {} step={:?}: {}",
+                            decision.action, decision.step_id, decision.detail
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_secs(15)).await;
+                }
+            });
+        }
+        Ok(state)
     }
 
     /// Build a conversation-engine executor from the current controller model.
@@ -247,17 +425,76 @@ impl AppState {
         );
         let table = RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
             .unwrap_or_default();
-        TurnExecutor::with_llm(
+        let tool_client = Arc::clone(&client);
+        let model = config.defaults.default_model.clone();
+        let executor = TurnExecutor::with_llm(
             client,
             ConversationRouter::with_table(Arc::new(router), table),
         )
-        .with_tools(Arc::new(
-            CmTools::new(Arc::clone(&self.state_service))
-                .with_data(Arc::clone(&self.data.data_service)),
-        ))
-        .with_loop_policy(mm_cme::TurnLoopPolicy::ContinueUntilDone)
+        .with_prompts(Arc::clone(self.state_service.prompts()))
+        .with_prompt_provider(Arc::new(SessionPromptProvider {
+            state: Arc::downgrade(self),
+        }));
+        // `MM_CM_V3` selects the conversation-manager contract surface. It is on
+        // by default; turning it off leaves the legacy console controller reachable
+        // and gives the CME executor a plain model round with no CM tools.
+        let executor = if self.features.cm_v3 {
+            executor.with_tools(Arc::new(
+                CmTools::new(Arc::clone(&self.state_service))
+                    .with_data(Arc::clone(&self.data.data_service))
+                    .with_metamind(
+                        Arc::clone(&self.rdf_engine),
+                        Arc::clone(&self.data.data_service),
+                        Arc::clone(self.state_service.prompts()),
+                        Some(tool_client),
+                        model,
+                    )
+                    .with_agent(Arc::clone(&self.agent)),
+            ))
+        } else {
+            executor
+        };
+        executor.with_loop_policy(mm_cme::TurnLoopPolicy::ContinueUntilDone)
     }
+}
 
+/// Reloads the current session bundle for prompt rebuilds before each model
+/// call, including after a tool-side write. The weak reference avoids an
+/// executor -> state cycle.
+struct SessionPromptProvider {
+    state: Weak<AppState>,
+}
+
+#[async_trait]
+impl PromptContextProvider for SessionPromptProvider {
+    async fn prompt_variables(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<PromptVariables, String> {
+        let state = self
+            .state
+            .upgrade()
+            .ok_or_else(|| "application state is closed".to_owned())?;
+        let bundle = state
+            .state_service
+            .load(session_id)
+            .await
+            .map_err(|error| format!("conversation bundle: {error}"))?;
+        PromptVariables::from_bundle(
+            &bundle,
+            UserProjection {
+                iri: "mmd:current-user".into(),
+                entity: bundle.session.user_id.clone(),
+                name: bundle.session.user_id.clone(),
+                workspace: format!("workspace/{session_id}"),
+            },
+            BudgetLedger::new(BudgetClass::Standard).snapshot(),
+        )
+        .map_err(|error| format!("prompt variables: {error}"))
+    }
+}
+
+impl AppState {
     /// The `GET /api/health` envelope (plan `09` §1).
     ///
     /// `ok` reports whether the server is serving; kernel capability problems
@@ -316,6 +553,34 @@ impl AppState {
             }),
         });
         services.push(llm_status());
+        let agent_status = self.agent.backend_status();
+        let hermes = agent_status
+            .iter()
+            .find(|status| status.kind == mm_agent::AgentKind::Hermes);
+        services.push(match hermes {
+            Some(status) if status.available => ServiceStatus {
+                name: "agent".to_string(),
+                state: ServiceState::Ok,
+                reason: Some(format!(
+                    "Hermes models: {}",
+                    if status.models.is_empty() {
+                        "discovered".to_string()
+                    } else {
+                        status.models.join(", ")
+                    }
+                )),
+            },
+            Some(status) => ServiceStatus {
+                name: "agent".to_string(),
+                state: ServiceState::Unavailable,
+                reason: status.reason.clone(),
+            },
+            None => ServiceStatus {
+                name: "agent".to_string(),
+                state: ServiceState::Unavailable,
+                reason: Some("the agent runtime is not configured".into()),
+            },
+        });
         services.push(match &self.being {
             Some(_) => ServiceStatus {
                 name: "being".to_string(),
@@ -341,9 +606,9 @@ impl AppState {
             });
         }
 
-        let all_ok = services
-            .iter()
-            .all(|service| service.state == ServiceState::Ok || service.name == "llm");
+        let all_ok = services.iter().all(|service| {
+            service.state == ServiceState::Ok || matches!(service.name.as_str(), "llm" | "agent")
+        });
 
         HealthEnvelope {
             ok: true,

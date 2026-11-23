@@ -6,9 +6,13 @@
 //! built-in entertainment action, so the literal appears only in its spec.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::engine::RdfEngine;
+use crate::rdf::{self, new_id, now_ms, MMD_NS};
 
 /// Maximum form fields per action.
 pub const MAX_FORM_FIELDS: usize = 8;
@@ -620,6 +624,373 @@ pub enum ActionError {
 
 /// Result alias for actions.
 pub type Result<T, E = ActionError> = std::result::Result<T, E>;
+
+/// The `action` graph alias.
+pub const ACTION_GRAPH: &str = "action";
+/// `mm:ScheduledAction`.
+pub const MM_SCHEDULED_ACTION: &str = "https://metamind.dev/ontology#ScheduledAction";
+
+/// How often a scheduled action repeats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Recurrence {
+    /// One run.
+    #[default]
+    Once,
+    /// Every day at the same local time.
+    Daily,
+    /// Every week at the same local time.
+    Weekly,
+    /// The cron expression's own cadence.
+    Cron,
+}
+
+impl Recurrence {
+    /// Parse the tool value.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "once" => Some(Self::Once),
+            "daily" => Some(Self::Daily),
+            "weekly" => Some(Self::Weekly),
+            "cron" => Some(Self::Cron),
+            _ => None,
+        }
+    }
+}
+
+/// One durable scheduled action row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduledAction {
+    /// Row id (`mmd:action/<ulid>`).
+    pub id: String,
+    /// Kind, form values, schedule, and idempotency key.
+    pub spec: ScheduledActionSpec,
+    /// Recurrence mode.
+    pub recurrence: Recurrence,
+    /// Next run instant.
+    pub next_run_at: Option<i64>,
+    /// Run cap.
+    pub max_runs: Option<u32>,
+    /// Last update.
+    pub updated_at: i64,
+}
+
+/// An RDF-backed scheduled-action store.
+#[derive(Debug, Clone)]
+pub struct ActionStore {
+    engine: Arc<RdfEngine>,
+    registry: Arc<InternalActionRegistry>,
+}
+
+impl ActionStore {
+    /// Build over the data engine and a reviewed registry.
+    pub fn new(engine: Arc<RdfEngine>, registry: Arc<InternalActionRegistry>) -> Self {
+        Self { engine, registry }
+    }
+
+    /// The registry.
+    pub fn registry(&self) -> &Arc<InternalActionRegistry> {
+        &self.registry
+    }
+
+    /// Schedule one action. A repeated idempotency key returns the existing row.
+    pub async fn schedule(
+        &self,
+        spec: ScheduledActionSpec,
+        recurrence: Recurrence,
+        max_runs: Option<u32>,
+        requested_at: i64,
+    ) -> Result<ScheduledAction> {
+        spec.validate(&self.registry)?;
+        if let Some(input) = &spec.input {
+            if crate::privacy::contains_secret(input) {
+                return Err(ActionError::Invalid(
+                    "action input looks like a secret and was refused".into(),
+                ));
+            }
+        }
+        let existing = self.list(&spec.session_id).await?;
+        if let Some(found) = existing
+            .iter()
+            .find(|action| action.spec.idempotency_key == spec.idempotency_key)
+        {
+            return Ok(found.clone());
+        }
+        let live = existing
+            .iter()
+            .filter(|action| {
+                matches!(
+                    action.spec.status,
+                    ScheduledActionStatus::Scheduled | ScheduledActionStatus::Claimed
+                )
+            })
+            .count();
+        if live >= MAX_SCHEDULED_ACTIONS {
+            return Err(ActionError::Limit);
+        }
+        if matches!(spec.schedule, ScheduleSpec::Cron { .. }) {
+            let cap = std::env::var("MM_AUTOMATION_MAX_CRON_JOBS")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(20);
+            let cron_live = existing
+                .iter()
+                .filter(|action| {
+                    matches!(action.spec.schedule, ScheduleSpec::Cron { .. })
+                        && matches!(
+                            action.spec.status,
+                            ScheduledActionStatus::Scheduled | ScheduledActionStatus::Claimed
+                        )
+                })
+                .count();
+            if cron_live >= cap {
+                return Err(ActionError::Limit);
+            }
+        }
+        if max_runs.is_some_and(|max| max == 0 || max > 1_000) {
+            return Err(ActionError::Invalid("max_runs must be 1–1000".into()));
+        }
+        let next = next_run_at(&spec.schedule, recurrence, requested_at)?;
+        if next <= requested_at && recurrence == Recurrence::Once {
+            return Err(ActionError::Invalid(
+                "a one-shot action must be scheduled in the future".into(),
+            ));
+        }
+        let mut action = ScheduledAction {
+            id: format!("{MMD_NS}action/{}", new_id()),
+            spec,
+            recurrence,
+            next_run_at: Some(next),
+            max_runs,
+            updated_at: requested_at,
+        };
+        action.spec.status = ScheduledActionStatus::Scheduled;
+        self.write(&action).await?;
+        Ok(action)
+    }
+
+    /// One row by id.
+    pub async fn get(&self, action_id: &str) -> Result<Option<ScheduledAction>> {
+        rdf::load_as(&self.engine, ACTION_GRAPH, action_id)
+            .await
+            .map_err(store_error)
+    }
+
+    /// Every row for a session, newest first.
+    pub async fn list(&self, session_id: &str) -> Result<Vec<ScheduledAction>> {
+        let mut actions: Vec<ScheduledAction> =
+            rdf::list_as(&self.engine, ACTION_GRAPH, MM_SCHEDULED_ACTION)
+                .await
+                .map_err(store_error)?;
+        actions.retain(|action| action.spec.session_id == session_id);
+        actions.sort_by_key(|action| std::cmp::Reverse(action.spec.created_at));
+        Ok(actions)
+    }
+
+    /// Cancel a row. Repeated cancellation is a no-op.
+    pub async fn cancel(&self, action_id: &str) -> Result<bool> {
+        let Some(mut action) = self.get(action_id).await? else {
+            return Ok(false);
+        };
+        if matches!(
+            action.spec.status,
+            ScheduledActionStatus::Cancelled | ScheduledActionStatus::Done
+        ) {
+            return Ok(true);
+        }
+        action.spec.status = ScheduledActionStatus::Cancelled;
+        action.next_run_at = None;
+        action.updated_at = now_ms();
+        self.write(&action).await?;
+        Ok(true)
+    }
+
+    /// Claim every due row, marking it running.
+    pub async fn claim_due(&self, at: i64) -> Result<Vec<ScheduledAction>> {
+        let mut all: Vec<ScheduledAction> =
+            rdf::list_as(&self.engine, ACTION_GRAPH, MM_SCHEDULED_ACTION)
+                .await
+                .map_err(store_error)?;
+        all.sort_by_key(|action| action.spec.created_at);
+        self.claim_rows(all, None, at).await
+    }
+
+    /// Claim due rows for one session. A session supervisor never consumes
+    /// another session's actions.
+    pub async fn claim_due_for_session(
+        &self,
+        session_id: &str,
+        at: i64,
+    ) -> Result<Vec<ScheduledAction>> {
+        let mut all = self.list(session_id).await?;
+        all.sort_by_key(|action| action.spec.created_at);
+        self.claim_rows(all, Some(session_id), at).await
+    }
+
+    async fn claim_rows(
+        &self,
+        all: Vec<ScheduledAction>,
+        session_id: Option<&str>,
+        at: i64,
+    ) -> Result<Vec<ScheduledAction>> {
+        let mut claimed = Vec::new();
+        for mut action in all {
+            if session_id.is_some_and(|id| action.spec.session_id != id) {
+                continue;
+            }
+            if action.spec.status != ScheduledActionStatus::Scheduled {
+                continue;
+            }
+            if action.next_run_at.is_none_or(|due| due > at) {
+                continue;
+            }
+            action.spec.status = ScheduledActionStatus::Claimed;
+            action.updated_at = at;
+            self.write(&action).await?;
+            claimed.push(action);
+        }
+        Ok(claimed)
+    }
+
+    /// Record one successful run and advance or finish the schedule.
+    pub async fn finish_run(&self, action_id: &str, at: i64) -> Result<Option<ScheduledAction>> {
+        let Some(mut action) = self.get(action_id).await? else {
+            return Ok(None);
+        };
+        action.spec.runs = action.spec.runs.saturating_add(1);
+        action.spec.last_run_at = Some(at);
+        action.updated_at = at;
+        let capped = action.max_runs.is_some_and(|max| action.spec.runs >= max);
+        if action.recurrence == Recurrence::Once || capped {
+            action.spec.status = ScheduledActionStatus::Done;
+            action.next_run_at = None;
+        } else {
+            action.spec.status = ScheduledActionStatus::Scheduled;
+            action.next_run_at = Some(next_run_at(&action.spec.schedule, action.recurrence, at)?);
+        }
+        self.write(&action).await?;
+        Ok(Some(action))
+    }
+
+    /// Record a failed run.
+    pub async fn fail_run(&self, action_id: &str, at: i64) -> Result<()> {
+        let Some(mut action) = self.get(action_id).await? else {
+            return Ok(());
+        };
+        action.spec.status = ScheduledActionStatus::Failed;
+        action.next_run_at = None;
+        action.updated_at = at;
+        self.write(&action).await
+    }
+
+    async fn write(&self, action: &ScheduledAction) -> Result<()> {
+        let graph = crate::graphs::resolve_graph(ACTION_GRAPH);
+        let payload = serde_json::to_value(action)
+            .map_err(|error| ActionError::Invalid(error.to_string()))?;
+        let payload = serde_json::Value::Object({
+            let mut map = payload.as_object().cloned().unwrap_or_default();
+            map.insert(
+                "_rev".to_owned(),
+                serde_json::Value::from(rdf::next_revision()),
+            );
+            map
+        });
+        let quads = vec![
+            RdfEngine::quad(
+                &graph,
+                &action.id,
+                rdf::RDF_TYPE,
+                rdf::iri(MM_SCHEDULED_ACTION),
+            ),
+            RdfEngine::quad(
+                &graph,
+                &action.id,
+                rdf::PAYLOAD,
+                rdf::lit(serde_json::to_string(&payload).unwrap_or_default()),
+            ),
+            RdfEngine::quad(
+                &graph,
+                &action.id,
+                &format!("{}kind", rdf::MM_NS),
+                rdf::lit(action.spec.kind.clone()),
+            ),
+            RdfEngine::quad(
+                &graph,
+                &action.id,
+                &format!("{}actionStatus", rdf::MM_NS),
+                rdf::lit(format!("{:?}", action.spec.status).to_lowercase()),
+            ),
+        ];
+        let deletes = self
+            .engine
+            .store()
+            .quads_for_subject(&graph, &action.id)
+            .await
+            .map_err(store_error)?;
+        self.engine
+            .store()
+            .handle()
+            .apply_batch(mm_store_graph::GraphBatch {
+                deletes,
+                inserts: quads,
+            })
+            .await
+            .map_err(store_error)?;
+        Ok(())
+    }
+}
+
+fn next_run_at(schedule: &ScheduleSpec, recurrence: Recurrence, from: i64) -> Result<i64> {
+    let base = match schedule {
+        ScheduleSpec::At { at } => *at,
+        ScheduleSpec::Delay { delay_ms } => from.saturating_add(*delay_ms as i64),
+        ScheduleSpec::Cron { .. } => from,
+    };
+    let next = match recurrence {
+        Recurrence::Once => base,
+        Recurrence::Daily => {
+            if base > from {
+                base
+            } else {
+                from.saturating_add(24 * 60 * 60 * 1_000)
+            }
+        }
+        Recurrence::Weekly => {
+            if base > from {
+                base
+            } else {
+                from.saturating_add(7 * 24 * 60 * 60 * 1_000)
+            }
+        }
+        Recurrence::Cron => match schedule {
+            ScheduleSpec::Cron { expression, .. } => next_cron(expression, from)?,
+            _ => from.saturating_add(60_000),
+        },
+    };
+    Ok(next)
+}
+
+/// Minimal five-field cron next-run for the common step/minute forms.
+fn next_cron(expression: &str, from: i64) -> Result<i64> {
+    let fields: Vec<&str> = expression.split_whitespace().collect();
+    if fields.len() != 5 {
+        return Err(ActionError::Invalid("cron must have five fields".into()));
+    }
+    let minute_step = if fields[0] == "*" {
+        1
+    } else if let Some(step) = fields[0].strip_prefix("*/") {
+        step.parse::<i64>()
+            .map_err(|_| ActionError::Invalid("invalid cron minute step".into()))?
+    } else {
+        1
+    };
+    let step_ms = minute_step.max(1) * 60_000;
+    Ok(from.saturating_add(step_ms))
+}
+
+fn store_error(error: impl std::fmt::Display) -> ActionError {
+    ActionError::Unavailable(error.to_string())
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,8 @@
+schema = "mm.prompt.strategy.v1"
+id = "agent.summarize.v1"
+application = "summarize"
+budget = "summarize"
+version = 1
+description = "Summarize one long downstream agent turn before the CM sees it."
+fragments = ["agent_summarize"]
+slots = ["previous_summary", "agent_turn"]

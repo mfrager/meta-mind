@@ -1,5 +1,7 @@
 schema = "mm.prompt.strategy.v1"
 id = "metamind.plan.v1"
+application = "plan"
+budget = "plan"
 version = 1
 description = "Plan creation/refinement."
 fragments = ["identity", "contract", "plan_guidance", "style"]

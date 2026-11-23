@@ -91,6 +91,9 @@ oxrdf = "0.3"
 # --- config + CLI ---
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
+# Typed Pi RPC/JSON models and argv builder. The agent adapter supplies the
+# process transport so the configured binary remains injectable.
+pi-codes = { version = "1.6.0", default-features = false, features = ["types"] }
 
 # --- source analysis ---
 syn = { version = "2", features = ["full", "parsing", "printing", "extra-traits"] }
