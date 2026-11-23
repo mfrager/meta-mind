@@ -117,6 +117,9 @@ pub struct AppState {
     pub status_service: Arc<StatusService>,
     /// Process metrics.
     pub metrics: Arc<Metrics>,
+    /// Phase 5 durable process supervisor, built lazily after boot so it can
+    /// resolve the controller's model through the assembled state.
+    pub process: std::sync::OnceLock<Arc<mm_process::ProcessEngine>>,
 }
 
 impl AppState {
@@ -334,6 +337,21 @@ impl AppState {
                 }
             }
         }
+        if features.process_v1 {
+            if prompts.fragment("step_check").is_none() {
+                return Err(MmError::Internal(
+                    "process prompt fragment `step_check` is missing".into(),
+                ));
+            }
+            if prompts.strategy(&three_pass.step.strategy).is_none() {
+                return Err(MmError::Internal(format!(
+                    "process prompt strategy `{}` is missing",
+                    three_pass.step.strategy
+                )));
+            }
+            mm_process::ProcessConfig::load(Config::repo_root().join("config/process.toml"))
+                .map_err(|error| MmError::Internal(format!("process config: {error}")))?;
+        }
         let metrics = Arc::new(Metrics::default());
         let status_service = Arc::new(StatusService::new(
             Arc::clone(&state_service),
@@ -388,6 +406,7 @@ impl AppState {
             actions,
             status_service,
             metrics,
+            process: std::sync::OnceLock::new(),
         };
         if let Some(automation) = &state.automation {
             let mut events = automation.subscribe();
@@ -442,6 +461,108 @@ impl AppState {
         Ok(state)
     }
 
+    /// The lazy Phase 5 process supervisor, when `MM_PROCESS_V1` is enabled.
+    ///
+    /// Construction happens after boot because the step runner resolves the
+    /// controller's model through the assembled state (including a scripted test
+    /// client). The supervisor loop and restart recovery start exactly once.
+    pub fn process_engine(self: &Arc<Self>) -> Result<Arc<mm_process::ProcessEngine>, MmError> {
+        if let Some(engine) = self.process.get() {
+            return Ok(Arc::clone(engine));
+        }
+        if !self.features.process_v1 {
+            return Err(MmError::Internal(
+                "MM_PROCESS_V1 is disabled; no process engine was built".into(),
+            ));
+        }
+        let config_path = Config::repo_root().join("config/process.toml");
+        let config = mm_process::ProcessConfig::load(&config_path)
+            .map_err(|error| MmError::Internal(format!("process config: {error}")))?;
+        let llm_path = Config::repo_root().join("config/llm.toml");
+        let llm = LlmConfig::load_or_default(&llm_path).unwrap_or_default();
+        let client = crate::controller::resolve_client(self, &llm)
+            .ok_or_else(|| MmError::Internal("process pipeline needs a configured model".into()))?;
+        let table =
+            mm_cme::RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
+                .unwrap_or_default();
+        let model = llm
+            .defaults
+            .default_model
+            .clone()
+            .or_else(|| table.default_model.clone());
+        let client: Arc<dyn LlmClient> =
+            match crate::controller::turn::service(self, Arc::clone(&client)) {
+                Some(service) => Arc::new(service),
+                None => client,
+            };
+        let runner = Arc::new(crate::process_runner::ProcessStepRunner::new(
+            Arc::clone(&self.state_service),
+            Arc::clone(&self.rdf_engine),
+            Arc::clone(&self.data.data_service),
+            Arc::clone(&self.agent),
+            Arc::clone(self.state_service.prompts()),
+            client,
+            model,
+            self.three_pass.clone(),
+        ));
+        let store = Arc::new(mm_data::RdfProcessStore::new(Arc::clone(&self.rdf_engine)));
+        let known_tools = crate::tool_schemas::ToolCatalog::embedded()
+            .map(|catalog| {
+                catalog
+                    .schemas()
+                    .iter()
+                    .map(|schema| schema.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|error| MmError::Internal(format!("tool catalog: {error}")))?;
+        let engine = Arc::new(
+            mm_process::ProcessEngine::new(
+                store,
+                runner,
+                config.clone(),
+                Arc::new(mm_process::SystemClock),
+                mm_process::BackendRegistry::empty(),
+                Config::repo_root(),
+                known_tools,
+            )
+            .map_err(|error| MmError::Internal(format!("process engine: {error}")))?,
+        );
+        if self.process.set(Arc::clone(&engine)).is_err() {
+            return Ok(Arc::clone(
+                self.process.get().expect("process engine was set"),
+            ));
+        }
+        let plans = Arc::clone(&self.plans);
+        let supervisor = Arc::clone(&engine);
+        let tick = Duration::from_millis(config.engine.tick_ms.max(50));
+        tokio::spawn(async move {
+            let mut ticks = 0u64;
+            loop {
+                if let Err(error) = supervisor.drain_queue("mm-serve").await {
+                    eprintln!("mm-serve: process queue drain failed: {error}");
+                }
+                ticks = ticks.wrapping_add(1);
+                if ticks.is_multiple_of(300) {
+                    if let Err(error) = supervisor.expire_plans(plans.as_ref()).await {
+                        eprintln!("mm-serve: process plan expiry failed: {error}");
+                    }
+                }
+                tokio::time::sleep(tick).await;
+            }
+        });
+        let recovery = Arc::clone(&engine);
+        tokio::spawn(async move {
+            match recovery.recover().await {
+                Ok(recovered) if !recovered.is_empty() => {
+                    eprintln!("mm-serve: recovered {} processes", recovered.len())
+                }
+                Ok(_) => {}
+                Err(error) => eprintln!("mm-serve: process recovery failed: {error}"),
+            }
+        });
+        Ok(engine)
+    }
+
     /// Build a conversation-engine executor from the current controller model.
     ///
     /// The executor shares the console's full tool catalog through a weak
@@ -470,6 +591,17 @@ impl AppState {
                 Some(service) => Arc::new(service),
                 None => client,
             };
+        let process = if self.features.process_v1 {
+            match self.process_engine() {
+                Ok(engine) => Some(engine),
+                Err(error) => {
+                    eprintln!("mm-serve: process pipeline is unavailable: {error}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let tool_client = Arc::clone(&client);
         let runner_client = Arc::clone(&client);
         let model = config
@@ -499,7 +631,8 @@ impl AppState {
                     Some(Arc::clone(&tool_client)),
                     model.clone(),
                 )
-                .with_agent(Arc::clone(&self.agent));
+                .with_agent(Arc::clone(&self.agent))
+                .with_process(process.clone());
             // A recursive thought gets its own handler fixed to the Think scope,
             // so its read-only contract is enforced by the dispatcher, not only
             // by its prompt. Its runner has no context provider: the thought has
@@ -516,7 +649,8 @@ impl AppState {
                             model.clone(),
                         )
                         .with_agent(Arc::clone(&self.agent))
-                        .with_pass_scope(mm_cme::PassScope::Think),
+                        .with_pass_scope(mm_cme::PassScope::Think)
+                        .with_process(process.clone()),
                 );
                 let think_runner = ThreePassRunner::new(
                     Arc::clone(&runner_client),

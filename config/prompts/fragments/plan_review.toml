@@ -1,0 +1,20 @@
+schema = "mm.prompt.fragment.v1"
+id = "plan_review"
+version = 1
+text = """
+Review the plan against its goal. Judge the plan, not the answer.
+
+Goal:
+{{goal}}
+
+Plan:
+{{plan}}
+
+Notes from an earlier review (may be `none`):
+{{previous_notes}}
+
+Reject a plan when a step is vague, a dependency is missing, steps that must be sequential are
+marked parallel, a verification check is unobservable, or the plan does not actually reach the
+goal. Approve only when the plan is executable as written. Return the JSON object the schema
+requires; `notes` must name each concrete defect.
+"""

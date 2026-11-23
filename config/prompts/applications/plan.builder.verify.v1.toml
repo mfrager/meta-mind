@@ -1,0 +1,9 @@
+schema = "mm.prompt.strategy.v1"
+id = "plan.builder.verify.v1"
+application = "plan.builder.verify"
+version = 1
+description = "Review a generated plan before it becomes a process."
+budget = "quick"
+required_variables = ["goal", "plan", "previous_notes"]
+fragments = ["plan_review", "honesty_contract"]
+slots = ["goal", "plan", "previous_notes"]

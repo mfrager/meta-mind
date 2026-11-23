@@ -1,1123 +1,1204 @@
 [
-  {
-    "name": "agent.run",
-    "description": "Ask an external agent to do work. Give it a plain-language task or a plain-language continuation. It performs one turn and returns what it did, what it needs, and whether it is done. Omit run_id to start a new run; include run_id to continue that run.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "input": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 8000,
-          "description": "The task or continuation in natural language. Do not use shell syntax, URLs, or structured commands as a substitute for describing the work."
-        },
-        "run_id": {
-          "type": "string",
-          "description": "Continue this run. Omit to start a new one."
-        },
-        "agent": {
-          "type": "string",
-          "enum": [
-            "hermes",
-            "pi"
-          ],
-          "description": "Which downstream agent to use. Defaults to the configured backend (Hermes)."
-        },
-        "workspace": {
-          "type": "string",
-          "description": "Optional workspace root. Defaults to the current user's workspace (data/workspace/<user-ulid>). Paths outside the allowed roots require operator confirmation."
-        }
-      },
-      "required": [
-        "input"
-      ]
-    }
-  },
-  {
-    "name": "conversation.status",
-    "description": "Maintain the conversation's working variables: phase, intent, project, tasks, next actions, blockers, questions, notes, focus, frame_step, frame_attempt, awaiting_user, next_utterance_at, and custom variables. The frame stack itself is managed by conversation.frame. The current state is always in [STATE]; get returns the same state explicitly.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "get",
-            "set",
-            "unset"
-          ]
-        },
-        "values": {
-          "type": "object",
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              {
-                "type": "object"
-              }
-            ]
-          },
-          "description": "For set: keys to merge. Objects are accepted only for a Ref value."
-        },
-        "keys": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "For unset: keys to remove."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Required for set/unset. Use the revision from [STATE]."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "conversation.frame",
-    "description": "Read, push, replace, or pop the conversation's frame stack. The top frame is the current conversational context; push a focused frame and pop back when it ends. Also schedule or cancel the next in-character utterance with a natural delay. Frame text comes from config/prompts/frames; frame progress and dynamic values are kept in conversation.status.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "get",
-            "push",
-            "replace",
-            "pop",
-            "schedule",
-            "cancel"
-          ]
-        },
-        "template_id": {
-          "type": "string",
-          "description": "For push/replace: the frame template id, e.g. frame.tutorial_offer. Required for push and replace."
-        },
-        "variables": {
-          "type": "object",
-          "maxProperties": 12,
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 200
-          },
-          "description": "For push/replace: initial dynamic frame values. Keys are frame variable names, not arbitrary status keys; they are written as namespaced status variables."
-        },
-        "delay_ms": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 60000,
-          "description": "For schedule: natural delay before the next utterance. The template adds jitter and checks backoff."
-        },
-        "reason": {
-          "type": "string",
-          "enum": [
-            "silence",
-            "step",
-            "follow_up",
-            "goodbye"
-          ],
-          "description": "Why the utterance is scheduled. Defaults to step."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Required for push/replace/pop/schedule/cancel. Use the revision from [STATE]."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "conversation.topic",
-    "description": "Read or set the name of what the conversation is currently about. A topic is a short plain-language label, not a path or a project record.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "get",
-            "set"
-          ]
-        },
-        "topic": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 160,
-          "description": "The current topic label. Trimmed; no newlines."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Required for set. Use the revision from [STATE]."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "conversation.depth",
-    "description": "Read or set how deep the current topic is. 0 is the top level; each increment is one narrower level.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "get",
-            "set"
-          ]
-        },
-        "depth": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 7,
-          "description": "The drill level of the current topic."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Required for set. Use the revision from [STATE]."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "data.create",
-    "description": "Create one ontology instance from a compact typed description. The type selects the schema and graph; the store mints an IRI when no id is supplied. The entity is validated, written to RDF, and indexed for search in the same operation.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "type": "string",
-          "description": "Compact IRI or class IRI, e.g. foaf:Person, mm:Project, mm:Plan."
-        },
-        "id": {
-          "type": "string",
-          "description": "Optional stable local id or full IRI. Omit to mint one."
-        },
-        "properties": {
-          "type": "object",
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean"
-                ]
-              },
-              {
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "iri": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "iri"
-                ],
-                "additionalProperties": false
-              }
-            ]
-          },
-          "description": "Predicate short names mapped to literal values, lists, or {iri} references."
-        },
-        "schema": {
-          "type": "string",
-          "description": "Optional schema id. Defaults to the catalog entry for the type's namespace."
-        },
-        "graph": {
-          "type": "string",
-          "description": "Optional graph override for an installed namespace. Omit for automatic routing."
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "type",
-        "properties"
-      ]
-    }
-  },
-  {
-    "name": "data.update",
-    "description": "Update one existing ontology instance. Merge adds or replaces the named predicates; replace makes the supplied properties the complete writable set. Revision checking prevents a stale overwrite. The RDF entity is updated and the search document is replaced.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "subject": {
-          "type": "string",
-          "description": "Entity IRI or compact IRI. Required."
-        },
-        "properties": {
-          "type": "object",
-          "additionalProperties": true,
-          "description": "Predicate patch, same value shapes as data.create."
-        },
-        "mode": {
-          "type": "string",
-          "enum": [
-            "merge",
-            "replace"
-          ],
-          "default": "merge"
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "subject",
-        "properties"
-      ]
-    }
-  },
-  {
-    "name": "data.query",
-    "description": "Read ontology instances by class, subject, property filters, namespace, and graph. Returns compact entities, not raw triples or SPARQL rows.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "class": {
-          "type": "string",
-          "description": "Optional class IRI or compact IRI; includes subclasses."
-        },
-        "subject": {
-          "type": "string",
-          "description": "Optional exact entity IRI or compact IRI."
-        },
-        "where": {
-          "type": "object",
-          "additionalProperties": true,
-          "description": "Property filters: exact values, {iri}, or {$contains: ...}."
-        },
-        "graph": {
-          "type": "string",
-          "description": "Optional graph filter."
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Optional namespace prefix filter."
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 20
-        },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 0
-        },
-        "include_deleted": {
-          "type": "boolean",
-          "default": false
-        },
-        "include": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Optional property names to include; defaults to a compact summary."
-        }
-      }
-    }
-  },
-  {
-    "name": "data.delete",
-    "description": "Delete one ontology instance. Soft delete is the default: the entity is marked deleted, excluded from queries and search, and retained for provenance. Hard delete removes its RDF quads and search document and requires explicit authority.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "subject": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string",
-          "enum": [
-            "soft",
-            "hard"
-          ],
-          "default": "soft"
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "reason": {
-          "type": "string",
-          "maxLength": 500
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "subject"
-      ]
-    }
-  },
-  {
-    "name": "data.search",
-    "description": "Full-text search across ontology labels, literal values, class names, and namespaces. Results are entity summaries with a snippet and score; the index is verified against RDF so deleted or missing entities are not returned.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "query": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 500
-        },
-        "class": {
-          "type": "string"
-        },
-        "graph": {
-          "type": "string"
-        },
-        "namespace": {
-          "type": "string"
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50,
-          "default": 10
-        },
-        "snippet": {
-          "type": "boolean",
-          "default": true
-        },
-        "include_deleted": {
-          "type": "boolean",
-          "default": false
-        }
-      },
-      "required": [
-        "query"
-      ]
-    }
-  },
-  {
-    "name": "data.schema",
-    "description": "Read and manage the OWL schema catalog. list and get return compact schema summaries; validate runs SHACL shapes against an entity, class, or graph; register adds an installed schema; activate and deprecate change which schema is authoritative.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "list",
-            "get",
-            "validate",
-            "register",
-            "activate",
-            "deprecate"
-          ]
-        },
-        "schema": {
-          "type": "string",
-          "description": "Schema id, prefix, or namespace IRI."
-        },
-        "prefix": {
-          "type": "string",
-          "description": "For register: compact prefix."
-        },
-        "namespace": {
-          "type": "string",
-          "description": "For register: namespace IRI."
-        },
-        "source": {
-          "type": "string",
-          "description": "For register: builtin, ontology-file path, inline, or registered remote catalog id."
-        },
-        "format": {
-          "type": "string",
-          "enum": [
-            "turtle",
-            "rdfxml"
-          ]
-        },
-        "body": {
-          "type": "string",
-          "description": "For register with source=inline; capped at 64 KiB."
-        },
-        "subject": {
-          "type": "string",
-          "description": "For validate: entity to validate."
-        },
-        "class": {
-          "type": "string",
-          "description": "For validate: class to validate instances of."
-        },
-        "graph": {
-          "type": "string",
-          "description": "For validate: graph to validate."
-        },
-        "include": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "For list/get: classes, properties, shapes, imports."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "data.namespace",
-    "description": "Read and manage compact-IRI namespaces. list returns bindings; bind registers a new namespace for a managed prefix; expand maps a compact IRI to a full IRI; resolve maps a full IRI back to a compact form.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "list",
-            "bind",
-            "expand",
-            "resolve"
-          ]
-        },
-        "prefix": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]{0,31}$"
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Namespace IRI ending in / or #, or a urn: prefix."
-        },
-        "iri": {
-          "type": "string",
-          "description": "Full IRI for resolve, or compact IRI for expand."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "metamind.plan",
-    "description": "Enter a bounded planning session. Create a plan from scratch or from supplied content, update an existing plan into a new version, or read/list plans. Plans may be markdown or a structured plan object; the result is stored in the plan graph and returned to the conversation.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "create",
-            "update",
-            "get",
-            "list"
-          ]
-        },
-        "plan_id": {
-          "type": "string",
-          "description": "Required for update/get; optional for create."
-        },
-        "goal": {
-          "type": "string",
-          "maxLength": 4000,
-          "description": "What the plan is for. Required for create when no content is supplied."
-        },
-        "format": {
-          "type": "string",
-          "enum": [
-            "markdown",
-            "structured"
-          ],
-          "default": "markdown"
-        },
-        "content": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object"
-            }
-          ],
-          "description": "Markdown text or the structured mm.plan.v1 object. Omit to let the planner generate it."
-        },
-        "instructions": {
-          "type": "string",
-          "maxLength": 4000,
-          "description": "Additional planning constraints or update instructions."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Required for update."
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "metamind.think",
-    "description": "Run a private inner-thought sub-agent. It receives a question and optional focus entities, may call read-only data tools, and returns findings with evidence and confidence. The inner voice never speaks to the operator; the outer conversation manager composes the reply in character.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "question": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000
-        },
-        "context": {
-          "type": "string",
-          "maxLength": 8000,
-          "description": "Optional context from the conversation that the thinker needs."
-        },
-        "focus": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 8,
-          "description": "Entity IRIs or compact IRIs to start from."
-        },
-        "depth": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 3,
-          "default": 2
-        },
-        "persist": {
-          "type": "boolean",
-          "default": false,
-          "description": "Retain the thought result as an mm:Thought. The raw agentstream trace is retained regardless."
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "question"
-      ]
-    }
-  },
-  {
-    "name": "metamind.memory",
-    "description": "Access the memory subsystem. Recall relevant memories, explicitly remember a durable episode, forget a memory, or inspect memory health. This is memory, not ontology facts; use data.* for typed knowledge.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "recall",
-            "remember",
-            "forget",
-            "status"
-          ]
-        },
-        "query": {
-          "type": "string",
-          "maxLength": 4000,
-          "description": "Required for recall; optional for status filtering."
-        },
-        "kinds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "episodic",
-              "semantic",
-              "project",
-              "user"
-            ]
-          },
-          "maxItems": 4,
-          "default": [
-            "episodic",
-            "semantic",
-            "project"
-          ]
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 20,
-          "default": 6
-        },
-        "memory_id": {
-          "type": "string",
-          "description": "Required for forget."
-        },
-        "content": {
-          "type": "string",
-          "maxLength": 4000,
-          "description": "Required for remember."
-        },
-        "importance": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "default": 0.5
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "maxItems": 12
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "metamind.log",
-    "description": "Read or append session logs through one common API. Sources are the session's agentstream traces and RDF mm:LogEntry instances. Use overview for counts/health, latest for the newest entries, segment for a stable paginated slice, and append for an ad hoc RDF log entry.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "overview",
-            "latest",
-            "segment",
-            "append"
-          ]
-        },
-        "source": {
-          "type": "string",
-          "enum": [
-            "all",
-            "agentstream",
-            "rdf"
-          ],
-          "default": "all"
-        },
-        "session_id": {
-          "type": "string",
-          "description": "Defaults to the current session. Other sessions require operator authority."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "Optional trace filter; defaults to the main trace for agentstream reads."
-        },
-        "kinds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "maxItems": 8
-        },
-        "level": {
-          "type": "string",
-          "enum": [
-            "trace",
-            "debug",
-            "info",
-            "warn",
-            "error"
-          ],
-          "description": "Minimum level for returned entries."
-        },
-        "query": {
-          "type": "string",
-          "maxLength": 500,
-          "description": "Optional text filter over message/summary only."
-        },
-        "since": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "until": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "cursor": {
-          "type": "string",
-          "maxLength": 512,
-          "description": "Opaque segment cursor returned by a previous page."
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 20
-        },
-        "message": {
-          "type": "string",
-          "maxLength": 4096,
-          "description": "For append: the log message. Secrets are refused."
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "maxItems": 12,
-          "description": "For append."
-        },
-        "refs": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "maxItems": 8,
-          "description": "For append: optional session/entity/trace references."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-  {
-    "name": "metamind.act",
-    "description": "Run or schedule a registered internal action kind through a generic form and scheduler; control a plan (start, stop, pause, resume, retry a step, advance, complete, abandon); cancel a pending action or cron job; or invoke introspection. The kind is data looked up in the action registry, not an API method or a new tool.",
-    "parameters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "internal",
-            "introspection",
-            "plan_start",
-            "plan_stop",
-            "plan_pause",
-            "plan_resume",
-            "plan_retry_step",
-            "plan_advance_step",
-            "plan_complete",
-            "plan_abandon",
-            "cancel"
-          ]
-        },
-        "kind": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "description": "For internal: a registered internal-action kind. This is a data value, not a method name."
-        },
-        "input": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "description": "Natural-language subject, instruction, or reason. Required for internal and introspection actions; optional for plan control and cancel."
-        },
-        "parameters": {
-          "type": "object",
-          "maxProperties": 12,
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              }
-            ]
-          },
-          "description": "For internal: values for the registry kind's form schema. Invalid fields are rejected."
-        },
-        "mode": {
-          "type": "string",
-          "enum": [
-            "immediate",
-            "scheduled"
-          ],
-          "default": "immediate"
-        },
-        "plan_id": {
-          "type": "string",
-          "description": "Required for plan control actions."
-        },
-        "step_id": {
-          "type": "string",
-          "description": "Required for plan_retry_step and plan_advance_step."
-        },
-        "action_id": {
-          "type": "string",
-          "description": "Required for cancel; the scheduled action or cron job to remove."
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Optional plan revision guard for plan control."
-        },
-        "schedule": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "at": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "delay_seconds": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 2592000
-            },
-            "cron": {
-              "type": "string",
-              "maxLength": 128,
-              "description": "Five-field cron expression, e.g. '*/5 * * * *'. Validated by tokio-cron-scheduler."
-            },
-            "timezone": {
-              "type": "string",
-              "default": "UTC",
-              "description": "IANA timezone for cron expressions."
-            },
-            "recurrence": {
-              "type": "string",
-              "enum": [
-                "once",
-                "daily",
-                "weekly",
-                "cron"
-              ],
-              "default": "once"
-            },
-            "max_runs": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000
-            }
-          }
-        },
-        "priority": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "default": 0.5
-        },
-        "reason": {
-          "type": "string",
-          "maxLength": 500
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 128
-        }
-      },
-      "required": [
-        "action"
-      ]
-    }
-  },
-    {
-      "name": "metamind.verify",
-      "description": "Register verification checks for this turn. Call this in the Interpret pass when the request needs work. Each check names a backend and its configuration. Registering zero checks with a process context asks the runtime to add the default action check.",
-      "parameters": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "checks": {
-            "type": "array",
-            "maxItems": 8,
-            "description": "Checks the Verify pass should run. Empty is allowed only on an action turn, where the default check is added.",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "label": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 64,
-                  "description": "Unique label for this check."
-                },
-                "description": {
-                  "type": "string",
-                  "maxLength": 2000,
-                  "description": "What is being verified."
-                },
-                "details": {
-                  "type": "string",
-                  "maxLength": 2000,
-                  "description": "Additional detail for the backend."
-                },
-                "backend": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 64,
-                  "description": "Verification backend id, for example llm_judge."
-                },
-                "backend_params": {
-                  "type": "object",
-                  "description": "Backend-specific configuration."
-                },
-                "confidence_threshold": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "default": 0.5,
-                  "description": "Acceptance threshold."
-                }
-              },
-              "required": [
-                "label",
-                "backend"
-              ]
-            }
-          },
-          "process": {
-            "type": "object",
-            "additionalProperties": false,
-            "description": "Optional context for the Process pass. Omitted values are derived from the request.",
-            "properties": {
-              "task": {
-                "type": "string",
-                "maxLength": 8000,
-                "description": "One-sentence restatement of the task."
-              },
-              "constraints": {
-                "type": "array",
-                "maxItems": 8,
-                "items": {
-                  "type": "string",
-                  "maxLength": 300
-                },
-                "description": "Constraints the Process pass must respect."
-              },
-              "suggested_tools": {
-                "type": "array",
-                "maxItems": 19,
-                "items": {
-                  "type": "string",
-                  "maxLength": 64
-                },
-                "description": "Advisory tool subset."
-              }
-            }
-          }
-        },
-        "required": [
-          "checks"
-        ]
-      }
+ {
+  "name": "agent.run",
+  "description": "Ask an external agent to do work. Give it a plain-language task or a plain-language continuation. It performs one turn and returns what it did, what it needs, and whether it is done. Omit run_id to start a new run; include run_id to continue that run.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "input": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 8000,
+     "description": "The task or continuation in natural language. Do not use shell syntax, URLs, or structured commands as a substitute for describing the work."
     },
-    {
-      "name": "metamind.approve",
-      "description": "End the turn. In the Interpret pass, approve a pure-conversation turn and supply the reply (fast path). In the Verify pass, approve the Process reply or reject it with an error so Process retries. This is the only tool that can end a turn.",
-      "parameters": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "description": "True approves the turn; false requests another Process attempt."
+    "run_id": {
+     "type": "string",
+     "description": "Continue this run. Omit to start a new one."
+    },
+    "agent": {
+     "type": "string",
+     "enum": [
+      "hermes",
+      "pi"
+     ],
+     "description": "Which downstream agent to use. Defaults to the configured backend (Hermes)."
+    },
+    "workspace": {
+     "type": "string",
+     "description": "Optional workspace root. Defaults to the current user's workspace (data/workspace/<user-ulid>). Paths outside the allowed roots require operator confirmation."
+    }
+   },
+   "required": [
+    "input"
+   ]
+  }
+ },
+ {
+  "name": "conversation.status",
+  "description": "Maintain the conversation's working variables: phase, intent, project, tasks, next actions, blockers, questions, notes, focus, frame_step, frame_attempt, awaiting_user, next_utterance_at, and custom variables. The frame stack itself is managed by conversation.frame. The current state is always in [STATE]; get returns the same state explicitly.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "get",
+      "set",
+      "unset"
+     ]
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       {
+        "type": "object"
+       }
+      ]
+     },
+     "description": "For set: keys to merge. Objects are accepted only for a Ref value."
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "For unset: keys to remove."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Required for set/unset. Use the revision from [STATE]."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "conversation.frame",
+  "description": "Read, push, replace, or pop the conversation's frame stack. The top frame is the current conversational context; push a focused frame and pop back when it ends. Also schedule or cancel the next in-character utterance with a natural delay. Frame text comes from config/prompts/frames; frame progress and dynamic values are kept in conversation.status.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "get",
+      "push",
+      "replace",
+      "pop",
+      "schedule",
+      "cancel"
+     ]
+    },
+    "template_id": {
+     "type": "string",
+     "description": "For push/replace: the frame template id, e.g. frame.tutorial_offer. Required for push and replace."
+    },
+    "variables": {
+     "type": "object",
+     "maxProperties": 12,
+     "additionalProperties": {
+      "type": "string",
+      "maxLength": 200
+     },
+     "description": "For push/replace: initial dynamic frame values. Keys are frame variable names, not arbitrary status keys; they are written as namespaced status variables."
+    },
+    "delay_ms": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 60000,
+     "description": "For schedule: natural delay before the next utterance. The template adds jitter and checks backoff."
+    },
+    "reason": {
+     "type": "string",
+     "enum": [
+      "silence",
+      "step",
+      "follow_up",
+      "goodbye"
+     ],
+     "description": "Why the utterance is scheduled. Defaults to step."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Required for push/replace/pop/schedule/cancel. Use the revision from [STATE]."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "conversation.topic",
+  "description": "Read or set the name of what the conversation is currently about. A topic is a short plain-language label, not a path or a project record.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "get",
+      "set"
+     ]
+    },
+    "topic": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 160,
+     "description": "The current topic label. Trimmed; no newlines."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Required for set. Use the revision from [STATE]."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "conversation.depth",
+  "description": "Read or set how deep the current topic is. 0 is the top level; each increment is one narrower level.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "get",
+      "set"
+     ]
+    },
+    "depth": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 7,
+     "description": "The drill level of the current topic."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Required for set. Use the revision from [STATE]."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "data.create",
+  "description": "Create one ontology instance from a compact typed description. The type selects the schema and graph; the store mints an IRI when no id is supplied. The entity is validated, written to RDF, and indexed for search in the same operation.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "type": {
+     "type": "string",
+     "description": "Compact IRI or class IRI, e.g. foaf:Person, mm:Project, mm:Plan."
+    },
+    "id": {
+     "type": "string",
+     "description": "Optional stable local id or full IRI. Omit to mint one."
+    },
+    "properties": {
+     "type": "object",
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": [
+         "string",
+         "number",
+         "boolean"
+        ]
+       },
+       {
+        "type": "array",
+        "items": {
+         "oneOf": [
+          {
+           "type": "string"
           },
-          "reply": {
-            "type": "string",
-            "maxLength": 8000,
-            "description": "Required for an Interpret fast path: the user-facing reply."
+          {
+           "type": "number"
           },
-          "error": {
-            "type": "string",
-            "maxLength": 2000,
-            "description": "Required for a Verify rejection: what failed and what to fix."
+          {
+           "type": "boolean"
           }
+         ]
+        }
+       },
+       {
+        "type": "object",
+        "properties": {
+         "iri": {
+          "type": "string"
+         }
         },
         "required": [
-          "success"
-        ]
-      }
+         "iri"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
+     "description": "Predicate short names mapped to literal values, lists, or {iri} references."
+    },
+    "schema": {
+     "type": "string",
+     "description": "Optional schema id. Defaults to the catalog entry for the type's namespace."
+    },
+    "graph": {
+     "type": "string",
+     "description": "Optional graph override for an installed namespace. Omit for automatic routing."
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
     }
+   },
+   "required": [
+    "type",
+    "properties"
+   ]
+  }
+ },
+ {
+  "name": "data.update",
+  "description": "Update one existing ontology instance. Merge adds or replaces the named predicates; replace makes the supplied properties the complete writable set. Revision checking prevents a stale overwrite. The RDF entity is updated and the search document is replaced.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "subject": {
+     "type": "string",
+     "description": "Entity IRI or compact IRI. Required."
+    },
+    "properties": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "Predicate patch, same value shapes as data.create."
+    },
+    "mode": {
+     "type": "string",
+     "enum": [
+      "merge",
+      "replace"
+     ],
+     "default": "merge"
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "subject",
+    "properties"
+   ]
+  }
+ },
+ {
+  "name": "data.query",
+  "description": "Read ontology instances by class, subject, property filters, namespace, and graph. Returns compact entities, not raw triples or SPARQL rows.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "class": {
+     "type": "string",
+     "description": "Optional class IRI or compact IRI; includes subclasses."
+    },
+    "subject": {
+     "type": "string",
+     "description": "Optional exact entity IRI or compact IRI."
+    },
+    "where": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "Property filters: exact values, {iri}, or {$contains: ...}."
+    },
+    "graph": {
+     "type": "string",
+     "description": "Optional graph filter."
+    },
+    "namespace": {
+     "type": "string",
+     "description": "Optional namespace prefix filter."
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100,
+     "default": 20
+    },
+    "offset": {
+     "type": "integer",
+     "minimum": 0,
+     "default": 0
+    },
+    "include_deleted": {
+     "type": "boolean",
+     "default": false
+    },
+    "include": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Optional property names to include; defaults to a compact summary."
+    }
+   }
+  }
+ },
+ {
+  "name": "data.delete",
+  "description": "Delete one ontology instance. Soft delete is the default: the entity is marked deleted, excluded from queries and search, and retained for provenance. Hard delete removes its RDF quads and search document and requires explicit authority.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "subject": {
+     "type": "string"
+    },
+    "mode": {
+     "type": "string",
+     "enum": [
+      "soft",
+      "hard"
+     ],
+     "default": "soft"
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "reason": {
+     "type": "string",
+     "maxLength": 500
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "subject"
+   ]
+  }
+ },
+ {
+  "name": "data.search",
+  "description": "Full-text search across ontology labels, literal values, class names, and namespaces. Results are entity summaries with a snippet and score; the index is verified against RDF so deleted or missing entities are not returned.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "query": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 500
+    },
+    "class": {
+     "type": "string"
+    },
+    "graph": {
+     "type": "string"
+    },
+    "namespace": {
+     "type": "string"
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50,
+     "default": 10
+    },
+    "snippet": {
+     "type": "boolean",
+     "default": true
+    },
+    "include_deleted": {
+     "type": "boolean",
+     "default": false
+    }
+   },
+   "required": [
+    "query"
+   ]
+  }
+ },
+ {
+  "name": "data.schema",
+  "description": "Read and manage the OWL schema catalog. list and get return compact schema summaries; validate runs SHACL shapes against an entity, class, or graph; register adds an installed schema; activate and deprecate change which schema is authoritative.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "list",
+      "get",
+      "validate",
+      "register",
+      "activate",
+      "deprecate"
+     ]
+    },
+    "schema": {
+     "type": "string",
+     "description": "Schema id, prefix, or namespace IRI."
+    },
+    "prefix": {
+     "type": "string",
+     "description": "For register: compact prefix."
+    },
+    "namespace": {
+     "type": "string",
+     "description": "For register: namespace IRI."
+    },
+    "source": {
+     "type": "string",
+     "description": "For register: builtin, ontology-file path, inline, or registered remote catalog id."
+    },
+    "format": {
+     "type": "string",
+     "enum": [
+      "turtle",
+      "rdfxml"
+     ]
+    },
+    "body": {
+     "type": "string",
+     "description": "For register with source=inline; capped at 64 KiB."
+    },
+    "subject": {
+     "type": "string",
+     "description": "For validate: entity to validate."
+    },
+    "class": {
+     "type": "string",
+     "description": "For validate: class to validate instances of."
+    },
+    "graph": {
+     "type": "string",
+     "description": "For validate: graph to validate."
+    },
+    "include": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "For list/get: classes, properties, shapes, imports."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "data.namespace",
+  "description": "Read and manage compact-IRI namespaces. list returns bindings; bind registers a new namespace for a managed prefix; expand maps a compact IRI to a full IRI; resolve maps a full IRI back to a compact form.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "list",
+      "bind",
+      "expand",
+      "resolve"
+     ]
+    },
+    "prefix": {
+     "type": "string",
+     "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+    },
+    "namespace": {
+     "type": "string",
+     "description": "Namespace IRI ending in / or #, or a urn: prefix."
+    },
+    "iri": {
+     "type": "string",
+     "description": "Full IRI for resolve, or compact IRI for expand."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "metamind.plan",
+  "description": "Enter a bounded planning session. Create a plan from scratch or from supplied content, update an existing plan into a new version, or read/list plans. Plans may be markdown or a structured plan object; the result is stored in the plan graph and returned to the conversation.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "create",
+      "update",
+      "get",
+      "list"
+     ]
+    },
+    "plan_id": {
+     "type": "string",
+     "description": "Required for update/get; optional for create."
+    },
+    "goal": {
+     "type": "string",
+     "maxLength": 4000,
+     "description": "What the plan is for. Required for create when no content is supplied."
+    },
+    "format": {
+     "type": "string",
+     "enum": [
+      "markdown",
+      "structured"
+     ],
+     "default": "markdown"
+    },
+    "content": {
+     "oneOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object"
+      }
+     ],
+     "description": "Markdown text or the structured mm.plan.v1 object. Omit to let the planner generate it."
+    },
+    "instructions": {
+     "type": "string",
+     "maxLength": 4000,
+     "description": "Additional planning constraints or update instructions."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Required for update."
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    },
+    "structure": {
+     "type": "string",
+     "enum": [
+      "auto",
+      "markdown",
+      "flat",
+      "tree"
+     ],
+     "default": "auto",
+     "description": "Plan shape. flat/tree produce a structured process-ready plan."
+    },
+    "persist": {
+     "type": "boolean",
+     "default": false,
+     "description": "Keep the plan past its default expiry."
+    },
+    "never_expires": {
+     "type": "boolean",
+     "default": false,
+     "description": "Alias for persist; exempts the plan from expiry."
+    },
+    "run": {
+     "type": "boolean",
+     "default": false,
+     "description": "Compile the plan into a process template and start it."
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50,
+     "description": "For list: maximum plans to return."
+    },
+    "last": {
+     "type": "boolean",
+     "default": false,
+     "description": "For list: return only the most recently updated plan."
+    },
+    "include_expired": {
+     "type": "boolean",
+     "default": false,
+     "description": "For list: include expired plans."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "metamind.think",
+  "description": "Run a private inner-thought sub-agent. It receives a question and optional focus entities, may call read-only data tools, and returns findings with evidence and confidence. The inner voice never speaks to the operator; the outer conversation manager composes the reply in character.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "question": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4000
+    },
+    "context": {
+     "type": "string",
+     "maxLength": 8000,
+     "description": "Optional context from the conversation that the thinker needs."
+    },
+    "focus": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 8,
+     "description": "Entity IRIs or compact IRIs to start from."
+    },
+    "depth": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3,
+     "default": 2
+    },
+    "persist": {
+     "type": "boolean",
+     "default": false,
+     "description": "Retain the thought result as an mm:Thought. The raw agentstream trace is retained regardless."
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "question"
+   ]
+  }
+ },
+ {
+  "name": "metamind.memory",
+  "description": "Access the memory subsystem. Recall relevant memories, explicitly remember a durable episode, forget a memory, or inspect memory health. This is memory, not ontology facts; use data.* for typed knowledge.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "recall",
+      "remember",
+      "forget",
+      "status"
+     ]
+    },
+    "query": {
+     "type": "string",
+     "maxLength": 4000,
+     "description": "Required for recall; optional for status filtering."
+    },
+    "kinds": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "episodic",
+       "semantic",
+       "project",
+       "user"
+      ]
+     },
+     "maxItems": 4,
+     "default": [
+      "episodic",
+      "semantic",
+      "project"
+     ]
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 20,
+     "default": 6
+    },
+    "memory_id": {
+     "type": "string",
+     "description": "Required for forget."
+    },
+    "content": {
+     "type": "string",
+     "maxLength": 4000,
+     "description": "Required for remember."
+    },
+    "importance": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1,
+     "default": 0.5
+    },
+    "tags": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "maxItems": 12
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "metamind.log",
+  "description": "Read or append session logs through one common API. Sources are the session's agentstream traces and RDF mm:LogEntry instances. Use overview for counts/health, latest for the newest entries, segment for a stable paginated slice, and append for an ad hoc RDF log entry.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "overview",
+      "latest",
+      "segment",
+      "append"
+     ]
+    },
+    "source": {
+     "type": "string",
+     "enum": [
+      "all",
+      "agentstream",
+      "rdf"
+     ],
+     "default": "all"
+    },
+    "session_id": {
+     "type": "string",
+     "description": "Defaults to the current session. Other sessions require operator authority."
+    },
+    "trace_id": {
+     "type": "string",
+     "description": "Optional trace filter; defaults to the main trace for agentstream reads."
+    },
+    "kinds": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "maxItems": 8
+    },
+    "level": {
+     "type": "string",
+     "enum": [
+      "trace",
+      "debug",
+      "info",
+      "warn",
+      "error"
+     ],
+     "description": "Minimum level for returned entries."
+    },
+    "query": {
+     "type": "string",
+     "maxLength": 500,
+     "description": "Optional text filter over message/summary only."
+    },
+    "since": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "until": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "cursor": {
+     "type": "string",
+     "maxLength": 512,
+     "description": "Opaque segment cursor returned by a previous page."
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100,
+     "default": 20
+    },
+    "message": {
+     "type": "string",
+     "maxLength": 4096,
+     "description": "For append: the log message. Secrets are refused."
+    },
+    "tags": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "maxItems": 12,
+     "description": "For append."
+    },
+    "refs": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 512
+     },
+     "maxItems": 8,
+     "description": "For append: optional session/entity/trace references."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "metamind.act",
+  "description": "Run or schedule a registered internal action kind through a generic form and scheduler; control a plan (start, stop, pause, resume, retry a step, advance, complete, abandon); cancel a pending action or cron job; or invoke introspection. The kind is data looked up in the action registry, not an API method or a new tool.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "internal",
+      "introspection",
+      "plan_start",
+      "plan_stop",
+      "plan_pause",
+      "plan_resume",
+      "plan_retry_step",
+      "plan_advance_step",
+      "plan_complete",
+      "plan_abandon",
+      "cancel",
+      "process_start",
+      "process_pause",
+      "process_resume",
+      "process_cancel",
+      "process_retry_step"
+     ]
+    },
+    "kind": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64,
+     "description": "For internal: a registered internal-action kind. This is a data value, not a method name."
+    },
+    "input": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4000,
+     "description": "Natural-language subject, instruction, or reason. Required for internal and introspection actions; optional for plan control and cancel."
+    },
+    "parameters": {
+     "type": "object",
+     "maxProperties": 12,
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "description": "For internal: values for the registry kind's form schema. Invalid fields are rejected."
+    },
+    "mode": {
+     "type": "string",
+     "enum": [
+      "immediate",
+      "scheduled"
+     ],
+     "default": "immediate"
+    },
+    "plan_id": {
+     "type": "string",
+     "description": "Required for plan control actions."
+    },
+    "step_id": {
+     "type": "string",
+     "description": "Required for plan_retry_step and plan_advance_step."
+    },
+    "action_id": {
+     "type": "string",
+     "description": "Required for cancel; the scheduled action or cron job to remove."
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Optional plan revision guard for plan control."
+    },
+    "schedule": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "at": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "delay_seconds": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 2592000
+      },
+      "cron": {
+       "type": "string",
+       "maxLength": 128,
+       "description": "Five-field cron expression, e.g. '*/5 * * * *'. Validated by tokio-cron-scheduler."
+      },
+      "timezone": {
+       "type": "string",
+       "default": "UTC",
+       "description": "IANA timezone for cron expressions."
+      },
+      "recurrence": {
+       "type": "string",
+       "enum": [
+        "once",
+        "daily",
+        "weekly",
+        "cron"
+       ],
+       "default": "once"
+      },
+      "max_runs": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 1000
+      }
+     }
+    },
+    "priority": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1,
+     "default": 0.5
+    },
+    "reason": {
+     "type": "string",
+     "maxLength": 500
+    },
+    "idempotency_key": {
+     "type": "string",
+     "minLength": 8,
+     "maxLength": 128
+    },
+    "template": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "For process_start: template IRI or id."
+    },
+    "template_uri": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "Alias for template."
+    },
+    "process_id": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "Required for process control actions."
+    },
+    "data": {
+     "type": "object",
+     "maxProperties": 24,
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": "string",
+        "maxLength": 2000
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "description": "For process_resume/process_start: input values."
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "name": "metamind.verify",
+  "description": "Register verification checks for this turn. Call this in the Interpret pass when the request needs work. Each check names a backend and its configuration. Registering zero checks with a process context asks the runtime to add the default action check.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "checks": {
+     "type": "array",
+     "maxItems": 8,
+     "description": "Checks the Verify pass should run. Empty is allowed only on an action turn, where the default check is added.",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "label": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "Unique label for this check."
+       },
+       "description": {
+        "type": "string",
+        "maxLength": 2000,
+        "description": "What is being verified."
+       },
+       "details": {
+        "type": "string",
+        "maxLength": 2000,
+        "description": "Additional detail for the backend."
+       },
+       "backend": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "Verification backend id, for example llm_judge."
+       },
+       "backend_params": {
+        "type": "object",
+        "description": "Backend-specific configuration."
+       },
+       "confidence_threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "description": "Acceptance threshold."
+       }
+      },
+      "required": [
+       "label",
+       "backend"
+      ]
+     }
+    },
+    "process": {
+     "type": "object",
+     "additionalProperties": false,
+     "description": "Optional context for the Process pass. Omitted values are derived from the request.",
+     "properties": {
+      "task": {
+       "type": "string",
+       "maxLength": 8000,
+       "description": "One-sentence restatement of the task."
+      },
+      "constraints": {
+       "type": "array",
+       "maxItems": 8,
+       "items": {
+        "type": "string",
+        "maxLength": 300
+       },
+       "description": "Constraints the Process pass must respect."
+      },
+      "suggested_tools": {
+       "type": "array",
+       "maxItems": 19,
+       "items": {
+        "type": "string",
+        "maxLength": 64
+       },
+       "description": "Advisory tool subset."
+      }
+     }
+    }
+   },
+   "required": [
+    "checks"
+   ]
+  }
+ },
+ {
+  "name": "metamind.approve",
+  "description": "End the turn. In the Interpret pass, approve a pure-conversation turn and supply the reply (fast path). In the Verify pass, approve the Process reply or reject it with an error so Process retries. This is the only tool that can end a turn.",
+  "parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "success": {
+     "type": "boolean",
+     "description": "True approves the turn; false requests another Process attempt."
+    },
+    "reply": {
+     "type": "string",
+     "maxLength": 8000,
+     "description": "Required for an Interpret fast path: the user-facing reply."
+    },
+    "error": {
+     "type": "string",
+     "maxLength": 2000,
+     "description": "Required for a Verify rejection: what failed and what to fix."
+    }
+   },
+   "required": [
+    "success"
+   ]
+  }
+ }
 ]

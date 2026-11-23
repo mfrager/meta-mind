@@ -27,6 +27,7 @@ pub mod metamind_tools;
 pub mod metrics;
 pub mod parity;
 pub mod plan_monitor;
+pub mod process_runner;
 pub mod routes;
 pub mod session;
 pub mod sse;

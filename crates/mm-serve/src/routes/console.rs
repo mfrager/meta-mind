@@ -119,7 +119,7 @@ pub struct ActionListQuery {
 }
 
 /// Recursively expose struct field names as the camel-case wire vocabulary.
-fn camelize(value: Value) -> Value {
+pub(crate) fn camelize(value: Value) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.into_iter()

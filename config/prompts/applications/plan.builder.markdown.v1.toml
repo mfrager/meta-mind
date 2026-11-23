@@ -1,0 +1,9 @@
+schema = "mm.prompt.strategy.v1"
+id = "plan.builder.markdown.v1"
+application = "plan.builder.markdown"
+version = 1
+description = "Generate a markdown plan document."
+budget = "standard"
+required_variables = ["goal", "instructions", "max_steps", "repair"]
+fragments = ["plan_markdown", "honesty_contract"]
+slots = ["goal", "instructions", "max_steps", "repair"]

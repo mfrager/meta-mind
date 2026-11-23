@@ -1,0 +1,30 @@
+schema = "mm.prompt.fragment.v1"
+id = "plan_generate"
+version = 1
+text = """
+Write an executable plan for the goal below. The output is data, not a reply to the user.
+
+Goal:
+{{goal}}
+
+Operator instructions:
+{{instructions}}
+
+Structure requested: {{structure}}
+Maximum steps: {{max_steps}}
+Repair guidance (may be `none`):
+{{repair}}
+
+Return JSON with exactly this shape:
+{"title": string, "summary": string, "steps": [
+  {"order": integer, "title": string, "instructions": string,
+   "depends_on": [integer], "parent": integer|null,
+   "parallel": string|null, "tools": [string], "check": string|null}
+]}
+
+Every instruction must be self-contained and name the concrete action. Orders start at 0 and are
+contiguous. A dependency or parent must point at an earlier order. Only put two steps in the same
+`parallel` group when they can run at the same time and neither depends on the other. A `check` is
+an observable condition, not a restatement of the step. Leave `tools` empty unless a specific
+reviewed tool is required; an invented tool name is rejected before the plan runs.
+"""

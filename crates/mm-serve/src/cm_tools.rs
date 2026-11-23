@@ -70,6 +70,7 @@ pub struct CmTools {
     agent: Option<Arc<AgentRuntime>>,
     session_id: Option<String>,
     pass_scope: Option<PassScope>,
+    tool_scope: Option<Vec<String>>,
 }
 
 impl CmTools {
@@ -82,6 +83,7 @@ impl CmTools {
             agent: None,
             session_id: None,
             pass_scope: None,
+            tool_scope: None,
         }
     }
 
@@ -96,6 +98,33 @@ impl CmTools {
     /// The configured pass scope, if any.
     pub fn pass_scope(&self) -> Option<PassScope> {
         self.pass_scope
+    }
+
+    /// Restrict the Process pass to a template step's reviewed tool list.
+    ///
+    /// The Verify scope is never filtered: a reviewer must be able to call its
+    /// control tools even when the worker's list is narrow.
+    #[must_use]
+    pub fn with_tool_scope(mut self, scope: Vec<String>) -> Self {
+        self.tool_scope = Some(scope);
+        self
+    }
+
+    fn scoped(
+        &self,
+        scope: PassScope,
+        tools: Vec<crate::tool_schemas::ToolSchema>,
+    ) -> Vec<crate::tool_schemas::ToolSchema> {
+        if scope != PassScope::Process {
+            return tools;
+        }
+        let Some(allowed) = &self.tool_scope else {
+            return tools;
+        };
+        tools
+            .into_iter()
+            .filter(|schema| allowed.iter().any(|name| name == &schema.name))
+            .collect()
     }
 
     /// Attach the managed-data service, enabling the seven `data.*` tools.
@@ -130,6 +159,15 @@ impl CmTools {
             client,
             model,
         ));
+        self
+    }
+
+    /// Attach the Phase 5 process pipeline to `metamind.plan` and `metamind.act`.
+    #[must_use]
+    pub fn with_process(mut self, process: Option<Arc<mm_process::ProcessEngine>>) -> Self {
+        if let Some(metamind) = &mut self.metamind {
+            metamind.set_process(process);
+        }
         self
     }
 
@@ -643,8 +681,8 @@ impl ToolHandler for CmTools {
         ToolCatalog::embedded()
             .map(|catalog| {
                 let schemas = match self.pass_scope {
-                    Some(scope) => catalog.schemas_for(scope),
-                    None => catalog.work_schemas(),
+                    Some(scope) => self.scoped(scope, catalog.schemas_for(scope)),
+                    None => self.scoped(PassScope::Process, catalog.work_schemas()),
                 };
                 schemas
                     .into_iter()
@@ -661,8 +699,7 @@ impl ToolHandler for CmTools {
     fn schemas_for(&self, scope: PassScope) -> Vec<ToolSchema> {
         ToolCatalog::embedded()
             .map(|catalog| {
-                catalog
-                    .schemas_for(scope)
+                self.scoped(scope, catalog.schemas_for(scope))
                     .into_iter()
                     .map(|schema| ToolSchema {
                         name: schema.name,

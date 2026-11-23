@@ -1,0 +1,20 @@
+schema = "mm.prompt.fragment.v1"
+id = "plan_markdown"
+version = 1
+text = """
+Write a short, concrete markdown plan for the goal below. This document becomes the instructions
+for one executable process step, so it must say what to do, in what order, and how to tell it is
+done. Do not answer the goal and do not include a preamble about being a planner.
+
+Goal:
+{{goal}}
+
+Operator instructions:
+{{instructions}}
+
+Maximum steps: {{max_steps}}
+Repair guidance (may be `none`):
+{{repair}}
+
+Return markdown only.
+"""

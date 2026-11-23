@@ -8,12 +8,13 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use futures::stream::Stream;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
@@ -26,7 +27,111 @@ use crate::cme::CONSOLE_USER;
 use crate::dto::chat::{ChatFrame, Phase};
 use crate::error::AppError;
 use crate::routes::chat::{sse_response, OpenChat};
+use crate::routes::console::camelize;
 use crate::state::AppState;
+
+/// Process inspector query.
+#[derive(Debug, Deserialize)]
+pub struct ProcessQuery {
+    /// Limit to one conversation session.
+    pub session_id: Option<String>,
+}
+
+/// Process control body.
+#[derive(Debug, Default, Deserialize)]
+pub struct ProcessControlBody {
+    /// Resume input.
+    pub input: Option<String>,
+    /// Step for `retry`.
+    pub step_id: Option<String>,
+}
+
+/// List process templates and instances for the inspector.
+pub async fn processes(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ProcessQuery>,
+) -> Result<Json<Value>, AppError> {
+    if !state.features.process_v1 {
+        return Ok(Json(json!({
+            "enabled": false,
+            "processes": [],
+            "templates": [],
+        })));
+    }
+    let engine = state
+        .process_engine()
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let processes = match query.session_id.as_deref() {
+        Some(session) => engine.session_instances(session).await,
+        None => engine.store().list_instances().await,
+    }
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+    let templates = engine
+        .templates(false)
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let analytics = engine
+        .analytics(query.session_id.as_deref())
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    Ok(Json(camelize(json!({
+        "enabled": true,
+        "processes": processes,
+        "templates": templates,
+        "analytics": analytics,
+    }))))
+}
+
+/// One process with its pinned template.
+pub async fn process_detail(
+    State(state): State<Arc<AppState>>,
+    Path(process_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let engine = state
+        .process_engine()
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let process = engine
+        .load_instance(&process_id)
+        .await
+        .map_err(|error| AppError::NotFound(error.to_string()))?;
+    let template = engine
+        .template(&process.template_uri)
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    Ok(Json(camelize(
+        json!({ "process": process, "template": template }),
+    )))
+}
+
+/// Pause, resume, cancel or retry one process.
+pub async fn process_control(
+    State(state): State<Arc<AppState>>,
+    Path((process_id, action)): Path<(String, String)>,
+    Json(body): Json<ProcessControlBody>,
+) -> Result<Json<Value>, AppError> {
+    let engine = state
+        .process_engine()
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let process = match action.as_str() {
+        "pause" => engine.pause(&process_id).await,
+        "resume" => engine.resume(&process_id, body.input.as_deref()).await,
+        "cancel" => engine.cancel(&process_id).await,
+        "retry" => {
+            let step = body
+                .step_id
+                .as_deref()
+                .ok_or_else(|| AppError::BadRequest("step_id is required for retry".into()))?;
+            engine.retry_step(&process_id, step).await
+        }
+        other => {
+            return Err(AppError::BadRequest(format!(
+                "unknown process control {other:?}"
+            )))
+        }
+    }
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+    Ok(Json(camelize(json!({ "process": process }))))
+}
 
 /// Run one query through the conversation engine and stream its SSE frames.
 pub async fn open(

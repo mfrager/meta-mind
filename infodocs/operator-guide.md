@@ -69,7 +69,7 @@ script can never silently replace a live provider.
 | `MM_PROMPT_V1` | `false` | Declared prompt-tree flag. The reviewed tree under `config/prompts/` is loaded by the CME prompt path regardless of this flag. |
 | `MM_FRAMES_V1` | `false` | Declared frame flag. Frame tools and timers are governed by `MM_AUTOMATION_V1` and `config/automation.toml`. |
 | `MM_THREE_PASS_V2` | `false` | Run turns through the three-pass runner (Interpret → Process → Verify). Checks, staged writes, retries, and recursive think are implemented; the flag stays off until the live dual-run gate is recorded. |
-| `MM_PROCESS_V1` | `false` | Enable durable process templates/instances (Phase 5). No process tools are wired yet. |
+| `MM_PROCESS_V1` | `false` | Enable durable process templates/instances (Phase 5). Plan creation uses the four-pass builder, `metamind.plan run=true` starts a process, and `metamind.act` exposes process controls. Keep off until a live soak is recorded. See [`process-pipeline.md`](./process-pipeline.md). |
 
 Rollback to the legacy console route is `MM_CM_V3=false MM_CME_ENABLED=false`.
 Rollback only the CM tool surface is `MM_CM_V3=false` (the CME still runs, with no

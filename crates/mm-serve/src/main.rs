@@ -64,6 +64,12 @@ async fn serve(cli: Cli) -> Result<(), String> {
     let lock = ConsoleLock::acquire(&cfg.store.data_dir).map_err(|e| e.to_string())?;
     let state = Arc::new(AppState::boot(cfg, lock).await.map_err(|e| e.to_string())?);
     install_controller_script(&state, cli.controller_script)?;
+    if state.features.process_v1 {
+        state
+            .process_engine()
+            .map_err(|error| format!("process pipeline: {error}"))?;
+        eprintln!("mm-serve: process pipeline enabled");
+    }
     let addr = SocketAddr::from((cli.bind, cli.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await

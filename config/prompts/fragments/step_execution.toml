@@ -1,0 +1,24 @@
+schema = "mm.prompt.fragment.v1"
+id = "step_execution"
+version = 1
+text = """
+[PROCESS] {{process_task}}
+[STEP] {{step_title}}
+[INSTRUCTIONS]
+{{step_instructions}}
+
+[PROCESS DOCUMENT]
+{{process_doc}}
+
+[PRIOR STEP RESULTS]
+{{prior_results}}
+
+[STEP CHECK]
+{{step_check}}
+
+[BUDGET] {{budget_class}} — {{budget_rounds}} rounds, {{budget_tokens}} tokens, {{budget_wall_ms}} ms
+
+Complete only this step. Use real tool calls where the step needs them and finish with a short
+result that the next step can use as input. Do not claim work the tools did not do. If the step
+cannot be completed, say exactly what blocked it.
+"""

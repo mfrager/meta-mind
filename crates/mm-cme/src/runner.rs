@@ -6,6 +6,7 @@
 //! budget accounting, transcript accumulation, and the control-tool protocol;
 //! the model only chooses text and tool calls.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -360,6 +361,46 @@ pub struct ThinkPassRequest {
     pub focus: Vec<String>,
     /// The model to route the thought through.
     pub model: Option<String>,
+}
+
+/// One durable process step.
+#[derive(Debug, Clone)]
+pub struct StepPassRequest {
+    /// The process's owning session.
+    pub session_id: String,
+    /// Template step id.
+    pub step_id: String,
+    /// The process task.
+    pub task: String,
+    /// Step title.
+    pub title: String,
+    /// Rendered step instructions.
+    pub instructions: String,
+    /// Outputs of completed steps.
+    pub prior: BTreeMap<String, String>,
+    /// Injected PROCESS.md.
+    pub doc: Option<String>,
+    /// The template's check, when one was supplied.
+    pub check: Option<String>,
+    /// The model to route the step through.
+    pub model: Option<String>,
+}
+
+/// A step whose result was checked by Verify.
+#[derive(Debug, Clone)]
+pub struct StepRun {
+    /// The step's result text.
+    pub reply: String,
+    /// Whether the step reviewer approved it.
+    pub approved: bool,
+    /// Prompt tokens.
+    pub tokens_in: u32,
+    /// Completion tokens.
+    pub tokens_out: u32,
+    /// The Process prompt instance, for tracing.
+    pub prompt_instance_id: Option<String>,
+    /// Phase A results from the Process scope.
+    pub verification: Vec<VerificationResult>,
 }
 
 /// A thought whose work has been checked by its own Verify pass.
@@ -1418,6 +1459,184 @@ impl ThreePassRunner {
             verification: verify.verification,
             approved,
             prompt_instance_ids,
+        })
+    }
+
+    /// Run one durable process step through Process → Verify.
+    ///
+    /// A step skips Interpret because its task, instructions and check are
+    /// already decided by the template. The work runs under the Process scope
+    /// and its own session id; the reviewer runs under the same scope. Prompt
+    /// variables carry only the step's rendered instructions, PROCESS.md, prior
+    /// outputs and inputs, so a step cannot see the parent turn's transcript.
+    pub async fn run_step(&self, request: StepPassRequest) -> Result<StepRun> {
+        let Some(model) = request.model.as_deref() else {
+            return Err(CmeError::Driver(
+                "process step requires a routed model".into(),
+            ));
+        };
+        let check = self.step_check(
+            request.check.as_deref(),
+            &request.title,
+            &request.instructions,
+        )?;
+        let mut plan = TurnPlan::simple(
+            SessionId::new(request.session_id.clone()),
+            TurnId::new(format!("{}/{}", request.session_id, request.step_id)),
+            request.task.clone(),
+        );
+        plan.tool_policy = crate::planner::ToolPolicy::Allowed;
+        let mut variables = PromptVariables::for_turn(&plan, &SessionContext::default());
+        variables.set("step_title", request.title.clone());
+        variables.set("step_instructions", request.instructions.clone());
+        variables.set(
+            "process_doc",
+            request.doc.clone().unwrap_or_else(|| "none".to_owned()),
+        );
+        variables.set(
+            "prior_results",
+            if request.prior.is_empty() {
+                "none".to_owned()
+            } else {
+                request
+                    .prior
+                    .iter()
+                    .map(|(step, output)| format!("[{step}]\n{output}"))
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            },
+        );
+        variables.set(
+            "step_check",
+            request
+                .check
+                .clone()
+                .unwrap_or_else(|| "the step completes its instructions".to_owned()),
+        );
+        let clean_log = CleanLog::default();
+        let mut turn = Turn::new(plan.clone())?;
+        let pass = ProcessPass::new(
+            Arc::clone(&self.client),
+            Some(Arc::clone(&self.prompts)),
+            Arc::clone(&self.tools),
+            Arc::new(DenyUnconfirmed),
+            None,
+            self.config.step.budget_class,
+        );
+        let run = pass
+            .run(
+                &mut turn,
+                &plan,
+                model,
+                variables.clone(),
+                ProcessRequest {
+                    application: self.config.step.strategy.clone(),
+                    scope: Some(PassScope::Process),
+                    process: None,
+                    retry: None,
+                    clean_log,
+                    variant: None,
+                    require_reply: true,
+                    child_budget: false,
+                },
+            )
+            .await?;
+        let state_block = variables.get("state_block").unwrap_or_default().to_owned();
+        let process_result = ProcessResult {
+            reply_text: run.reply.clone(),
+            tool_emissions: run.tool_emissions.clone(),
+        };
+        let ctx = PassContext::verify(
+            CleanLog::default(),
+            state_block,
+            request.task.clone(),
+            variables,
+            Some(model.to_owned()),
+            InterpretResult {
+                checks: vec![check],
+                process: None,
+                fast_path: false,
+            },
+            process_result,
+            Vec::new(),
+            None,
+            Vec::new(),
+            0,
+            self.envelope(),
+        )
+        .with_scope(PassScope::Verify);
+        let verify = self.run_verify(ctx, &request.session_id).await?;
+        let failures = verify
+            .verification
+            .iter()
+            .filter(|result| !result.pass)
+            .map(|result| {
+                format!(
+                    "{} — {}",
+                    result.check_label,
+                    result.error.as_deref().unwrap_or(&result.reasoning)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        if !verify.is_approved() {
+            let reason = if failures.is_empty() {
+                verify
+                    .rejection
+                    .clone()
+                    .or_else(|| verify.error.clone())
+                    .unwrap_or_else(|| "the step was not approved".into())
+            } else {
+                failures
+            };
+            return Err(CmeError::Driver(format!(
+                "step verification failed: {reason}"
+            )));
+        }
+        Ok(StepRun {
+            reply: run.reply,
+            approved: verify.is_approved(),
+            tokens_in: run.tokens_in,
+            tokens_out: run.tokens_out,
+            prompt_instance_id: turn.prompt_instance_id,
+            verification: verify.verification,
+        })
+    }
+
+    fn step_check(
+        &self,
+        detail: Option<&str>,
+        title: &str,
+        instructions: &str,
+    ) -> Result<VerifyCheck> {
+        let prompt = self
+            .prompts
+            .fragment("step_check")
+            .ok_or_else(|| CmeError::Driver("prompt fragment `step_check` is missing".into()))?
+            .text
+            .clone();
+        Ok(VerifyCheck {
+            label: "step".into(),
+            description: detail.map(str::to_owned),
+            details: Some(format!(
+                "Step: {title}\nInstructions: {instructions}\nCheck: {}",
+                detail.unwrap_or("the step completes its instructions")
+            )),
+            backend: "llm_judge".into(),
+            backend_params: serde_json::json!({
+                "evaluation_prompt": prompt,
+                "expected_output_schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["pass", "reasoning", "confidence"],
+                    "properties": {
+                        "pass": { "type": "boolean" },
+                        "reasoning": { "type": "string", "maxLength": 2000 },
+                        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+                    }
+                }
+            }),
+            confidence_threshold: 0.5,
         })
     }
 

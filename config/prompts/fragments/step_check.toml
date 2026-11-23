@@ -1,0 +1,19 @@
+schema = "mm.prompt.fragment.v1"
+id = "step_check"
+version = 1
+text = """
+Does the step's result actually complete the step's instructions?
+
+Judge only the instructions, the process task, the prior results, and the result. A result that
+restates the instructions without doing the work, claims a tool result that is not present, or
+leaves the step's stated check unsatisfied fails.
+
+Process task:
+{{user_request}}
+
+Check detail:
+{{check_details}}
+
+Result:
+{{process_reply}}
+"""

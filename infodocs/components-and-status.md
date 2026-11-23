@@ -503,8 +503,12 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
   review with override guard, retry loop and `VERIFY_EXHAUSTED`, recursive think
   under the Think scope, pass timeline) are implemented but inert while
   `MM_THREE_PASS_V2` is off; the legacy path still advertises exactly the
-  seventeen work tools. `MM_PROCESS_V1` also remains off, and the live
-  three-pass dual-run is still to be recorded. See
+  seventeen work tools. Phase 5's durable process pipeline is implemented behind
+  `MM_PROCESS_V1` (off): `mm-process` templates, RDF instances, queues/leases,
+  waits, sub-processes, plan builder and plan→process tools. Its backend service
+  runtime is still a typed stub, typed `data.*` CRUD for process documents is not
+  registered, and the live three-pass dual-run plus a plan→process soak are still
+  to be recorded. See [`process-pipeline.md`](./process-pipeline.md),
   [`three-pass-substrate.md`](./three-pass-substrate.md),
   [`three-pass-interpret.md`](./three-pass-interpret.md),
   [`three-pass-process.md`](./three-pass-process.md), and
@@ -517,8 +521,10 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
   tests described in [`three-pass-substrate.md`](./three-pass-substrate.md),
   [`three-pass-interpret.md`](./three-pass-interpret.md),
   [`three-pass-process.md`](./three-pass-process.md), and
-  [`three-pass-verify.md`](./three-pass-verify.md), frontend
-  typecheck/Vitest/build, and `mm-cli data verify` on a fresh data root.
+  [`three-pass-verify.md`](./three-pass-verify.md), `mm-process`
+  (`phase5.rs`, 11 cases), `mm-cme` (`phase5_step.rs`), `mm-serve`
+  (`phase5_process.rs`), frontend typecheck/Vitest/build, and `mm-cli data verify`
+  (now also checking the process graph) on a fresh data root.
 - **Quality.** The tool contract and state invariants are the strongest part: the
   seventeen work schemas plus two control schemas are embedded and count-checked, every state write is
   revision-checked, and the index is verified against RDF. The weak part is

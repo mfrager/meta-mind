@@ -323,6 +323,9 @@ pub fn graph_for_class(class: &str) -> &'static str {
         "Being" | "Identity" => "being",
         "Person" | "User" => "users/index",
         "Plan" | "PlanVersion" | "PlanStep" | "PlanRegistry" | "Thought" => "plan",
+        "ProcessTemplate" | "ProcessTemplateVersion" | "ProcessInstance" | "StepExecution" => {
+            "process"
+        }
         "ScheduledAction" | "CronJob" | "ActionReceipt" => "action",
         "Session" | "SessionTrace" | "WorkItem" | "ConversationFrame" | "FrameUtterance" => {
             "session"

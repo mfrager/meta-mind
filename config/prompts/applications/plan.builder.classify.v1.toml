@@ -1,0 +1,9 @@
+schema = "mm.prompt.strategy.v1"
+id = "plan.builder.classify.v1"
+application = "plan.builder.classify"
+version = 1
+description = "Classify a planning goal and choose flat, tree or markdown."
+budget = "quick"
+required_variables = ["goal", "instructions"]
+fragments = ["plan_classify", "honesty_contract"]
+slots = ["goal", "instructions"]

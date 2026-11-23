@@ -36,8 +36,29 @@ pub struct ThreePassConfig {
     pub envelope: EnvelopeConfig,
     /// Think sub-agent.
     pub think: ThinkConfig,
+    /// One durable process step (Phase 5).
+    pub step: StepConfig,
     /// Verification backends.
     pub verification: VerificationConfig,
+}
+
+/// One process step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StepConfig {
+    /// Budget class.
+    pub budget_class: BudgetClass,
+    /// Prompt strategy.
+    pub strategy: String,
+}
+
+impl Default for StepConfig {
+    fn default() -> Self {
+        Self {
+            budget_class: BudgetClass::Standard,
+            strategy: "cm.step.v1".into(),
+        }
+    }
 }
 
 /// A regular pass.

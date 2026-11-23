@@ -22,6 +22,7 @@ use serde_json::{json, Value};
 
 use crate::cme::CONSOLE_USER;
 use crate::state_service::StateService;
+use crate::tool_schemas::ToolCatalog;
 
 /// The five metamind tool names.
 pub const METAMIND_TOOLS: &[&str] = &[
@@ -50,6 +51,10 @@ pub struct MetamindTools {
     logs: Arc<RdfLogService>,
     agentstream: Arc<AgentstreamStore>,
     agent: Option<Arc<AgentRuntime>>,
+    process: Option<Arc<mm_process::ProcessEngine>>,
+    client: Option<Arc<dyn LlmClient>>,
+    model: Option<String>,
+    prompts: Arc<PromptStore>,
 }
 
 impl std::fmt::Debug for MetamindTools {
@@ -86,9 +91,9 @@ impl MetamindTools {
         let think_service = ThinkService::new(
             Arc::clone(&data),
             Arc::clone(&memory),
-            prompts,
-            client,
-            model,
+            Arc::clone(&prompts),
+            client.clone(),
+            model.clone(),
         );
         let introspection =
             IntrospectionService::new(Arc::clone(&data), Arc::clone(&plans), Arc::clone(&memory));
@@ -104,7 +109,17 @@ impl MetamindTools {
             logs,
             agentstream,
             agent: None,
+            process: None,
+            client,
+            model,
+            prompts,
         }
+    }
+
+    /// Attach the Phase 5 process pipeline, enabling plan→process and the
+    /// `process_*` act actions.
+    pub fn set_process(&mut self, process: Option<Arc<mm_process::ProcessEngine>>) {
+        self.process = process;
     }
 
     /// Attach the agent runtime so `plan_stop` can cancel plan-owned runs.
@@ -146,7 +161,40 @@ impl MetamindTools {
                 if goal.trim().is_empty() && content.is_none() {
                     return Err(MetamindToolError::missing("goal"));
                 }
-                let format = plan_format(arguments)?;
+                let format = match opt_str(arguments, "structure") {
+                    Some("markdown") => PlanFormat::Markdown,
+                    Some("flat") | Some("tree") => PlanFormat::Structured,
+                    Some("auto") => plan_format(arguments)?,
+                    Some(other) => {
+                        return Err(MetamindToolError::invalid(
+                            "structure",
+                            format!("unsupported structure {other:?}"),
+                        ))
+                    }
+                    None => plan_format(arguments)?,
+                };
+                if content.is_none() && self.process.is_some() && self.client.is_some() {
+                    return self
+                        .create_plan_with_builder(
+                            session_id,
+                            if goal.trim().is_empty() {
+                                "Plan from supplied content"
+                            } else {
+                                goal
+                            },
+                            opt_str(arguments, "instructions"),
+                            opt_str(arguments, "structure"),
+                            arguments
+                                .get("persist")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                            arguments
+                                .get("run")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                        )
+                        .await;
+                }
                 let result = self
                     .plan_service
                     .create(
@@ -163,6 +211,51 @@ impl MetamindTools {
                     .await
                     .map_err(map_subagent)?;
                 let mut value = result.to_json();
+                let mut plan = self
+                    .plans
+                    .load(&result.plan.id)
+                    .await
+                    .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?
+                    .ok_or_else(|| MetamindToolError::new("NOT_FOUND", "plan not found"))?;
+                let durable = arguments
+                    .get("persist")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    || arguments
+                        .get("never_expires")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                if durable {
+                    plan.never_expires = true;
+                    plan.expires_at = None;
+                } else if plan.expires_at.is_none() {
+                    let hours = self
+                        .process
+                        .as_ref()
+                        .map(|engine| engine.config().plan.default_expiry_hours)
+                        .unwrap_or(72);
+                    plan.expires_at = Some(
+                        mm_data::rdf::now_ms()
+                            .saturating_add(i64::from(hours).saturating_mul(3_600_000)),
+                    );
+                }
+                if durable {
+                    plan = self
+                        .plans
+                        .save(&plan, plan.revision)
+                        .await
+                        .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
+                }
+                let run = arguments
+                    .get("run")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if run {
+                    let process = self.start_plan_process(session_id, &plan).await?;
+                    if let Some(object) = value.as_object_mut() {
+                        object.insert("process".into(), process);
+                    }
+                }
                 if let Some(object) = value.as_object_mut() {
                     object.insert("versions".into(), json!([result.version]));
                 }
@@ -223,14 +316,45 @@ impl MetamindTools {
                     .versions(plan_id)
                     .await
                     .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
-                Ok(json!({ "plan": plan, "versions": versions }))
+                let processes = match (&self.process, plan.process_uri.as_deref()) {
+                    (Some(engine), Some(uri)) => engine
+                        .session_instances(session_id)
+                        .await
+                        .map_err(map_process)?
+                        .into_iter()
+                        .filter(|instance| instance.template_uri == uri)
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
+                };
+                Ok(json!({
+                    "plan": plan,
+                    "versions": versions,
+                    "processes": processes,
+                }))
             }
             "list" => {
-                let plans = self
+                let mut plans = self
                     .plan_service
                     .list(session_id)
                     .await
                     .map_err(map_subagent)?;
+                let include_expired = arguments
+                    .get("include_expired")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if !include_expired {
+                    plans.retain(|plan| plan.status != mm_data::PlanStatus::Expired);
+                }
+                plans.sort_by_key(|plan| std::cmp::Reverse(plan.updated_at));
+                if arguments
+                    .get("last")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    plans.truncate(1);
+                } else if let Some(limit) = opt_u64(arguments, "limit")? {
+                    plans.truncate(limit as usize);
+                }
                 Ok(json!({ "plans": plans, "count": plans.len() }))
             }
             other => Err(MetamindToolError::invalid(
@@ -238,6 +362,230 @@ impl MetamindTools {
                 format!("unsupported plan action {other:?}"),
             )),
         }
+    }
+
+    /// Build a plan through the four-pass builder and persist it.
+    ///
+    /// This path is used whenever the process pipeline is enabled and the caller
+    /// supplied no content. The builder's review runs before any RDF write; the
+    /// compiled template is saved so the plan's process link is real.
+    #[allow(clippy::too_many_arguments)]
+    async fn create_plan_with_builder(
+        &self,
+        session_id: &str,
+        goal: &str,
+        instructions: Option<&str>,
+        structure: Option<&str>,
+        persist: bool,
+        run: bool,
+    ) -> Result<Value, MetamindToolError> {
+        let engine = self.process.as_ref().ok_or_else(|| {
+            MetamindToolError::new("PROCESS_DISABLED", "MM_PROCESS_V1 is disabled")
+        })?;
+        let client = self.client.as_ref().ok_or_else(|| {
+            MetamindToolError::new("UNAVAILABLE", "the plan builder has no model client")
+        })?;
+        let requested = match structure {
+            None | Some("auto") => None,
+            Some("markdown") => Some(mm_process::StructureKind::Markdown),
+            Some("flat") => Some(mm_process::StructureKind::Flat),
+            Some("tree") => Some(mm_process::StructureKind::Tree),
+            Some(other) => {
+                return Err(MetamindToolError::invalid(
+                    "structure",
+                    format!("unsupported structure {other:?}"),
+                ))
+            }
+        };
+        let config = engine.config();
+        let builder = mm_process::PlanBuilder::new(
+            Arc::clone(client),
+            Some(Arc::clone(&self.prompts)),
+            self.model.clone(),
+            config.plan.clone(),
+            config.limits.clone(),
+        );
+        let built = builder
+            .build(goal, instructions, requested, Some(persist))
+            .await
+            .map_err(map_process)?;
+        let known_tools = ToolCatalog::embedded()
+            .map(|catalog| {
+                catalog
+                    .schemas()
+                    .iter()
+                    .map(|schema| schema.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
+        let (mut plan, template) = mm_process::materialize(
+            session_id,
+            goal,
+            &built,
+            format!(
+                "urn:metamind:process/template/plan/{}",
+                mm_data::rdf::new_id()
+            ),
+            &config.plan,
+            &config.limits,
+            &known_tools,
+        )
+        .map_err(map_process)?;
+        let template = engine
+            .save_template(template, 0)
+            .await
+            .map_err(map_process)?;
+        plan.process_uri = Some(template.uri.clone());
+        plan.derived_template_uri = Some(template.uri.clone());
+        let plan = self
+            .plans
+            .save(&plan, 0)
+            .await
+            .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
+        let mut value = json!({
+            "plan": plan,
+            "versions": [plan.current_version],
+            "builder": {
+                "calls": built.calls,
+                "generationAttempts": built.generation_attempts,
+                "reviewAttempts": built.review_attempts,
+                "structure": built.structure.kind,
+            }
+        });
+        if run {
+            let process = self.start_plan_process(session_id, &plan).await?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("process".into(), process);
+            }
+        }
+        self.register_trace(
+            session_id,
+            TraceKind::Plan,
+            &format!("plan/{}", short_id(&plan.id)),
+            plan.created_at,
+        )
+        .await;
+        Ok(value)
+    }
+
+    async fn start_plan_process(
+        &self,
+        _session_id: &str,
+        plan: &mm_data::Plan,
+    ) -> Result<Value, MetamindToolError> {
+        let engine = self.process.as_ref().ok_or_else(|| {
+            MetamindToolError::new(
+                "PROCESS_DISABLED",
+                "MM_PROCESS_V1 is disabled; the plan was not started",
+            )
+        })?;
+        let known_tools = ToolCatalog::embedded()
+            .map(|catalog| {
+                catalog
+                    .schemas()
+                    .iter()
+                    .map(|schema| schema.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
+        let uri = format!("urn:metamind:process/template/plan/{}", plan.id);
+        let template = mm_process::compile_plan(plan, uri, &engine.config().limits, &known_tools)
+            .map_err(map_process)?;
+        let template = engine
+            .save_template(template, 0)
+            .await
+            .map_err(map_process)?;
+        let mut updated = plan.clone();
+        updated.process_uri = Some(template.uri.clone());
+        updated.derived_template_uri = Some(template.uri.clone());
+        self.plans
+            .save(&updated, plan.revision)
+            .await
+            .map_err(|error| MetamindToolError::new("INTERNAL", error.to_string()))?;
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert("task".to_owned(), json!(plan.goal));
+        inputs.insert("plan".to_owned(), json!(plan.body));
+        let instance = engine
+            .create_instance(
+                &template.uri,
+                &plan.session_id,
+                inputs,
+                0,
+                true,
+                Some(format!("plan:{}", plan.id)),
+            )
+            .await
+            .map_err(map_process)?;
+        Ok(json!({
+            "processId": instance.id,
+            "status": instance.status,
+            "templateUri": template.uri,
+        }))
+    }
+
+    async fn process_control(
+        &self,
+        session_id: &str,
+        arguments: &Value,
+        action: &str,
+    ) -> Result<Value, MetamindToolError> {
+        let engine = self.process.as_ref().ok_or_else(|| {
+            MetamindToolError::new(
+                "PROCESS_DISABLED",
+                "MM_PROCESS_V1 is disabled; no process was changed",
+            )
+        })?;
+        if action == "process_start" {
+            let template = opt_str(arguments, "template")
+                .or_else(|| opt_str(arguments, "template_uri"))
+                .ok_or_else(|| MetamindToolError::missing("template"))?;
+            let mut inputs = std::collections::BTreeMap::new();
+            if let Some(task) = opt_str(arguments, "input") {
+                inputs.insert("task".to_owned(), json!(task));
+            }
+            if let Some(data) = arguments.get("data") {
+                if let Some(object) = data.as_object() {
+                    for (key, value) in object {
+                        inputs.insert(key.clone(), value.clone());
+                    }
+                } else {
+                    return Err(MetamindToolError::invalid("data", "data must be an object"));
+                }
+            }
+            let instance = engine
+                .create_instance(
+                    &mm_data::process::template_uri(template),
+                    session_id,
+                    inputs,
+                    0,
+                    true,
+                    None,
+                )
+                .await
+                .map_err(map_process)?;
+            return Ok(json!({ "process": instance }));
+        }
+        let id = string_arg(arguments, "process_id")?;
+        let instance = match action {
+            "process_pause" => engine.pause(id).await,
+            "process_resume" => {
+                let data = opt_str(arguments, "data").or_else(|| opt_str(arguments, "input"));
+                engine.resume(id, data).await
+            }
+            "process_cancel" => engine.cancel(id).await,
+            "process_retry_step" => {
+                let step = string_arg(arguments, "step_id")?;
+                engine.retry_step(id, step).await
+            }
+            other => {
+                return Err(MetamindToolError::invalid(
+                    "action",
+                    format!("unsupported process action {other:?}"),
+                ))
+            }
+        }
+        .map_err(map_process)?;
+        Ok(json!({ "process": instance, "status": instance.status }))
     }
 
     async fn think(&self, session_id: &str, arguments: &Value) -> Result<Value, MetamindToolError> {
@@ -554,6 +902,9 @@ impl MetamindTools {
 
     async fn act(&self, session_id: &str, arguments: &Value) -> Result<Value, MetamindToolError> {
         let action = string_arg(arguments, "action")?;
+        if action.starts_with("process_") {
+            return self.process_control(session_id, arguments, action).await;
+        }
         if action == "internal" {
             return self.internal_action(session_id, arguments).await;
         }
@@ -1036,6 +1387,28 @@ fn plan_format(arguments: &Value) -> Result<PlanFormat, MetamindToolError> {
         "markdown" => Ok(PlanFormat::Markdown),
         "structured" => Ok(PlanFormat::Structured),
         _ => Err(MetamindToolError::invalid("format", "invalid plan format")),
+    }
+}
+
+fn map_process(error: mm_data::ProcessError) -> MetamindToolError {
+    match error {
+        mm_data::ProcessError::NotFound { kind, id } => {
+            MetamindToolError::new("NOT_FOUND", format!("unknown {kind} {id}"))
+        }
+        mm_data::ProcessError::Conflict { expected, current } => MetamindToolError {
+            code: "PROCESS_CONFLICT".into(),
+            message: format!("expected revision {expected}, current revision {current}"),
+            field: None,
+            retryable: true,
+            next: Some("re-read the process and retry".into()),
+        },
+        mm_data::ProcessError::BackendUnavailable(message) => {
+            MetamindToolError::new("BACKEND_UNAVAILABLE", message)
+        }
+        mm_data::ProcessError::SubProcessRefused(message) => {
+            MetamindToolError::new("SUB_PROCESS_REFUSED", message)
+        }
+        other => MetamindToolError::new("INVALID_ARGUMENTS", other.to_string()),
     }
 }
 

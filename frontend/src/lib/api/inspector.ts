@@ -5,6 +5,7 @@ import type {
   DataHealth,
   PlanDetail,
   PlanList,
+  ProcessList,
   StatusView,
   StateBoardPayload,
 } from "@/lib/wire/inspector.ts";
@@ -29,6 +30,21 @@ export function fetchPlans(): Promise<PlanList> {
 
 export function fetchPlan(planId: string): Promise<PlanDetail> {
   return fetchJson<PlanDetail>(`/api/console/plans/${planId}`);
+}
+
+export function fetchProcesses(sessionId?: string): Promise<ProcessList> {
+  return fetchJson<ProcessList>(withQuery("/api/cme/processes", { session_id: sessionId }));
+}
+
+export function controlProcess(
+  processId: string,
+  action: "pause" | "resume" | "cancel" | "retry",
+  body: { input?: string; step_id?: string } = {},
+): Promise<{ process: unknown }> {
+  return fetchJson(`/api/cme/processes/${encodeURIComponent(processId)}/${action}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function fetchActions(sessionId?: string): Promise<ActionList> {

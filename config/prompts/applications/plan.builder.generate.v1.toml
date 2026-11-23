@@ -1,0 +1,9 @@
+schema = "mm.prompt.strategy.v1"
+id = "plan.builder.generate.v1"
+application = "plan.builder.generate"
+version = 1
+description = "Generate a structured flat or tree plan."
+budget = "standard"
+required_variables = ["goal", "instructions", "structure", "max_steps", "repair"]
+fragments = ["plan_generate", "honesty_contract"]
+slots = ["goal", "instructions", "structure", "max_steps", "repair"]

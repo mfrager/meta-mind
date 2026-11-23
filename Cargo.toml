@@ -6,6 +6,7 @@ members = [
     "crates/mm-sm",
     "crates/mm-data",
     "crates/mm-cme",
+    "crates/mm-process",
     "crates/mm-prompt",
     "crates/mm-agent",
     "crates/mm-store-sqlite",
@@ -108,6 +109,7 @@ mm-log = { path = "crates/mm-log" }
 mm-sm = { path = "crates/mm-sm" }
 mm-data = { path = "crates/mm-data" }
 mm-cme = { path = "crates/mm-cme" }
+mm-process = { path = "crates/mm-process" }
 mm-prompt = { path = "crates/mm-prompt" }
 mm-agent = { path = "crates/mm-agent" }
 mm-store-sqlite = { path = "crates/mm-store-sqlite" }

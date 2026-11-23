@@ -103,6 +103,10 @@ pub enum PlanStatus {
     Paused,
     /// All steps complete.
     Done,
+    /// Past its expiry without becoming durable.
+    Expired,
+    /// Archived by the operator; retained, not listed by default.
+    Archived,
     /// Operator/system cancellation.
     Cancelled,
     /// A step failed.
@@ -125,7 +129,13 @@ impl PlanStatus {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Done | Self::Cancelled | Self::Failed | Self::Completed | Self::Abandoned
+            Self::Done
+                | Self::Cancelled
+                | Self::Failed
+                | Self::Completed
+                | Self::Abandoned
+                | Self::Expired
+                | Self::Archived
         )
     }
 }
@@ -298,6 +308,27 @@ pub struct Plan {
     /// Last plan-monitor decision instant.
     #[serde(default)]
     pub last_monitor_at: Option<i64>,
+    /// One-line description shown in listings.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// The builder's `mm.plan.structure.v1` output.
+    #[serde(default)]
+    pub structure: Option<serde_json::Value>,
+    /// Template URI compiled from this plan.
+    #[serde(default)]
+    pub process_uri: Option<String>,
+    /// Expiry instant for a non-durable plan.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    /// Whether the plan is exempt from expiry.
+    #[serde(default)]
+    pub never_expires: bool,
+    /// Workspace-relative PROCESS.md attached to the compiled template.
+    #[serde(default)]
+    pub doc_path: Option<String>,
+    /// Template this plan was derived from, when it was launched from one.
+    #[serde(default)]
+    pub derived_template_uri: Option<String>,
 }
 
 fn one() -> u32 {
@@ -334,6 +365,13 @@ impl Plan {
             owner: PlanOwner::Cm,
             monitor: true,
             last_monitor_at: None,
+            description: None,
+            structure: None,
+            process_uri: None,
+            expires_at: None,
+            never_expires: false,
+            doc_path: None,
+            derived_template_uri: None,
         }
     }
 
@@ -932,6 +970,8 @@ pub trait PlanStore: Send + Sync {
     async fn save(&self, plan: &Plan, expected_revision: u64) -> Result<Plan, PlanError>;
     /// List plans for a session.
     async fn list(&self, session_id: &str) -> Result<Vec<Plan>, PlanError>;
+    /// Every plan in the store, for lifecycle sweeps.
+    async fn list_all(&self) -> Result<Vec<Plan>, PlanError>;
     /// Save a plan and one immutable version atomically.
     async fn save_version(&self, write: &PlanWrite) -> Result<Plan, PlanError>;
     /// Load one version.
@@ -1187,6 +1227,10 @@ impl PlanStore for RdfPlanStore {
         let mut plans = self.list_plans().await?;
         plans.retain(|plan| plan.session_id == session_id);
         Ok(plans)
+    }
+
+    async fn list_all(&self) -> Result<Vec<Plan>, PlanError> {
+        self.list_plans().await
     }
 
     async fn save_version(&self, write: &PlanWrite) -> Result<Plan, PlanError> {

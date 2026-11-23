@@ -1,0 +1,24 @@
+# Phase 5 process pipeline. Loaded only when MM_PROCESS_V1 is enabled.
+# Unknown keys are rejected; a typo cannot silently change a limit.
+
+[engine]
+tick_ms = 200
+lease_ms = 30000
+batch_size = 4
+max_live_instances = 64
+step_timeout_ms = 180000
+priority_aging_ms = 60000
+
+[limits]
+max_steps = 50
+max_depth = 3
+max_doc_chars = 65536
+max_instruction_chars = 4000
+max_step_output_chars = 8000
+max_parallel = 8
+
+[plan]
+default_expiry_hours = 24
+max_steps = 24
+decode_retries = 2
+review_retries = 1

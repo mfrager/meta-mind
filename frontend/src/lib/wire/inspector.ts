@@ -384,6 +384,13 @@ export type PlanView = {
   currentVersion: number;
   owner: string;
   monitor: boolean;
+  description?: string | null;
+  structure?: unknown;
+  processUri?: string | null;
+  expiresAt?: number | null;
+  neverExpires?: boolean;
+  docPath?: string | null;
+  derivedTemplateUri?: string | null;
 };
 
 export type PlanVersion = {
@@ -406,6 +413,82 @@ export type PlanDetail = {
   plan: PlanView;
   versions: PlanVersion[];
   monitor: boolean;
+};
+
+export type ProcessStepView = {
+  status: string;
+  attempts: number;
+  output?: string | null;
+  error?: string | null;
+  startedAt?: number | null;
+  finishedAt?: number | null;
+  wait?: { kind: string; detail: string; wakeAt?: number | null } | null;
+};
+
+export type ProcessEventView = {
+  seq: number;
+  at: number;
+  kind: string;
+  stepId?: string | null;
+  detail: string;
+};
+
+export type ProcessView = {
+  id: string;
+  templateUri: string;
+  templateVersion: number;
+  sessionId: string;
+  status: string;
+  steps: Record<string, ProcessStepView>;
+  currentGroup?: string | null;
+  waiting?: { kind: string; detail: string; wakeAt?: number | null } | null;
+  parent?: string | null;
+  depth: number;
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+  result?: string | null;
+  error?: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  events: ProcessEventView[];
+};
+
+export type ProcessTemplateView = {
+  uri: string;
+  name: string;
+  description: string;
+  version: number;
+  source: string;
+  sessionId?: string | null;
+  steps: Array<{
+    id: string;
+    title: string;
+    instructions: string;
+    dependsOn: string[];
+    parallelGroup?: string | null;
+    toolScope: string[];
+    kind: string;
+    check?: string | null;
+    wait?: { kind: string; detail: string; wakeAt?: number | null } | null;
+  }>;
+  docPath?: string | null;
+  status: string;
+  deleted: boolean;
+};
+
+export type ProcessList = {
+  enabled: boolean;
+  processes: ProcessView[];
+  templates: ProcessTemplateView[];
+  analytics?: {
+    total: number;
+    live: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    byTemplate: Record<string, { total: number; completed: number; failed: number; waiting: number; averageDurationMs: number }>;
+  };
 };
 
 export type ScheduledActionRow = {

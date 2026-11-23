@@ -129,7 +129,7 @@ pub use report::{Modality, Report, ReportFormat, ReportSection, TechnicalLevel};
 pub use routing::{ConversationRouter, ConversationRoutingRequest, RoutingTable};
 pub use runner::{
     InterpretResult, PassContext, PassFinish, PassKind, PassOutcome, RetryContext, RetryFailure,
-    ThinkPassRequest, ThinkRun, ThreePassRunner, VerifyOutcome,
+    StepPassRequest, StepRun, ThinkPassRequest, ThinkRun, ThreePassRunner, VerifyOutcome,
 };
 pub use session::{
     AffectState, MemoryContext, PreferenceProfile, Session, SessionBudgets, SessionContext,

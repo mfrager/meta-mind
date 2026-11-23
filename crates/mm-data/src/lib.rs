@@ -58,6 +58,7 @@ pub mod migrate;
 pub mod ontology;
 pub mod plan;
 pub mod privacy;
+pub mod process;
 pub mod projects;
 pub mod rdf;
 pub mod session;
@@ -116,6 +117,11 @@ pub use plan::{
     StructuredPlan, StructuredStep, PLAN_GRAPH, PLAN_REGISTRY_IRI,
 };
 pub use privacy::contains_secret;
+pub use process::{
+    instance_uri, ProcessError, ProcessEvent, ProcessInstance, ProcessStatus, ProcessStore,
+    ProcessTemplate, ProcessTemplateVersion, QueueState, RdfProcessStore, StepKind, StepState,
+    StepStatus, TemplateSource, TemplateStatus, TemplateStep, WaitCondition, WaitKind,
+};
 pub use projects::{ProjectRecord, ProjectRegistry, ProjectSpec};
 pub use session::{
     ConversationFrame, DeleteMode, FrameKind, FrameStack, FrameStatus, FrameUtterance, Presence,

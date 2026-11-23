@@ -682,6 +682,8 @@ Inspector Trace tab gains a pass timeline: Interpret (checks registered), Proces
 
 **Goal:** Deliver the entire process pipeline on the Phase 4 runner: RDF templates, mm-sm-driven instances, durable queues with parallel/batch consumption, the four-pass plan builder, plan→process integration, PROCESS.md, and the advanced lifecycle features. One phase, five workstreams, ordered by dependency.
 
+**Status (2026-11-23):** implemented behind `MM_PROCESS_V1=false`. The `mm-process` crate, RDF store, queue/supervisor, builder, tools, expiry, sub-processes, versioning, analytics, inspector routes and Plan-tab process section are in place. Deliberate deviations and limitations are recorded in [`infodocs/process-pipeline.md`](../infodocs/process-pipeline.md). The live plan→process soak (and the Phase 4 dual-run) remains open before the flag can be enabled by default.
+
 **Entry criteria:** Phase 4 merged and V2 enabled in staging; `MM_PROCESS_V1` off.
 
 ### 8.1 Workstreams

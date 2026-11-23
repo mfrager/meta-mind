@@ -643,6 +643,8 @@ fn status_label(status: PlanStatus) -> String {
         PlanStatus::Failed => "failed",
         PlanStatus::Abandoned => "abandoned",
         PlanStatus::Stopped => "stopped",
+        PlanStatus::Expired => "expired",
+        PlanStatus::Archived => "archived",
     }
     .into()
 }

@@ -19,6 +19,10 @@ max_parallel_checks = 4
 allow_think = false
 allow_override = false
 
+[step]
+budget_class = "standard"
+strategy = "cm.step.v1"
+
 [envelope]
 max_tokens = 184000
 

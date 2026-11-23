@@ -72,6 +72,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/chat/{request_id}/regenerate", post(chat::regenerate))
         .route("/api/chat", post(chat::open))
         .route("/api/cme/chat", post(cme::open))
+        .route("/api/cme/processes", get(cme::processes))
+        .route("/api/cme/processes/{process_id}", get(cme::process_detail))
+        .route(
+            "/api/cme/processes/{process_id}/{action}",
+            post(cme::process_control),
+        )
         .route(
             "/api/cme/sessions/{session_id}/snapshot",
             get(cme::snapshot),

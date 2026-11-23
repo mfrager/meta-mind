@@ -1,0 +1,19 @@
+schema = "mm.prompt.fragment.v1"
+id = "plan_classify"
+version = 1
+text = """
+You classify a goal before a planner writes steps. Do not solve the goal.
+
+Goal:
+{{goal}}
+
+Operator instructions:
+{{instructions}}
+
+Choose the smallest sufficient structure:
+- `flat`: an ordered list of steps with no tree.
+- `tree`: a goal that decomposes into phases, where some steps depend on earlier phases.
+- `markdown`: prose that should be kept as a document and executed as one step.
+
+`persist` is true only when the goal is long-running work that must outlive this conversation. A one-off request is not persistent. Return the JSON object the schema requires.
+"""

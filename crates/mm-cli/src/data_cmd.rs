@@ -13,7 +13,7 @@
 use std::process::ExitCode;
 
 use mm_core::{Config, MmError};
-use mm_data::{initialize_data_layer, InitConfig};
+use mm_data::{initialize_data_layer, InitConfig, ProcessStore};
 
 /// Verify the index against RDF. Exits non-zero when either side disagrees.
 pub async fn verify(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
@@ -24,6 +24,8 @@ pub async fn verify(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
         .await
         .map_err(data_error)?;
     let report = data.data_service.verify_index().await.map_err(data_error)?;
+    let process_issues = check_process_graph(&data).await?;
+    let clean = report.is_clean() && process_issues.is_empty();
     if json {
         println!(
             "{}",
@@ -33,7 +35,8 @@ pub async fn verify(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
                 "missing": report.missing,
                 "orphaned": report.orphaned,
                 "pendingApplied": pending,
-                "clean": report.is_clean(),
+                "processIssues": process_issues,
+                "clean": clean,
             })
         );
     } else {
@@ -43,6 +46,10 @@ pub async fn verify(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
         );
         println!("  missing   {}", report.missing.len());
         println!("  orphaned  {}", report.orphaned.len());
+        println!("  process   {}", process_issues.len());
+        for issue in process_issues.iter().take(20) {
+            println!("  process   {issue}");
+        }
         for iri in report.missing.iter().take(20) {
             println!("  missing   {iri}");
         }
@@ -54,15 +61,17 @@ pub async fn verify(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
         }
         println!(
             "{}",
-            if report.is_clean() {
+            if clean {
                 "index clean"
+            } else if report.is_clean() {
+                "process graph dirty: see the issues above"
             } else {
                 "index dirty: run `mm-cli data reindex`"
             }
         );
     }
     shutdown(data).await?;
-    Ok(if report.is_clean() {
+    Ok(if clean {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -80,6 +89,66 @@ pub async fn reindex(cfg: Config, json: bool) -> Result<ExitCode, MmError> {
     }
     shutdown(data).await?;
     Ok(ExitCode::SUCCESS)
+}
+
+async fn check_process_graph(data: &mm_data::InitResult) -> Result<Vec<String>, MmError> {
+    let store = mm_data::RdfProcessStore::new(std::sync::Arc::clone(&data.engine));
+    let mut issues = Vec::new();
+    let templates = store.list_templates(true).await.map_err(process_error)?;
+    let mut versions = std::collections::BTreeMap::new();
+    for template in &templates {
+        let frozen = store.versions(&template.uri).await.map_err(process_error)?;
+        if !frozen
+            .iter()
+            .any(|version| version.version == template.version)
+        {
+            issues.push(format!(
+                "template {} reports version {} without a frozen version",
+                template.uri, template.version
+            ));
+        }
+        if template.deleted && template.status != mm_data::TemplateStatus::Deprecated {
+            issues.push(format!(
+                "template {} is deleted but not deprecated",
+                template.uri
+            ));
+        }
+        versions.insert(template.uri.clone(), template.clone());
+    }
+    for instance in store.list_instances().await.map_err(process_error)? {
+        let Some(template) = versions.get(&instance.template_uri) else {
+            issues.push(format!(
+                "instance {} references unknown template {}",
+                instance.id, instance.template_uri
+            ));
+            continue;
+        };
+        if instance.template_version > template.version {
+            issues.push(format!(
+                "instance {} pins version {} above the current {}",
+                instance.id, instance.template_version, template.version
+            ));
+        }
+        for step in &template.steps {
+            if !instance.steps.contains_key(&step.id) {
+                issues.push(format!(
+                    "instance {} has no state for step {}",
+                    instance.id, step.id
+                ));
+            }
+        }
+        if instance.status == mm_data::ProcessStatus::Waiting && instance.waiting.is_none() {
+            issues.push(format!(
+                "instance {} is waiting without a wait condition",
+                instance.id
+            ));
+        }
+    }
+    Ok(issues)
+}
+
+fn process_error(error: mm_data::ProcessError) -> MmError {
+    MmError::Internal(format!("process: {error}"))
 }
 
 async fn open(cfg: &Config) -> Result<mm_data::InitResult, MmError> {

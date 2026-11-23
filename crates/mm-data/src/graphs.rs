@@ -41,6 +41,7 @@ impl Default for GraphAliases {
             "users/index",
             "schema",
             "plan",
+            "process",
             "action",
             "session",
             "log",
