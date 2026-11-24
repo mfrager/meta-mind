@@ -13,7 +13,10 @@ use async_trait::async_trait;
 use common::{fixture, network_lock, Harness};
 
 use mm_llm::cached::{prompt_hash, verify_index};
-use mm_llm::client::{CacheMode, LlmRequest, Message, Purpose};
+use mm_llm::client::{
+    CacheMode, CollectSink, DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Message,
+    Purpose, Usage,
+};
 use mm_llm::config::ProviderEnv;
 use mm_llm::openai::{OpenAiClient, Transport};
 use mm_llm::replay::{NetworkGuard, ReplayLlmClient, Session};
@@ -121,6 +124,86 @@ async fn a_request_the_session_does_not_cover_is_an_error_never_a_live_call() {
     assert_eq!(err.kind(), "replay");
     assert_eq!(client.provider_calls(), 0);
     assert_eq!(client.misses(), 1);
+    h.shutdown().await;
+}
+
+/// A client that streams two deltas over the one response it would otherwise
+/// return, so the service path can be checked without a provider.
+struct DeltaClient {
+    calls: std::sync::atomic::AtomicU64,
+}
+
+#[async_trait]
+impl LlmClient for DeltaClient {
+    async fn complete(&self, _req: &LlmRequest) -> mm_llm::error::Result<LlmResponse> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(answer("ab"))
+    }
+
+    async fn complete_stream(
+        &self,
+        _req: &LlmRequest,
+        sink: &mut dyn DeltaSink,
+    ) -> mm_llm::error::Result<LlmResponse> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        sink.delta("a");
+        sink.delta("b");
+        Ok(answer("ab"))
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+}
+
+fn answer(text: &str) -> LlmResponse {
+    LlmResponse {
+        call_id: mm_llm::accounting::new_call_id(),
+        text: text.into(),
+        model: "small".into(),
+        usage: Usage {
+            tokens_in: 3,
+            tokens_out: 1,
+            cost_micros: 0,
+            latency_ms: 1,
+        },
+        cached: false,
+        schema_valid: true,
+        decoder: DecoderKind::ProviderNative,
+        tool_calls: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn a_streamed_call_reports_deltas_and_is_accounted_like_any_other() {
+    let h = Harness::new(0).await;
+    let client = Arc::new(DeltaClient {
+        calls: std::sync::atomic::AtomicU64::new(0),
+    });
+    let service = h.service_with(client.clone());
+    let request =
+        LlmRequest::new(Purpose::Converse, vec![Message::user("stream this")]).with_model("small");
+
+    let mut sink = CollectSink::default();
+    let response = service
+        .call_stream(request.clone(), &mut sink)
+        .await
+        .unwrap();
+    assert_eq!(sink.0, "ab");
+    assert_eq!(response.text, "ab");
+    assert_eq!(h.ledger_call_ids().await.len(), 1);
+
+    // A cache hit replays the same text as one delta; a streaming caller never
+    // has to know where the answer came from.
+    let mut replay = CollectSink::default();
+    let cached = service.call_stream(request, &mut replay).await.unwrap();
+    assert!(cached.cached);
+    assert_eq!(replay.0, "ab");
+    assert_eq!(
+        client.calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the second call is served from the cache"
+    );
     h.shutdown().await;
 }
 

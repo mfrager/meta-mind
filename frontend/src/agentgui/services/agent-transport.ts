@@ -1,9 +1,13 @@
-import { openChat, createSession as createChatSession } from "@/lib/api/chat.ts";
+import {
+  openChatStream,
+  createSession as createChatSession,
+} from "@/lib/api/chat.ts";
 import type { ChatFrame } from "@/lib/wire/chat.ts";
 
 import type {
   AgentEvent,
   ChatRequestPayload,
+  PassName,
   QuestionnairePayload,
   ServerHealth,
 } from "@/agentgui/types/workspace";
@@ -115,14 +119,117 @@ function asConfirmation(id: string, request: unknown) {
   };
 }
 
+const PASS_NAMES: readonly PassName[] = ["interpret", "process", "verify", "think"];
+
+function asPass(value: string): PassName | null {
+  return (PASS_NAMES as readonly string[]).includes(value)
+    ? (value as PassName)
+    : null;
+}
+
 /** Translate one metamind chat frame into zero or more workspace events. */
-function eventsForFrame(frame: ChatFrame): AgentEvent[] {
+export function eventsForFrame(frame: ChatFrame): AgentEvent[] {
   switch (frame.type) {
-    case "llm_response": {
-      if (!frame.visible || frame.is_final || !frame.text.trim()) return [];
-      return [{ type: "text", delta: `${frame.text.trim()}\n\n` }];
+    case "pass_start": {
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_start",
+          pass,
+          attempt: frame.attempt,
+          model: frame.model ?? undefined,
+        },
+      ];
     }
-    case "tool_call":
+    case "pass_round": {
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_round",
+          pass,
+          attempt: frame.attempt,
+          round: frame.round,
+          model: frame.model ?? undefined,
+          streaming: frame.streaming,
+        },
+      ];
+    }
+    case "pass_token": {
+      // A final token is the answer, and the terminal frame renders it. Phase
+      // prose and (for now) reasoning never become assistant text.
+      if (frame.final || frame.channel === "reasoning" || !frame.token) return [];
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_delta",
+          pass,
+          attempt: frame.attempt ?? 1,
+          round: frame.round ?? 1,
+          delta: frame.token,
+        },
+      ];
+    }
+    case "pass_round_end": {
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_round_end",
+          pass,
+          attempt: frame.attempt,
+          round: frame.round,
+          outcome: frame.outcome,
+          tokensIn: frame.tokensIn,
+          tokensOut: frame.tokensOut,
+          latencyMs: frame.latencyMs,
+          error: frame.error ?? undefined,
+        },
+      ];
+    }
+    case "pass_complete": {
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_complete",
+          pass,
+          attempt: frame.attempt ?? 1,
+          finished: frame.finished,
+          budget: frame.budget,
+        },
+      ];
+    }
+    case "pass_retry": {
+      const pass = asPass(frame.pass);
+      if (!pass) return [];
+      return [
+        {
+          type: "pass_retry",
+          pass,
+          attempt: frame.attempt,
+          nextAttempt: frame.nextAttempt,
+          reason: frame.reason,
+        },
+      ];
+    }
+    case "verification":
+      return [
+        {
+          type: "verification",
+          label: frame.label,
+          pass: frame.pass,
+          confidence: frame.confidence,
+          attempt: frame.attempt ?? undefined,
+          backend: frame.backend ?? undefined,
+          reasoning: frame.reasoning ?? undefined,
+          durationMs: frame.durationMs ?? undefined,
+        },
+      ];
+    case "tool_call": {
+      const pass = frame.pass ? asPass(frame.pass) : null;
       return [
         {
           type: "tool",
@@ -130,12 +237,20 @@ function eventsForFrame(frame: ChatFrame): AgentEvent[] {
             id: frame.id,
             name: frame.name,
             status: "running",
-            description: frame.phase,
+            description: pass
+              ? `${pass} · round ${frame.round ?? 1}`
+              : frame.phase,
             input: frame.input,
+            pass: pass ?? undefined,
+            attempt: frame.attempt ?? undefined,
+            round: frame.round ?? undefined,
+            action: frame.action ?? undefined,
           },
         },
       ];
-    case "tool_result":
+    }
+    case "tool_result": {
+      const pass = frame.pass ? asPass(frame.pass) : null;
       return [
         {
           type: "tool",
@@ -145,9 +260,17 @@ function eventsForFrame(frame: ChatFrame): AgentEvent[] {
             status: frame.success ? "done" : "error",
             output: stringify(frame.output),
             input: undefined,
+            pass: pass ?? undefined,
+            attempt: frame.attempt ?? undefined,
+            round: frame.round ?? undefined,
           },
         },
       ];
+    }
+    case "llm_response": {
+      if (!frame.visible || frame.is_final || !frame.text.trim()) return [];
+      return [{ type: "text", delta: `${frame.text.trim()}\n\n` }];
+    }
     case "input_request": {
       const questionnaire = asQuestionnaire(frame.id, frame.request);
       if (questionnaire) {
@@ -179,23 +302,10 @@ class ServerTransport implements AgentTransport {
     signal?: AbortSignal
   ): Promise<void> {
     const localId = payload.sessionId;
-    let frames: Awaited<ReturnType<typeof openChat>>;
-
     const bound = bindings.get(localId);
-    try {
-      frames = await openChat({
-        sessionId: bound ?? localId,
-        query: payload.prompt,
-      });
-    } catch (error) {
-      if (!isUnknownSession(error)) throw error;
-      // The sidebar created this session locally; metamind needs one first.
-      const created = await createChatSession();
-      bindings.set(localId, created.id);
-      frames = await openChat({ sessionId: created.id, query: payload.prompt });
-    }
-
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const emit = (entry: { frame: ChatFrame }) => {
+      for (const event of eventsForFrame(entry.frame)) onEvent(event);
+    };
 
     onEvent({
       type: "start",
@@ -203,9 +313,22 @@ class ServerTransport implements AgentTransport {
       model: payload.model,
     });
 
-    for (const entry of frames) {
-      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      for (const event of eventsForFrame(entry.frame)) onEvent(event);
+    try {
+      await openChatStream(
+        { sessionId: bound ?? localId, query: payload.prompt },
+        emit,
+        signal
+      );
+    } catch (error) {
+      if (!isUnknownSession(error) || bound) throw error;
+      // The sidebar created this session locally; metamind needs one first.
+      const created = await createChatSession();
+      bindings.set(localId, created.id);
+      await openChatStream(
+        { sessionId: created.id, query: payload.prompt },
+        emit,
+        signal
+      );
     }
   }
 }

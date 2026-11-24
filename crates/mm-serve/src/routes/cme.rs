@@ -21,9 +21,11 @@ use tokio::sync::broadcast;
 use mm_cme::{
     BudgetClass, BudgetLedger, ChunkKind, PromptVariables, SessionSnapshot, UserProjection,
 };
+use mm_llm::CallContext;
 
 use crate::chat::validate_attachments;
 use crate::cme::CONSOLE_USER;
+use crate::cme_stream::ChatStream;
 use crate::dto::chat::{ChatFrame, Phase};
 use crate::error::AppError;
 use crate::routes::chat::{sse_response, OpenChat};
@@ -206,10 +208,78 @@ pub async fn open(
     if let Some(variant) = variant {
         executor = executor.with_prompt_variant(variant);
     }
-    let outcome = match state
-        .cme
-        .run_turn(&session_id, body.query.clone(), executor)
-        .await
+
+    if state.three_pass.turn.stream {
+        let (chat_stream, receiver) = ChatStream::new(Arc::clone(&state), request_id.clone());
+        chat_stream.emit(ChatFrame::Started {
+            query: body.query.clone(),
+        });
+        chat_stream.emit(ChatFrame::Run {
+            request_id: request_id.clone(),
+            session_id: session_id.clone(),
+            query: body.query.clone(),
+        });
+        let executor = executor.with_pass_observer(chat_stream.clone());
+        let task_state = Arc::clone(&state);
+        let query = body.query.clone();
+        let turn_session = session_id.clone();
+        let activity = CallContext::new("chat")
+            .with_session(turn_session.clone())
+            .with_run(request_id.clone());
+        tokio::spawn(mm_llm::scope(activity, async move {
+            let result = task_state
+                .cme
+                .run_turn(&turn_session, query.clone(), executor)
+                .await;
+            let outcome = match result {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    chat_stream.emit(ChatFrame::Failed {
+                        error: "the conversation engine stopped".into(),
+                        reason: Some(error.to_string()),
+                    });
+                    let _ = task_state.chat.finish_stream(&request_id, "failed");
+                    return;
+                }
+            };
+            settle_after_turn(&task_state, &turn_session).await;
+            for frame in terminal_frames(&task_state, &request_id, &query, &outcome).await {
+                chat_stream.emit(frame);
+            }
+            let state_name = if outcome.is_success() {
+                "completed"
+            } else {
+                "failed"
+            };
+            let _ = task_state.chat.finish_stream(&request_id, state_name);
+            if let Ok(stored) = task_state.chat.frames_from(&request_id, 1) {
+                task_state
+                    .cme
+                    .log_turn_frames(&turn_session, &request_id, &query, &outcome, &stored)
+                    .await;
+            }
+        }));
+        let stream = futures::stream::unfold(receiver, |mut receiver| async move {
+            receiver
+                .recv()
+                .await
+                .map(|(seq, frame)| (Ok::<Event, Infallible>(frame_event(seq, frame)), receiver))
+        });
+        return Ok(Sse::new(stream)
+            .keep_alive(KeepAlive::default())
+            .into_response());
+    }
+
+    let activity = CallContext::new("chat")
+        .with_session(session_id.clone())
+        .with_run(request_id.clone());
+    let outcome = match mm_llm::scope(activity, async {
+        state
+            .cme
+            .run_turn(&session_id, body.query.clone(), executor)
+            .await
+    })
+    .await
     {
         Ok(outcome) => outcome,
         Err(error) => {
@@ -221,16 +291,34 @@ pub async fn open(
             return Err(error);
         }
     };
+    settle_after_turn(&state, &session_id).await;
+    let frames = frames_for(&state, &request_id, &session_id, &body.query, &outcome).await;
+    let state_name = if outcome.is_success() {
+        "completed"
+    } else {
+        "failed"
+    };
+    let stored = state.chat.finish(&request_id, frames, state_name)?;
+    state
+        .cme
+        .log_turn_frames(&session_id, &request_id, &body.query, &outcome, &stored)
+        .await;
+    Ok(sse_response(&stored)?.into_response())
+}
+
+/// The post-turn refreshes every path performs, so a streamed and a buffered
+/// turn leave the same state behind.
+async fn settle_after_turn(state: &AppState, session_id: &str) {
     if state.automation.is_some() {
         let _ = crate::automation::resume_frame_timer(
             &state.state_service,
-            &session_id,
+            session_id,
             mm_data::rdf::now_ms(),
         )
         .await;
     }
     state.status_service.mark_dirty_many(
-        &session_id,
+        session_id,
         [
             crate::status_service::StatusSection::State,
             crate::status_service::StatusSection::Session,
@@ -244,18 +332,88 @@ pub async fn open(
             crate::status_service::StatusSection::Agents,
         ],
     );
-    let frames = frames_for(&state, &request_id, &session_id, &body.query, &outcome).await;
-    let state_name = if outcome.is_success() {
-        "completed"
-    } else {
-        "failed"
-    };
-    let stored = state.chat.finish(&request_id, frames, state_name)?;
-    state
-        .cme
-        .log_turn_frames(&session_id, &request_id, &body.query, &outcome, &stored)
-        .await;
-    Ok(sse_response(&stored)?.into_response())
+}
+
+/// The event type taken from the frame's own tag, so the wire keeps one source
+/// of truth for what a frame is.
+fn frame_event(seq: u64, frame: ChatFrame) -> Event {
+    let value = serde_json::to_value(&frame).unwrap_or(Value::Null);
+    let event = value
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("message")
+        .to_owned();
+    Event::default()
+        .id(seq.to_string())
+        .event(event)
+        .data(value.to_string())
+}
+
+/// The frames a streamed turn adds after its passes and tools have already been
+/// delivered live: non-text chunks, focus, the final reply, and the terminal
+/// frame. Including pass or tool frames here would render every card twice.
+async fn terminal_frames(
+    state: &AppState,
+    _request_id: &str,
+    _query: &str,
+    outcome: &mm_cme::TurnOutcome,
+) -> Vec<ChatFrame> {
+    let turn_id = outcome.turn_id.to_string();
+    let mut frames = Vec::new();
+    let verified = outcome
+        .pass_history
+        .iter()
+        .rev()
+        .find(|record| record.kind == mm_cme::PassKind::Verify)
+        .map(|record| record.verification.iter().all(|result| result.pass));
+    if !outcome.is_success() {
+        frames.push(ChatFrame::Failed {
+            error: "the conversation turn failed".into(),
+            reason: outcome.error.clone(),
+        });
+        return frames;
+    }
+    for chunk in &outcome.chunks {
+        if matches!(chunk.kind, ChunkKind::Text | ChunkKind::ToolCall) {
+            continue;
+        }
+        frames.push(ChatFrame::Block {
+            turn_id: turn_id.clone(),
+            block: json!({
+                "chunkId": chunk.chunk_id,
+                "kind": chunk.kind.as_str(),
+                "state": chunk.state,
+                "text": chunk.text,
+            }),
+        });
+    }
+    for call in &outcome.tool_calls {
+        let output = json_value(&call.result);
+        if let Some(focus) = output.get("focus") {
+            push_focus(state, &mut frames, focus).await;
+        }
+    }
+    frames.push(ChatFrame::LlmResponse {
+        turn_id: turn_id.clone(),
+        phase: Phase::Final,
+        text: outcome.text.clone(),
+        visible: true,
+        is_final: true,
+    });
+    frames.push(ChatFrame::FinalResponse {
+        response_id: turn_id,
+        text: outcome.text.clone(),
+        blocks: None,
+        suggestions: None,
+        unbacked: None,
+        verified,
+    });
+    let mut subsystems = vec!["cme".into(), "memory".into()];
+    if !outcome.tool_calls.is_empty() {
+        subsystems.push("tools".into());
+    }
+    frames.push(ChatFrame::Completed { subsystems });
+    frames
 }
 
 async fn frames_for(
@@ -305,6 +463,14 @@ async fn frames_for(
                 phase: Phase::Act,
                 name: call.name.clone(),
                 input: json_value(&call.arguments),
+                pass: None,
+                attempt: None,
+                round: None,
+                action: json_value(&call.arguments)
+                    .get("action")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                parent_tool_id: None,
             });
             let output = json_value(&call.result);
             frames.push(ChatFrame::ToolResult {
@@ -314,6 +480,10 @@ async fn frames_for(
                 success: call.ok,
                 output: output.clone(),
                 duration_ms: 0,
+                pass: None,
+                attempt: None,
+                round: None,
+                parent_tool_id: None,
             });
             if let Some(focus) = output.get("focus") {
                 push_focus(state, &mut frames, focus).await;
@@ -445,12 +615,19 @@ fn pass_frames(turn_id: &str, text: &str, pass_history: &[mm_cme::PassRecord]) -
             pass: record.kind.as_str().to_owned(),
             turn_id: turn_id.to_owned(),
             attempt: record.attempt,
+            model: None,
+            parent_tool_id: None,
         });
         if record.outcome == "fast_path" {
             frames.push(ChatFrame::PassToken {
                 pass: record.kind.as_str().to_owned(),
                 token: text.to_owned(),
                 is_final: true,
+                attempt: Some(record.attempt),
+                round: None,
+                channel: None,
+                call_id: None,
+                parent_tool_id: None,
             });
         }
         frames.push(ChatFrame::PassComplete {
@@ -458,12 +635,18 @@ fn pass_frames(turn_id: &str, text: &str, pass_history: &[mm_cme::PassRecord]) -
             finished: record.outcome.clone(),
             budget: serde_json::to_value(&record.budget).unwrap_or(Value::Null),
             prompt_hash: record.prompt_hash.clone(),
+            attempt: Some(record.attempt),
+            parent_tool_id: None,
         });
         for result in &record.verification {
             frames.push(ChatFrame::Verification {
                 label: result.check_label.clone(),
                 pass: result.pass,
                 confidence: result.confidence,
+                attempt: Some(record.attempt),
+                backend: Some(result.backend.clone()),
+                duration_ms: Some(result.elapsed_ms),
+                reasoning: Some(result.reasoning.clone()),
             });
         }
     }
@@ -603,6 +786,7 @@ mod tests {
                 label,
                 pass: true,
                 confidence,
+                ..
             } if label == "cites" && (*confidence - 0.9).abs() < f64::EPSILON
         ));
     }
@@ -620,6 +804,7 @@ mod tests {
                 pass,
                 token,
                 is_final: true,
+                ..
             } if pass == "interpret" && token == "hello"
         ));
         assert_eq!(

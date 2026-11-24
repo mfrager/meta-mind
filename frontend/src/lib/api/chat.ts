@@ -6,20 +6,61 @@ async function readError(res: Response): Promise<Error> {
   return new Error(body?.reason || body?.message || `HTTP ${res.status}`);
 }
 
-export function parseSse(raw: string): SequencedFrame[] {
-  const frames: SequencedFrame[] = [];
-  for (const chunk of raw.split("\n\n")) {
-    if (!chunk.trim() || chunk.startsWith(":")) continue;
-    let seq = 0;
-    let data = "";
-    for (const line of chunk.split("\n")) {
-      if (line.startsWith("id: ")) seq = Number(line.slice(4));
-      if (line.startsWith("data: ")) data += line.slice(6);
+/**
+ * Incremental SSE decoder.
+ *
+ * A network chunk can end anywhere — mid-frame, mid-line, even between the two
+ * bytes of a multi-byte character — so the decoder keeps the incomplete tail and
+ * only parses a block once its terminating blank line arrives.
+ */
+export class SseStreamParser {
+  private buffer = "";
+
+  push(chunk: string): SequencedFrame[] {
+    this.buffer += chunk.replace(/\r\n/g, "\n");
+    const frames: SequencedFrame[] = [];
+    for (;;) {
+      const boundary = this.buffer.indexOf("\n\n");
+      if (boundary === -1) break;
+      const block = this.buffer.slice(0, boundary);
+      this.buffer = this.buffer.slice(boundary + 2);
+      const parsed = parseSseBlock(block);
+      if (parsed) frames.push(parsed);
     }
-    if (!data) continue;
-    frames.push({ seq, frame: JSON.parse(data) as ChatFrame });
+    return frames;
   }
-  return frames;
+
+  flush(): SequencedFrame[] {
+    const rest = this.buffer;
+    this.buffer = "";
+    const parsed = rest.trim() ? parseSseBlock(rest) : null;
+    return parsed ? [parsed] : [];
+  }
+}
+
+function parseSseBlock(block: string): SequencedFrame | null {
+  if (!block.trim() || block.startsWith(":")) return null;
+  let seq = 0;
+  let data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("id:")) seq = Number(line.slice(3).trim());
+    if (line.startsWith("data:")) {
+      const value = line.slice(5);
+      data += value.startsWith(" ") ? value.slice(1) : value;
+    }
+  }
+  if (!data) return null;
+  try {
+    return { seq, frame: JSON.parse(data) as ChatFrame };
+  } catch {
+    return null;
+  }
+}
+
+export function parseSse(raw: string): SequencedFrame[] {
+  const parser = new SseStreamParser();
+  const frames = parser.push(raw);
+  return [...frames, ...parser.flush()];
 }
 
 export async function createSession(): Promise<{ id: string; title: string; requestId?: string }> {
@@ -43,6 +84,47 @@ export async function openChat(body: {
   });
   if (!res.ok) throw await readError(res);
   return parseSse(await res.text());
+}
+
+/**
+ * Open a chat turn and deliver every frame as soon as it arrives.
+ *
+ * Unlike [`openChat`], this never buffers the body: the first frames (run ids,
+ * pass starts) reach the reducer while the model is still working. A server
+ * that answers without a stream body is still handled, once, as a whole body.
+ */
+export async function openChatStream(
+  body: Parameters<typeof openChat>[0],
+  onFrame: (entry: SequencedFrame) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw await readError(res);
+  if (!res.body) {
+    for (const entry of parseSse(await res.text())) onFrame(entry);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const parser = new SseStreamParser();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const entry of parser.push(decoder.decode(value, { stream: true }))) {
+        onFrame(entry);
+      }
+    }
+    for (const entry of parser.push(decoder.decode())) onFrame(entry);
+    for (const entry of parser.flush()) onFrame(entry);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export async function resumeChat(requestId: string, from: number): Promise<SequencedFrame[]> {

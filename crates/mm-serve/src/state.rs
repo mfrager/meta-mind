@@ -27,7 +27,7 @@ use mm_data::{
     CLEAN_LOG_MAX_CHARS,
 };
 use mm_eventlog::EventLog;
-use mm_llm::{LlmClient, LlmConfig, OpenAiClient, ProviderEnv, ThresholdRouter};
+use mm_llm::{CallContext, LlmClient, LlmConfig, ProviderEnv, ThresholdRouter};
 use mm_log::Logger;
 use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
@@ -47,6 +47,8 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::feature_flags::FeatureFlags;
 use crate::interjection::InterjectionRouter;
+use crate::llm_feed::observe;
+use crate::llm_feed::LlmActivityFeed;
 use crate::metrics::Metrics;
 use crate::plan_monitor::PlanMonitor;
 use crate::state_service::StateService;
@@ -117,12 +119,22 @@ pub struct AppState {
     pub status_service: Arc<StatusService>,
     /// Process metrics.
     pub metrics: Arc<Metrics>,
+    /// The live LLM activity feed, when `MM_LLM_ACTIVITY` is on.
+    pub llm_activity: Option<Arc<LlmActivityFeed>>,
     /// Phase 5 durable process supervisor, built lazily after boot so it can
     /// resolve the controller's model through the assembled state.
     pub process: std::sync::OnceLock<Arc<mm_process::ProcessEngine>>,
 }
 
 impl AppState {
+    /// Wrap a client in the activity observer when the feed is enabled.
+    ///
+    /// Every server construction path that can call a model goes through here
+    /// or [`crate::llm_feed::openai_client`], so no call bypasses the feed.
+    pub fn observed(&self, client: Arc<dyn LlmClient>, context: CallContext) -> Arc<dyn LlmClient> {
+        observe(client, self.llm_activity.as_ref(), context)
+    }
+
     /// Resolve configuration exactly like `mm-cli` (`--data-dir` wins over
     /// `--config`, which wins over the repository default).
     pub fn resolve_config(
@@ -229,10 +241,23 @@ impl AppState {
         );
         let llm_config = LlmConfig::load_or_default(&Config::repo_root().join("config/llm.toml"))
             .unwrap_or_default();
-        let summarizer_client = OpenAiClient::new(&llm_config)
-            .ok()
-            .map(|client| Arc::new(client) as Arc<dyn LlmClient>);
-        let action_client = summarizer_client.clone();
+        // `config/llm.toml` stays authoritative for routing; the registry is a
+        // boot-time mirror so the configured catalog is inspectable in SQLite.
+        sync_llm_models(&sqlite, &llm_config).await?;
+        let llm_activity = features
+            .llm_activity
+            .then(LlmActivityFeed::from_env)
+            .map(Arc::new);
+        let summarizer_client = crate::llm_feed::openai_client(
+            &llm_config,
+            llm_activity.as_ref(),
+            CallContext::new("summarize"),
+        );
+        let action_client = crate::llm_feed::openai_client(
+            &llm_config,
+            llm_activity.as_ref(),
+            CallContext::new("automation"),
+        );
         let summarizer = TurnSummarizer::new(
             summarizer_client,
             Arc::clone(&prompts),
@@ -406,6 +431,7 @@ impl AppState {
             actions,
             status_service,
             metrics,
+            llm_activity,
             process: std::sync::OnceLock::new(),
         };
         if let Some(automation) = &state.automation {
@@ -683,7 +709,9 @@ impl AppState {
         } else {
             executor
         };
-        executor.with_loop_policy(mm_cme::TurnLoopPolicy::ContinueUntilDone)
+        executor
+            .with_budgeting(self.three_pass.budget.enabled)
+            .with_loop_policy(mm_cme::TurnLoopPolicy::ContinueUntilDone)
     }
 }
 
@@ -988,6 +1016,44 @@ fn llm_status() -> ServiceStatus {
     }
 }
 
+/// Replace the `llm_models` registry with the models loaded from
+/// `config/llm.toml`. The table is a mirror, not a second source of truth, so a
+/// model removed from the file disappears from the table on the next boot.
+async fn sync_llm_models(store: &SqliteStore, config: &LlmConfig) -> Result<usize, MmError> {
+    let synced_at = mm_core::Timestamp::now().to_rfc3339();
+    let mut tx = store
+        .pool()
+        .begin()
+        .await
+        .map_err(|error| MmError::Store(format!("llm model registry: {error}")))?;
+    sqlx::query("DELETE FROM llm_models")
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| MmError::Store(format!("llm model registry: {error}")))?;
+    for spec in &config.models {
+        sqlx::query(
+            "INSERT INTO llm_models (\
+               name, input_cost_micros_per_1k, output_cost_micros_per_1k, \
+               typical_latency_ms, complexity_ceiling, mock, synced_at\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .bind(&spec.name)
+        .bind(spec.input_cost_micros_per_1k)
+        .bind(spec.output_cost_micros_per_1k)
+        .bind(i64::from(spec.typical_latency_ms))
+        .bind(spec.complexity_ceiling.as_str())
+        .bind(i64::from(spec.mock))
+        .bind(&synced_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| MmError::Store(format!("llm model registry: {error}")))?;
+    }
+    tx.commit()
+        .await
+        .map_err(|error| MmError::Store(format!("llm model registry: {error}")))?;
+    Ok(config.models.len())
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -998,6 +1064,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mm_llm::{Complexity, ModelSpec};
 
     #[test]
     fn a_live_holder_blocks_and_a_dead_one_is_reclaimed() {
@@ -1027,16 +1094,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn model_registry_mirrors_config_and_drops_removed_models() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteStore::open(&dir.path().join("metamind.db"))
+            .await
+            .unwrap();
+        store.migrate().await.unwrap();
+        let spec = |name: &str, mock: bool| ModelSpec {
+            name: name.to_string(),
+            input_cost_micros_per_1k: 10,
+            output_cost_micros_per_1k: 20,
+            typical_latency_ms: 300,
+            complexity_ceiling: Complexity::Medium,
+            mock,
+        };
+        let mut config = LlmConfig {
+            models: vec![spec("alpha/model", false), spec("mock-small", true)],
+            ..LlmConfig::default()
+        };
+        assert_eq!(sync_llm_models(&store, &config).await.unwrap(), 2);
+        let rows: Vec<(String, i64, i64, i64, String, i64)> = sqlx::query_as(
+            "SELECT name, input_cost_micros_per_1k, output_cost_micros_per_1k, \
+             typical_latency_ms, complexity_ceiling, mock FROM llm_models ORDER BY name",
+        )
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "alpha/model".to_string(),
+                    10,
+                    20,
+                    300,
+                    "medium".to_string(),
+                    0
+                ),
+                (
+                    "mock-small".to_string(),
+                    10,
+                    20,
+                    300,
+                    "medium".to_string(),
+                    1
+                ),
+            ]
+        );
+
+        config.models.truncate(1);
+        assert_eq!(sync_llm_models(&store, &config).await.unwrap(), 1);
+        let names: Vec<String> = sqlx::query_scalar("SELECT name FROM llm_models ORDER BY name")
+            .fetch_all(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(names, vec!["alpha/model"]);
+        store.close().await;
+    }
+
+    #[tokio::test]
     async fn a_second_graph_open_fails_while_this_process_holds_the_store() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = mm_core::Config::for_data_dir(dir.path());
         let lock = ConsoleLock::acquire(dir.path()).unwrap();
         let state = AppState::boot(cfg, lock).await.unwrap();
         assert!(state.graph.is_some(), "the console holds the graph");
+        let configured = LlmConfig::load_or_default(&Config::repo_root().join("config/llm.toml"))
+            .unwrap_or_default()
+            .models
+            .len() as i64;
+        assert_eq!(
+            state.sqlite.row_count("llm_models").await.unwrap(),
+            configured,
+            "boot must mirror config/llm.toml into llm_models"
+        );
         let opened = GraphStore::open(&state.cfg.store.graph_dir, &state.cfg.shapes_file()).await;
         assert!(
             opened.is_err(),
             "a second open must fail while the first store is held"
+        );
+    }
+
+    #[test]
+    fn only_the_activity_feed_constructs_a_provider_client() {
+        // Build the needle so this test's own source does not match it.
+        let needle = format!("{}::new", "OpenAiClient");
+
+        fn visit(dir: &std::path::Path, needle: &str, hits: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    visit(&path, needle, hits);
+                    continue;
+                }
+                if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Ok(source) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                if source.contains(needle) {
+                    hits.push(path.display().to_string());
+                }
+            }
+        }
+
+        let mut hits = Vec::new();
+        visit(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &needle,
+            &mut hits,
+        );
+        assert_eq!(hits.len(), 1, "direct provider construction: {hits:?}");
+        assert!(
+            hits[0].ends_with("llm_feed.rs"),
+            "the feed must be the only provider construction path: {hits:?}"
         );
     }
 }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { useWorkspaceStore } from "@/agentgui/lib/store/workspace-store";
+import { usePrefsStore } from "@/lib/store/prefs.ts";
 
 interface ShortcutHandlers {
   onFocusComposer?: () => void;
@@ -37,6 +38,12 @@ export function useKeyboardShortcuts({ onFocusComposer }: ShortcutHandlers = {})
         case "k":
           event.preventDefault();
           onFocusComposer?.();
+          break;
+        case "`":
+          if (!event.shiftKey) {
+            event.preventDefault();
+            usePrefsStore.getState().toggleLlmLogCollapsed();
+          }
           break;
         default:
           break;

@@ -15,6 +15,11 @@ export default defineConfig({
     { name: "kernel", testMatch: /console\.spec\.ts/ },
     { name: "scripted", testMatch: /controller\.spec\.ts/ },
     { name: "conversation", testMatch: /conversation\.spec\.ts/ },
+    {
+      name: "activity",
+      testMatch: /llm-activity\.spec\.ts/,
+      use: { baseURL: "http://127.0.0.1:8903" },
+    },
   ],
   use: {
     baseURL: "http://127.0.0.1:8902",
@@ -35,6 +40,14 @@ export default defineConfig({
     {
       command: "MM_UI_PORT=8896 npx vite --host 127.0.0.1 --port 8902 --strictPort",
       url: "http://127.0.0.1:8902",
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      // The activity spec talks to the scripted conversation server directly so
+      // its chat SSE and activity SSE stay live through the Vite proxy.
+      command: "MM_UI_PORT=8894 npx vite --host 127.0.0.1 --port 8903 --strictPort",
+      url: "http://127.0.0.1:8903",
       reuseExistingServer: false,
       timeout: 60_000,
     },

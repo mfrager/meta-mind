@@ -79,8 +79,8 @@ pub use budget::{
 };
 pub use chunk::{Chunk, ChunkDirective, ChunkEvent, ChunkId, ChunkKind, ChunkState};
 pub use config::{
-    EnvelopeConfig, InterpretConfig, JudgeConfig, PassConfig, ThinkConfig, ThreePassConfig,
-    ThreePassConfigError, VerificationConfig, VerifyConfig,
+    BudgetConfig, EnvelopeConfig, InterpretConfig, JudgeConfig, PassConfig, ThinkConfig,
+    ThreePassConfig, ThreePassConfigError, TurnConfig, VerificationConfig, VerifyConfig,
 };
 pub use dashboard::{Dashboard, Panel, PanelKind, ViewingContext};
 pub use driver::{DriverMessage, SessionDriver};
@@ -102,9 +102,7 @@ pub use observability::{
     ChunkSnapshot, Observability, PreferencesView, RegionView, SessionSnapshot, SmObserver,
     SmTransitionEvent, TurnSnapshot, VoiceView,
 };
-pub use observer::{
-    NoopObserver, ObserverDeltaSink, PassObserver, PassSummary, RoundSummary,
-};
+pub use observer::{NoopObserver, ObserverDeltaSink, PassObserver, PassSummary, RoundSummary};
 pub use pass_scope::{PassScope, CONTROL_TOOLS, WORK_TOOLS};
 pub use planner::{ResponseModality, ToolPolicy, TurnBudget, TurnContext, TurnPlanner};
 pub use plugins::{

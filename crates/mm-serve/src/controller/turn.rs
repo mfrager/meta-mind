@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use mm_llm::{
-    CacheMode, LlmClient, LlmRequest, LlmService, Message, Purpose, SchemaId, ToolSchema,
+    CacheMode, CallContext, LlmClient, LlmRequest, LlmService, Message, Purpose, SchemaId,
+    ToolSchema,
 };
 use mm_log::{Level, LogRecord};
 use serde_json::{json, Value};
@@ -50,6 +51,24 @@ pub async fn reply(
     pane: &str,
     propose: Option<&Propose>,
 ) -> TurnOutcome {
+    let context = CallContext::new("chat")
+        .with_session(session_id)
+        .with_run(request_id);
+    mm_llm::scope(
+        context,
+        reply_inner(app, request_id, session_id, query, pane, propose),
+    )
+    .await
+}
+
+async fn reply_inner(
+    app: &AppState,
+    request_id: &str,
+    session_id: &str,
+    query: &str,
+    pane: &str,
+    propose: Option<&Propose>,
+) -> TurnOutcome {
     let _ = app.chat.retitle_from_query(session_id, query);
     let facts = intro::facts(app).await;
     let high_stakes = persona::mentions_gate(query);
@@ -83,6 +102,7 @@ pub async fn reply(
     ];
 
     let cfg = llm_config(app);
+    let budgeted = app.three_pass.budget.enabled;
     let Some(client) = resolve_client(app, &cfg) else {
         frames.extend(closing(
             request_id,
@@ -197,7 +217,7 @@ pub async fn reply(
             return done(frames);
         }
         rounds += 1;
-        let summarizing = rounds > MAX_MODEL_ROUNDS || tool_steps >= MAX_TOOL_STEPS;
+        let summarizing = budgeted && (rounds > MAX_MODEL_ROUNDS || tool_steps >= MAX_TOOL_STEPS);
         let mut messages = vec![Message::system(standing_prompt(
             app,
             &facts,
@@ -271,7 +291,7 @@ pub async fn reply(
             response.tool_calls.clone(),
         ));
         for call in &response.tool_calls {
-            if tool_steps >= MAX_TOOL_STEPS {
+            if budgeted && tool_steps >= MAX_TOOL_STEPS {
                 let result = denied_result("tool step cap");
                 log_denied(app, request_id, &call.name, "tool step cap").await;
                 tool_steps += 1;
@@ -555,6 +575,14 @@ fn push_tool(
         phase: Phase::Act,
         name: name.into(),
         input: input.clone(),
+        pass: None,
+        attempt: None,
+        round: None,
+        action: input
+            .get("action")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        parent_tool_id: None,
     });
     frames.push(ChatFrame::ToolResult {
         id: call_id.into(),
@@ -563,6 +591,10 @@ fn push_tool(
         success: result.ok,
         output: result.to_value(),
         duration_ms: 0,
+        pass: None,
+        attempt: None,
+        round: None,
+        parent_tool_id: None,
     });
 }
 
@@ -809,11 +841,16 @@ mod tests {
     use crate::state::{AppState, ConsoleLock};
 
     async fn booted() -> (tempfile::TempDir, Arc<AppState>) {
+        booted_with_budget(true).await
+    }
+
+    async fn booted_with_budget(budgeted: bool) -> (tempfile::TempDir, Arc<AppState>) {
         let dir = tempfile::tempdir().unwrap();
         let cfg = mm_core::Config::for_data_dir(dir.path());
         let lock = ConsoleLock::acquire(dir.path()).unwrap();
-        let state = Arc::new(AppState::boot(cfg, lock).await.unwrap());
-        (dir, state)
+        let mut state = AppState::boot(cfg, lock).await.unwrap();
+        state.three_pass.budget.enabled = budgeted;
+        (dir, Arc::new(state))
     }
 
     fn call(name: &str, arguments: &str) -> ProviderToolCall {
@@ -1141,6 +1178,20 @@ mod tests {
         assert_eq!(output["ok"], true);
         assert_eq!(output["data"]["hits"].as_array().unwrap().len(), 0);
         assert!(!final_text(&frames).contains("migration order is"));
+    }
+
+    #[tokio::test]
+    async fn turning_budget_off_keeps_going_past_the_six_step_cap() {
+        let (_dir, state) = booted_with_budget(false).await;
+        let mut responses: Vec<_> = (0..7)
+            .map(|_| ScriptedResponse::text("").with_tool_calls(vec![call("guide.list", "{}")]))
+            .collect();
+        responses.push(ScriptedResponse::text("Done."));
+        script(&state, responses);
+
+        let frames = frames_for(&state, "keep going").await;
+        assert_eq!(tool_names(&frames).len(), 7);
+        assert_eq!(final_text(&frames), "Done.");
     }
 
     #[tokio::test]

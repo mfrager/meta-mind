@@ -85,6 +85,9 @@ pub struct BudgetLimits {
 }
 
 impl BudgetLimits {
+    /// No effective limits, used when turn budgeting is disabled.
+    pub const UNLIMITED: Self = Self::new(u32::MAX, u32::MAX, u64::MAX, u64::MAX);
+
     /// Construct a limit row.
     pub const fn new(rounds: u32, steps: u32, tokens: u64, wall_ms: u64) -> Self {
         Self {
@@ -146,6 +149,7 @@ pub struct BudgetSnapshot {
 pub struct BudgetLedger {
     class: BudgetClass,
     limits: BudgetLimits,
+    budgeted: bool,
     rounds: u32,
     steps: u32,
     tokens: u64,
@@ -157,10 +161,19 @@ pub struct BudgetLedger {
 impl BudgetLedger {
     /// Start a ledger at its class limits.
     pub fn new(class: BudgetClass) -> Self {
-        let limits = class.limits();
+        Self::with_limits(class, class.limits(), true)
+    }
+
+    /// Start a ledger that never refuses a round, step, token, or wall limit.
+    pub fn unlimited(class: BudgetClass) -> Self {
+        Self::with_limits(class, BudgetLimits::UNLIMITED, false)
+    }
+
+    fn with_limits(class: BudgetClass, limits: BudgetLimits, budgeted: bool) -> Self {
         Self {
             class,
             limits,
+            budgeted,
             rounds: limits.rounds,
             steps: limits.steps,
             tokens: limits.tokens,
@@ -168,6 +181,11 @@ impl BudgetLedger {
             started: Instant::now(),
             estimated: false,
         }
+    }
+
+    /// Whether this ledger enforces limits.
+    pub fn budgeted(&self) -> bool {
+        self.budgeted
     }
 
     /// The class.
@@ -194,6 +212,9 @@ impl BudgetLedger {
 
     /// Reserve one model round.
     pub fn reserve_round(&mut self) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         self.check_wall()?;
         if self.rounds == 0 {
             return Err(BudgetError::Exhausted {
@@ -207,6 +228,9 @@ impl BudgetLedger {
 
     /// Reserve tool steps.
     pub fn reserve_steps(&mut self, count: u32) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         self.check_wall()?;
         if self.steps < count {
             return Err(BudgetError::Exhausted {
@@ -220,6 +244,9 @@ impl BudgetLedger {
 
     /// Reserve a conservative token estimate before a model call.
     pub fn reserve_tokens(&mut self, estimate: u64) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         self.check_wall()?;
         if self.tokens < estimate {
             return Err(BudgetError::Exhausted {
@@ -234,6 +261,9 @@ impl BudgetLedger {
 
     /// Settle a reservation with actual provider usage, or the estimate.
     pub fn settle_tokens(&mut self, actual: Option<u64>) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         match actual {
             Some(actual) => {
                 if actual > self.reserved_tokens {
@@ -263,6 +293,9 @@ impl BudgetLedger {
 
     /// Fail if the wall-clock cap has elapsed.
     pub fn check_wall(&self) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         if self.started.elapsed() >= Duration::from_millis(self.limits.wall_ms) {
             return Err(BudgetError::Exhausted {
                 scope: "wall",
@@ -274,6 +307,9 @@ impl BudgetLedger {
 
     /// Wall time remaining.
     pub fn wall_remaining(&self) -> Duration {
+        if !self.budgeted {
+            return Duration::MAX;
+        }
         Duration::from_millis(self.limits.wall_ms).saturating_sub(self.started.elapsed())
     }
 
@@ -294,6 +330,7 @@ impl BudgetLedger {
 #[derive(Debug, Clone)]
 pub struct TurnEnvelope {
     limits: BudgetLimits,
+    budgeted: bool,
     used: BudgetUsage,
     reserved_tokens: u64,
     retries: u32,
@@ -306,6 +343,7 @@ impl TurnEnvelope {
     pub fn new(limits: BudgetLimits, max_retries: u32) -> Self {
         Self {
             limits,
+            budgeted: true,
             used: BudgetUsage::default(),
             reserved_tokens: 0,
             retries: 0,
@@ -327,6 +365,19 @@ impl TurnEnvelope {
             ),
             max_retries,
         )
+    }
+
+    /// An envelope that only caps retries.
+    pub fn unlimited(max_retries: u32) -> Self {
+        Self {
+            limits: BudgetLimits::UNLIMITED,
+            budgeted: false,
+            used: BudgetUsage::default(),
+            reserved_tokens: 0,
+            retries: 0,
+            max_retries,
+            started: Instant::now(),
+        }
     }
 
     /// The envelope limits.
@@ -351,6 +402,9 @@ impl TurnEnvelope {
 
     /// Tokens still available after used and reserved amounts.
     pub fn remaining_tokens(&self) -> u64 {
+        if !self.budgeted {
+            return u64::MAX;
+        }
         self.limits
             .tokens
             .saturating_sub(self.used.tokens)
@@ -360,6 +414,9 @@ impl TurnEnvelope {
     /// Start one pass at its class limits. The envelope does not pre-deduct the
     /// class ceiling; [`absorb`](Self::absorb) accounts what the pass actually used.
     pub fn ledger(&mut self, class: BudgetClass) -> Result<BudgetLedger, BudgetError> {
+        if !self.budgeted {
+            return Ok(BudgetLedger::unlimited(class));
+        }
         self.check_wall()?;
         if self.remaining_tokens() == 0 {
             return Err(BudgetError::Exhausted {
@@ -372,6 +429,9 @@ impl TurnEnvelope {
 
     /// Account a finished ledger against the envelope.
     pub fn absorb(&mut self, ledger: &BudgetLedger) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         let next = self.used.plus(ledger.usage());
         if !next.fits(self.limits) {
             return Err(BudgetError::Exhausted {
@@ -395,6 +455,9 @@ impl TurnEnvelope {
     /// Reserve a token ceiling for a child operation (think, agent.run, a step)
     /// before it starts. The caller releases it once the child is accounted.
     pub fn reserve_tokens(&mut self, tokens: u64) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         if self.remaining_tokens() < tokens {
             return Err(BudgetError::Exhausted {
                 scope: "token",
@@ -413,7 +476,9 @@ impl TurnEnvelope {
                 reason: format!("{} retries already used", self.max_retries),
             });
         }
-        self.reserve_tokens(tokens)?;
+        if self.budgeted {
+            self.reserve_tokens(tokens)?;
+        }
         self.retries += 1;
         Ok(())
     }
@@ -425,6 +490,9 @@ impl TurnEnvelope {
 
     /// Fail if the turn's wall-clock cap has elapsed.
     pub fn check_wall(&self) -> Result<(), BudgetError> {
+        if !self.budgeted {
+            return Ok(());
+        }
         if self.started.elapsed() >= Duration::from_millis(self.limits.wall_ms) {
             return Err(BudgetError::Exhausted {
                 scope: "wall",
@@ -469,6 +537,31 @@ mod tests {
             BudgetClass::Frame.limits(),
             BudgetLimits::new(2, 4, 8_000, 45_000)
         );
+    }
+
+    #[test]
+    fn an_unlimited_ledger_never_refuses_work() {
+        let mut ledger = BudgetLedger::unlimited(BudgetClass::Memory);
+        assert!(!ledger.budgeted());
+        for _ in 0..10 {
+            ledger.reserve_round().unwrap();
+            ledger.reserve_steps(10).unwrap();
+            ledger.reserve_tokens(u64::MAX / 2).unwrap();
+        }
+        ledger.settle_tokens(Some(u64::MAX)).unwrap();
+        ledger.check_wall().unwrap();
+        assert_eq!(ledger.wall_remaining(), Duration::MAX);
+    }
+
+    #[test]
+    fn an_unlimited_envelope_still_counts_retries() {
+        let mut envelope = TurnEnvelope::unlimited(1);
+        let mut ledger = envelope.ledger(BudgetClass::Quick).unwrap();
+        assert!(!ledger.budgeted());
+        ledger.reserve_tokens(u64::MAX).unwrap();
+        envelope.absorb(&ledger).unwrap();
+        envelope.reserve_retry(u64::MAX).unwrap();
+        assert!(envelope.reserve_retry(1).is_err());
     }
 
     #[test]

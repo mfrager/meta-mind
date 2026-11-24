@@ -762,7 +762,7 @@ strategy = "cm.think.v1"
 
 ## 18. Rollback Plan
 
-Feature flag: `MM_THREE_PASS_V2` (default `false`)
+Feature flag: `MM_THREE_PASS_V2` (default `true`)
 
 ```rust
 pub async fn execute(...) -> Result<TurnOutcome> {

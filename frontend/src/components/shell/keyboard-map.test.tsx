@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { KeyboardMap } from "@/components/shell/keyboard-map.tsx";
 import { usePaneStore } from "@/lib/store/pane.ts";
+import { usePrefsStore } from "@/lib/store/prefs.ts";
 
 function Harness() {
   const palette = usePaneStore((state) => state.paletteOpen);
@@ -20,6 +21,7 @@ function Harness() {
 
 beforeEach(() => {
   usePaneStore.setState({ paletteOpen: false, shortcutsOpen: false, sidebarSheet: false, activePane: "document" });
+  usePrefsStore.setState({ llmLogCollapsed: false });
 });
 
 it("focuses the composer with Ctrl+K and does not send on Escape", () => {
@@ -40,6 +42,14 @@ it("focuses the composer from another text field", () => {
   fireEvent.keyDown(field, { key: "k", ctrlKey: true });
   expect(document.activeElement).toBe(getByLabelText("Composer"));
   expect(getByRole("status").getAttribute("data-palette")).toBe("closed");
+});
+
+it("toggles the LLM activity dock with Ctrl+`", () => {
+  render(<Harness />);
+  fireEvent.keyDown(window, { key: "`", ctrlKey: true });
+  expect(usePrefsStore.getState().llmLogCollapsed).toBe(true);
+  fireEvent.keyDown(window, { key: "`", ctrlKey: true });
+  expect(usePrefsStore.getState().llmLogCollapsed).toBe(false);
 });
 
 it("does not treat Escape inside a dialog as a shell dismiss", () => {

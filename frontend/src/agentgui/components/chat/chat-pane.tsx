@@ -127,7 +127,7 @@ export function ChatPane({ sessionId }: { sessionId: string }) {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-agent-chat-pane>
       <div className="pane-header flex h-11 shrink-0 items-center gap-2 px-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

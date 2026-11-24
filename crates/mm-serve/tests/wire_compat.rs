@@ -101,6 +101,16 @@ fn export_types() {
         "",
     );
     write_module(
+        &dir.join("llm_activity.ts"),
+        "crates/mm-serve/src/dto/llm_activity.rs",
+        &[
+            <mm_serve::dto::llm_activity::LlmActivityEvent as TS>::decl(&cfg),
+            <mm_serve::dto::llm_activity::LlmActivitySnapshot as TS>::decl(&cfg),
+            <mm_serve::dto::llm_activity::LlmActivityResync as TS>::decl(&cfg),
+        ],
+        "",
+    );
+    write_module(
         &dir.join("focus.ts"),
         "crates/mm-serve/src/dto/focus.rs",
         &[

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { ChatHeader } from "@/components/chat/chat-header.tsx";
 import { Composer } from "@/components/chat/composer.tsx";
+import { LlmLogDock } from "@/components/chat/llm-log-dock.tsx";
 import { SuggestionChips } from "@/components/chat/chat-form.tsx";
 import type { ImageAttachment } from "@/components/chat/image-chooser.tsx";
 import { TranscriptView } from "@/components/chat/transcript-view.tsx";
@@ -163,6 +164,7 @@ export function ChatPane() {
       </div>
       <SuggestionChips suggestions={suggestionsOf(state)} onPick={followSuggestion} />
       <Composer disabled={busy || !sessionId} onSend={(text, refs, attachments) => void send(text, refs, attachments)} />
+      <LlmLogDock />
     </section>
   );
 }

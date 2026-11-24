@@ -4,19 +4,19 @@
 # not a bypass: the substrate still validates the name and records the decision.
 # Without a matching pin the router falls back to the cheapest sufficient model.
 
-default_model = "gemini/gemini-2.5-flash"
-proactive_model = "gemini/gemini-2.5-flash"
+default_model = "auto/remote"
+proactive_model = "auto/remote"
 
 [modality]
 drill_down = "auto/remote"
-explain = "gemini/gemini-2.5-flash"
-zoom_out = "gemini/gemini-2.5-flash"
-summarize = "gemini/gemini-2.5-flash"
-bullets = "gemini/gemini-2.5-flash"
+explain = "auto/remote"
+zoom_out = "auto/remote"
+summarize = "auto/remote"
+bullets = "auto/remote"
 
 [voice]
 # Tier 1 is sequential and can afford a small model; streaming tiers need the
 # higher-capability model to keep quality up under the latency budget.
-tier1 = "gemini/gemini-2.5-flash"
+tier1 = "auto/remote"
 tier2 = "auto/remote"
 tier3 = "auto/remote"

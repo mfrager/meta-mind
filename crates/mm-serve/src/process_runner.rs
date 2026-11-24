@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use mm_agent::AgentRuntime;
 use mm_cme::{StepPassRequest, ThreePassRunner};
 use mm_data::process::ProcessError;
-use mm_llm::LlmClient;
+use mm_llm::{CallContext, LlmClient};
 use mm_prompt::PromptStore;
 
 use crate::cm_tools::CmTools;
@@ -100,8 +100,10 @@ impl mm_process::StepRunner for ProcessStepRunner {
         .map_err(|error| {
             ProcessError::Unavailable(format!("three-pass runner unavailable: {error}"))
         })?;
-        let run = runner
-            .run_step(StepPassRequest {
+        let activity = CallContext::new("process").with_session(request.session_id.clone());
+        let run = mm_llm::scope(
+            activity,
+            runner.run_step(StepPassRequest {
                 session_id: request.session_id,
                 step_id: request.step_id,
                 task: request.task,
@@ -111,9 +113,10 @@ impl mm_process::StepRunner for ProcessStepRunner {
                 doc: request.doc,
                 check: request.check,
                 model: self.model.clone(),
-            })
-            .await
-            .map_err(|error| ProcessError::Invalid(format!("step failed: {error}")))?;
+            }),
+        )
+        .await
+        .map_err(|error| ProcessError::Invalid(format!("step failed: {error}")))?;
         Ok(mm_process::StepOutcome {
             reply: run.reply,
             tokens_in: run.tokens_in,

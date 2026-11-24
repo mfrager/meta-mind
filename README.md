@@ -70,9 +70,10 @@ only, takes `data/console.lock`, and serves the React console in `frontend/`.
 The Conversation Manager v3 contract is the seventeen-tool surface: five
 `conversation.*`/`agent.run` tools, seven `data.*` tools, and five
 `metamind.*` tools. `MM_CM_V3` is **on by default**; set it to `false` for the
-legacy tool-less CME round. `MM_CME_ENABLED` still chooses whether `/api/chat`
-uses the conversation engine or the legacy console controller, so a full rollback
-is `MM_CM_V3=false MM_CME_ENABLED=false`.
+legacy tool-less CME round. `MM_CME_ENABLED` and `MM_THREE_PASS_V2` are also
+**on by default**: `/api/chat` uses the conversation engine's Interpret → Process
+→ Verify turn. A full rollback is `MM_CME_ENABLED=false`; keeping the CME but
+returning to its single-loop turn is `MM_THREE_PASS_V2=false`.
 
 ```bash
 DATA=$(mktemp -d)

@@ -19,6 +19,7 @@ use crate::budget::BudgetClass;
 use crate::chunk::ChunkKind;
 use crate::error::{CmeError, Result};
 use crate::observability::{ObserverHandle, SmObserver};
+use crate::observer::PassObserver;
 use crate::pass_scope::PassScope;
 use crate::planner::{ResponseModality, TurnContext, TurnPlanner};
 use crate::process::{ProcessPass, ProcessRequest};
@@ -184,6 +185,7 @@ pub struct TurnExecutor {
     prompt_provider: Option<Arc<dyn PromptContextProvider>>,
     prompt_variant: Option<String>,
     budget_class: BudgetClass,
+    budgeted: bool,
     three_pass: Option<ThreePassRunner>,
     clean_log_provider: Option<Arc<dyn CleanLogProvider>>,
 }
@@ -219,6 +221,7 @@ impl TurnExecutor {
             prompt_provider: None,
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
+            budgeted: true,
             three_pass: None,
             clean_log_provider: None,
         }
@@ -239,6 +242,7 @@ impl TurnExecutor {
             prompt_provider: None,
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
+            budgeted: true,
             three_pass: None,
             clean_log_provider: None,
         }
@@ -310,10 +314,25 @@ impl TurnExecutor {
         self
     }
 
+    /// Enable or disable per-turn resource budgeting.
+    pub fn with_budgeting(mut self, budgeted: bool) -> Self {
+        self.budgeted = budgeted;
+        self
+    }
+
     /// Attach the Phase 2 three-pass runner. When absent, the executor uses the
     /// legacy single-loop path unchanged.
     pub fn with_three_pass(mut self, runner: ThreePassRunner) -> Self {
         self.three_pass = Some(runner);
+        self
+    }
+
+    /// Attach a display observer to the three-pass runner, if one is configured.
+    /// The legacy path has no passes to observe.
+    pub fn with_pass_observer(mut self, observer: Arc<dyn PassObserver>) -> Self {
+        if let Some(runner) = self.three_pass.take() {
+            self.three_pass = Some(runner.with_observer(observer));
+        }
         self
     }
 
@@ -417,7 +436,8 @@ impl TurnExecutor {
                         Arc::clone(&self.confirm),
                         self.prompt_provider.clone(),
                         self.budget_class,
-                    );
+                    )
+                    .with_budgeting(self.budgeted);
                     let run = match pass
                         .run(
                             turn,
@@ -541,14 +561,7 @@ impl TurnExecutor {
         }
 
         let process_class = runner.config().process.budget_class;
-        let process_pass = ProcessPass::new(
-            client,
-            self.prompts.clone(),
-            Arc::clone(&self.tools),
-            Arc::clone(&self.confirm),
-            self.prompt_provider.clone(),
-            process_class,
-        );
+        let observer = runner.observer();
         let checks = pass.checks.clone();
         let mut envelope = pass.envelope.clone();
         let mut retry: Option<RetryContext> = None;
@@ -580,6 +593,21 @@ impl TurnExecutor {
                 require_reply: true,
                 child_budget: true,
             };
+            let process_pass = ProcessPass::new(
+                Arc::clone(&client),
+                self.prompts.clone(),
+                Arc::clone(&self.tools),
+                Arc::clone(&self.confirm),
+                self.prompt_provider.clone(),
+                process_class,
+            )
+            .with_budgeting(runner.config().budget.enabled)
+            .with_observer(Arc::clone(&observer), attempt_number);
+            observer.pass_started(
+                crate::runner::PassKind::Process,
+                attempt_number,
+                Some(model),
+            );
             let run = match process_pass
                 .run_accounted(
                     turn,
@@ -591,8 +619,27 @@ impl TurnExecutor {
                 )
                 .await
             {
-                Ok(run) => run,
+                Ok(run) => {
+                    observer.pass_finished(&crate::observer::PassSummary {
+                        pass: Some(crate::runner::PassKind::Process),
+                        attempt: attempt_number,
+                        finished: "completed".into(),
+                        budget: run.budget,
+                        prompt_hash: turn.prompt_hash.clone(),
+                        tokens_in: run.tokens_in,
+                        tokens_out: run.tokens_out,
+                        error: None,
+                    });
+                    run
+                }
                 Err(error) => {
+                    observer.pass_finished(&crate::observer::PassSummary {
+                        pass: Some(crate::runner::PassKind::Process),
+                        attempt: attempt_number,
+                        finished: "error".into(),
+                        error: Some(error.to_string()),
+                        ..crate::observer::PassSummary::default()
+                    });
                     if reservation > 0 {
                         envelope.release_reservation(reservation);
                     }
@@ -717,6 +764,15 @@ impl TurnExecutor {
                         .unwrap_or_else(|| "the reviewer rejected the reply".into()),
                     prior_effects: prior_effects.clone(),
                 });
+                observer.retry_scheduled(
+                    crate::runner::PassKind::Process,
+                    attempt_number,
+                    attempt_number + 1,
+                    retry
+                        .as_ref()
+                        .map(|retry| retry.error.as_str())
+                        .unwrap_or("the reviewer rejected the reply"),
+                );
                 continue;
             }
             turn.verification = verification.clone();

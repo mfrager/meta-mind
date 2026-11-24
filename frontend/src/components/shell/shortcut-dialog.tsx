@@ -24,6 +24,7 @@ export function ShortcutDialog() {
       { id: "document", keys: `${mod}+1`, action: "Focus the document pane" },
       { id: "chat", keys: `${mod}+2`, action: "Focus the chat pane" },
       { id: "swap", keys: `${mod}+\\`, action: "Swap the panes" },
+      { id: "llm-log", keys: `${mod}+\``, action: "Toggle the LLM activity dock" },
       { id: "sidebar", keys: `${mod}+B`, action: "Toggle the sidebar" },
       { id: "fullscreen", keys: `${mod}+Shift+F`, action: "Fullscreen the active pane" },
       { id: "mode", keys: `${mod}+E`, action: "Toggle view and edit" },

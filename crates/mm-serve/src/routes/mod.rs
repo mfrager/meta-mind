@@ -37,6 +37,7 @@ pub(crate) mod cme;
 mod console;
 mod exec;
 pub(crate) mod focus;
+mod llm_activity;
 mod runs;
 mod trees;
 
@@ -44,6 +45,8 @@ mod trees;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/llm-activity", get(llm_activity::snapshot))
+        .route("/api/llm-activity/stream", get(llm_activity::stream))
         .route("/api/state", get(console_state))
         .route("/api/focus", get(focus::list))
         .route("/api/focus/{doc_id}/draft", put(focus::save_draft))
@@ -600,7 +603,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = mm_core::Config::for_data_dir(dir.path());
         let lock = crate::state::ConsoleLock::acquire(dir.path()).unwrap();
-        let state = Arc::new(crate::state::AppState::boot(cfg, lock).await.unwrap());
+        // This test exercises the legacy controller's confirmation flow, so it
+        // opts out of the conversation engine that is on by default.
+        let state = Arc::new(
+            crate::state::AppState::boot_with_flags(
+                cfg,
+                lock,
+                crate::feature_flags::FeatureFlags {
+                    cme_enabled: false,
+                    three_pass_v2: false,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap(),
+        );
         let script = vec![
             mm_llm::ScriptedResponse::text("").with_tool_calls(vec![mm_llm::ProviderToolCall {
                 id: "mem".into(),

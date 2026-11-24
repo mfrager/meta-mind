@@ -14,15 +14,39 @@ subsystems: Array<string>, } | { "type": "failed", error: string,
 /**
  * The kernel's verbatim explanation, when one exists.
  */
-reason?: string | null, } | { "type": "pass_start", pass: string, turn_id: string, attempt: number, } | { "type": "pass_token", pass: string, token: string, final: boolean, } | { "type": "pass_complete", pass: string, finished: string, budget: unknown,
+reason?: string | null, } | { "type": "pass_start", pass: string, turn_id: string, attempt: number,
+/**
+ * The model the pass was routed to.
+ */
+model?: string | null,
+/**
+ * Set when this pass belongs to a nested think sub-agent.
+ */
+parent_tool_id?: string | null, } | { "type": "pass_round", pass: string, turn_id: string, attempt: number, round: number, model?: string | null,
+/**
+ * False for a structured call, which is validated whole and not streamed.
+ */
+streaming: boolean,
+/**
+ * Set when this round belongs to a nested think sub-agent.
+ */
+parent_tool_id?: string | null, } | { "type": "pass_round_end", pass: string, turn_id: string, attempt: number, round: number, outcome: string, tokensIn: number, tokensOut: number, latencyMs: number, error?: string | null, parent_tool_id?: string | null, } | { "type": "pass_token", pass: string, token: string, final: boolean, attempt?: number | null, round?: number | null,
+/**
+ * `prose` for model text, `reasoning` for a reasoning channel.
+ */
+channel?: string | null, call_id?: string | null, parent_tool_id?: string | null, } | { "type": "pass_complete", pass: string, finished: string, budget: unknown,
 /**
  * The pass's pinned prompt hash, when one was rendered.
  */
-promptHash?: string | null, } | { "type": "verification", label: string, pass: boolean, confidence: number, } | { "type": "llm_request_started", turn_id: string, phase: Phase, subsystem?: string | null, turn_number: number, visible: boolean,
+promptHash?: string | null, attempt?: number | null, parent_tool_id?: string | null, } | { "type": "pass_retry", turn_id: string, pass: string, attempt: number, nextAttempt: number, reason: string, parent_tool_id?: string | null, } | { "type": "verification", label: string, pass: boolean, confidence: number, attempt?: number | null, backend?: string | null, durationMs?: number | null, reasoning?: string | null, } | { "type": "llm_request_started", turn_id: string, phase: Phase, subsystem?: string | null, turn_number: number, visible: boolean,
 /**
  * Projected voice for this round, when the controller produced it.
  */
-voice?: unknown, } | { "type": "llm_response", turn_id: string, phase: Phase, text: string, visible: boolean, is_final: boolean, } | { "type": "llm_request_finished", turn_id: string, outcome: string, error?: string | null, } | { "type": "tool_call", id: string, turn_id: string, phase: Phase, name: string, input: unknown, } | { "type": "tool_result", id: string, turn_id: string, name: string, success: boolean, output: unknown, durationMs: number, } | { "type": "block", turn_id: string, block: unknown, } | { "type": "input_request", id: string, request: unknown, } | { "type": "input_answer", id: string, answer: unknown, at: number, } | { "type": "focus", doc: unknown, } | { "type": "status", docId?: string | null, status: string, reason?: string | null, } | { "type": "progress", label: string, value: number, max: number, } | { "type": "final_response", response_id: string, text: string, blocks?: unknown[], suggestions?: Array<string> | null,
+voice?: unknown, } | { "type": "llm_response", turn_id: string, phase: Phase, text: string, visible: boolean, is_final: boolean, } | { "type": "llm_request_finished", turn_id: string, outcome: string, error?: string | null, } | { "type": "tool_call", id: string, turn_id: string, phase: Phase, name: string, input: unknown, pass?: string | null, attempt?: number | null, round?: number | null,
+/**
+ * The action the call targets, when its arguments name one.
+ */
+action?: string | null, parent_tool_id?: string | null, } | { "type": "tool_result", id: string, turn_id: string, name: string, success: boolean, output: unknown, durationMs: number, pass?: string | null, attempt?: number | null, round?: number | null, parent_tool_id?: string | null, } | { "type": "block", turn_id: string, block: unknown, } | { "type": "input_request", id: string, request: unknown, } | { "type": "input_answer", id: string, answer: unknown, at: number, } | { "type": "focus", doc: unknown, } | { "type": "status", docId?: string | null, status: string, reason?: string | null, } | { "type": "progress", label: string, value: number, max: number, } | { "type": "final_response", response_id: string, text: string, blocks?: unknown[], suggestions?: Array<string> | null,
 /**
  * HonestyMw set this when the sentence claims a write no tool performed.
  */

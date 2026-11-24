@@ -3,7 +3,7 @@
 > **Status:** proposed implementation plan · **Date:** 2026-11-23 · **Baseline:** `integration/cme-rdf-backend` @ `b9e8a54` (2026-11-23)
 > **Supersedes for execution:** the migration sections of [`three_pass_turn_sequence.md`](./three_pass_turn_sequence.md) (§15) and [`process_pipeline_system.md`](./process_pipeline_system.md) (§10). Those documents remain the normative descriptions of the two architectures; this plan is the single ordered path that delivers both.
 > **Scope:** `mm-cme`, `mm-serve`, `mm-data`, `mm-prompt`, `mm-llm`, `mm-agent`, `mm-sm`, a new `mm-process` crate, `config/prompts/`, `frontend/`, `infodocs/`
-> **Flags:** `MM_THREE_PASS_V2` (default `false`), `MM_PROCESS_V1` (default `false`)
+> **Flags:** `MM_THREE_PASS_V2` (default `true` as of 2026-11-23; the rollout below was written while it was `false`), `MM_PROCESS_V1` (default `false`)
 
 ---
 

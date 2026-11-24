@@ -40,6 +40,40 @@ pub struct ThreePassConfig {
     pub step: StepConfig,
     /// Verification backends.
     pub verification: VerificationConfig,
+    /// Chat transport behavior.
+    pub turn: TurnConfig,
+    /// Turn resource budgeting.
+    pub budget: BudgetConfig,
+}
+
+/// Whether a turn is bounded by class limits and the envelope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct BudgetConfig {
+    /// Enforce per-pass round/tool/token/wall limits and the turn envelope.
+    /// Off by default: a turn runs until the work is done.
+    pub enabled: bool,
+}
+
+impl Default for BudgetConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+/// Chat transport behavior.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TurnConfig {
+    /// Stream pass rounds to the chat transport while the turn runs. When off,
+    /// the turn is replayed as post-hoc frames exactly as before.
+    pub stream: bool,
+}
+
+impl Default for TurnConfig {
+    fn default() -> Self {
+        Self { stream: true }
+    }
 }
 
 /// One process step.
@@ -234,6 +268,11 @@ impl ThreePassConfig {
 
     /// Validate cross-field constraints and strategy names.
     pub fn validate(&self) -> Result<(), ThreePassConfigError> {
+        if self.budget.enabled && self.envelope.max_tokens < 8_000 {
+            return Err(ThreePassConfigError::Invalid(
+                "envelope.max_tokens must be at least 8000".into(),
+            ));
+        }
         if self.interpret.max_checks == 0 || self.interpret.max_checks > MAX_CHECKS_LIMIT {
             return Err(ThreePassConfigError::Invalid(format!(
                 "interpret.max_checks must be 1..={MAX_CHECKS_LIMIT}"
@@ -254,11 +293,6 @@ impl ThreePassConfig {
         if self.verify.check_timeout_ms < 1_000 || self.verify.check_timeout_ms > 120_000 {
             return Err(ThreePassConfigError::Invalid(
                 "verify.check_timeout_ms must be 1000..=120000".into(),
-            ));
-        }
-        if self.envelope.max_tokens < 8_000 {
-            return Err(ThreePassConfigError::Invalid(
-                "envelope.max_tokens must be at least 8000".into(),
             ));
         }
         for (name, strategy) in [
@@ -354,7 +388,12 @@ mod tests {
         assert!(ThreePassConfig::from_toml("[verify]\nmax_retries = 11\n").is_err());
         assert!(ThreePassConfig::from_toml("[interpret]\nmax_checks = 0\n").is_err());
         assert!(ThreePassConfig::from_toml("[verify]\nmax_parallel_checks = 0\n").is_err());
-        assert!(ThreePassConfig::from_toml("[envelope]\nmax_tokens = 10\n").is_err());
+        assert!(ThreePassConfig::from_toml(
+            "[budget]\nenabled = true\n[envelope]\nmax_tokens = 10\n"
+        )
+        .is_err());
+        assert!(!ThreePassConfig::default().budget.enabled);
+        assert!(ThreePassConfig::from_toml("[envelope]\nmax_tokens = 10\n").is_ok());
     }
 
     #[test]

@@ -4,10 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use mm_cme::{
-    AffectState, BudgetClass, ConversationRouter, MemoryContext, PassConfig, PassKind,
-    PreferenceProfile, ProcessPass, ProcessRequest, PromptVariables, RetryContext, RetryFailure,
-    RoutingTable, SessionBudgets, SessionContext, ThreePassConfig, ThreePassRunner, ToolHandler,
-    Turn, TurnExecutor, TurnPlan,
+    AffectState, BudgetClass, BudgetConfig, ConversationRouter, MemoryContext, PassConfig,
+    PassKind, PreferenceProfile, ProcessPass, ProcessRequest, PromptVariables, RetryContext,
+    RetryFailure, RoutingTable, SessionBudgets, SessionContext, ThreePassConfig, ThreePassRunner,
+    ToolHandler, Turn, TurnExecutor, TurnPlan,
 };
 use mm_data::{CleanLog, CleanRole, CleanTurn, SessionId, TurnId};
 use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse, ToolSchema};
@@ -378,6 +378,7 @@ async fn a_child_operation_cannot_exceed_the_process_remainder() {
             budget_class: BudgetClass::Memory,
             strategy: "cm.process.v1".into(),
         },
+        budget: BudgetConfig { enabled: true },
         ..ThreePassConfig::default()
     };
     let client = Arc::new(MockClient::script(vec![
@@ -433,6 +434,7 @@ async fn process_budget_exhaustion_fails_with_budget_and_no_verify() {
             budget_class: BudgetClass::Quick,
             strategy: "cm.process.v1".into(),
         },
+        budget: BudgetConfig { enabled: true },
         ..ThreePassConfig::default()
     };
     let repeated = (0..9)

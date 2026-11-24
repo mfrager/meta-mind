@@ -261,6 +261,34 @@ impl ChatCatalog {
         Ok(numbered)
     }
 
+    /// Append one frame while a run is live.
+    ///
+    /// A token delta must not rewrite the run index on every fragment, so the
+    /// in-memory run is updated without persisting; the terminal write persists
+    /// the whole run once. Replay during the same process is therefore exact,
+    /// and a crash loses only the tail of a stream that had not finished.
+    pub fn append_frame_live(&self, request_id: &str, frame: ChatFrame) -> Result<u64, AppError> {
+        let mut runs = self.lock_runs()?;
+        let run = runs
+            .get_mut(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        run.frames.push(frame);
+        Ok(run.frames.len() as u64)
+    }
+
+    /// Mark a live run terminal and persist it, keeping every frame already
+    /// appended by [`append_frame_live`](Self::append_frame_live).
+    pub fn finish_stream(&self, request_id: &str, state: &str) -> Result<(), AppError> {
+        let mut runs = self.lock_runs()?;
+        let run = runs
+            .get_mut(request_id)
+            .ok_or_else(|| AppError::NotFound(format!("no run {request_id}")))?;
+        run.state = state.into();
+        drop(runs);
+        self.persist();
+        Ok(())
+    }
+
     pub fn frames_from(
         &self,
         request_id: &str,

@@ -10,6 +10,8 @@ import type {
   AgentEvent,
   ChatMessage,
   MessagePart,
+  PassName,
+  PassPart,
   TraceStep,
 } from "@/agentgui/types/workspace";
 
@@ -74,6 +76,119 @@ function trailingPartIndex(
   return -1;
 }
 
+function emptyPass(pass: PassName, attempt: number): PassPart {
+  return {
+    type: "pass",
+    pass,
+    attempt,
+    status: "running",
+    rounds: [],
+    tools: [],
+    checks: [],
+  };
+}
+
+function passIndex(parts: MessagePart[], pass: PassName, attempt: number): number {
+  return parts.findLastIndex(
+    (part) => part.type === "pass" && part.pass === pass && part.attempt === attempt
+  );
+}
+
+/** Find a pass card, creating it when frames arrive out of order or late. */
+function ensurePass(
+  parts: MessagePart[],
+  pass: PassName,
+  attempt: number
+): { parts: MessagePart[]; index: number } {
+  const index = passIndex(parts, pass, attempt);
+  if (index !== -1) return { parts, index };
+  return { parts: [...parts, emptyPass(pass, attempt)], index: parts.length };
+}
+
+function updatePass(
+  parts: MessagePart[],
+  pass: PassName,
+  attempt: number,
+  updater: (part: PassPart) => PassPart
+): MessagePart[] {
+  const ensured = ensurePass(parts, pass, attempt);
+  return ensured.parts.map((part, index) =>
+    index === ensured.index && part.type === "pass" ? updater(part) : part
+  );
+}
+
+function updateRound(
+  part: PassPart,
+  round: number,
+  updater: (round: PassPart["rounds"][number]) => PassPart["rounds"][number]
+): PassPart {
+  const index = part.rounds.findIndex((entry) => entry.round === round);
+  if (index === -1) {
+    return {
+      ...part,
+      rounds: [
+        ...part.rounds,
+        updater({ round, streaming: false, text: "" }),
+      ],
+    };
+  }
+  return {
+    ...part,
+    rounds: part.rounds.map((entry, entryIndex) =>
+      entryIndex === index ? updater(entry) : entry
+    ),
+  };
+}
+
+function stepFor(
+  call: Extract<AgentEvent, { type: "tool" }>["call"],
+  existing?: TraceStep,
+  now = Date.now()
+): TraceStep {
+  return {
+    id: call.id,
+    kind: "tool",
+    title: call.name,
+    description: call.description,
+    status: call.status,
+    startedAt: existing?.startedAt ?? now,
+    input: call.input ?? existing?.input,
+    output: call.output ?? existing?.output,
+    durationMs:
+      call.status === "done"
+        ? existing?.startedAt
+          ? Math.max(120, now - existing.startedAt)
+          : (existing?.durationMs ?? 320)
+        : existing?.durationMs,
+  };
+}
+
+function upsertPassTool(
+  part: PassPart,
+  call: Extract<AgentEvent, { type: "tool" }>["call"]
+): PassPart {
+  const index = part.tools.findIndex((entry) => entry.id === call.id);
+  if (index === -1) return { ...part, tools: [...part.tools, stepFor(call)] };
+  return {
+    ...part,
+    tools: part.tools.map((entry, entryIndex) =>
+      entryIndex === index ? stepFor(call, entry) : entry
+    ),
+  };
+}
+
+function settlePasses(parts: MessagePart[], failed = false): MessagePart[] {
+  return parts.map((part) =>
+    part.type === "pass" && part.status === "running"
+      ? { ...part, status: failed ? "failed" : "done" }
+      : part
+  );
+}
+
+function failedFinish(finished: string): boolean {
+  return /error|failed|rejected|exhausted/.test(finished);
+}
+
 function upsertToolStep(parts: MessagePart[], event: Extract<AgentEvent, { type: "tool" }>): MessagePart[] {
   const { call } = event;
   const traceIndex = parts.findLastIndex((part) => part.type === "trace");
@@ -122,7 +237,7 @@ function upsertToolStep(parts: MessagePart[], event: Extract<AgentEvent, { type:
   });
 }
 
-function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
+export function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
   switch (event.type) {
     case "start":
       return { ...message, model: event.model };
@@ -148,8 +263,115 @@ function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
       }
       return { ...message, parts };
     }
-    case "tool":
+    case "tool": {
+      if (event.call.pass) {
+        return {
+          ...message,
+          parts: updatePass(
+            message.parts,
+            event.call.pass,
+            event.call.attempt ?? 1,
+            (part) => upsertPassTool(part, event.call)
+          ),
+        };
+      }
       return { ...message, parts: upsertToolStep(message.parts, event) };
+    }
+    case "pass_start": {
+      const ensured = ensurePass(message.parts, event.pass, event.attempt);
+      const parts = ensured.parts.map((part, index) =>
+        index === ensured.index && part.type === "pass"
+          ? { ...part, status: "running" as const, model: event.model }
+          : part
+      );
+      return { ...message, parts };
+    }
+    case "pass_round":
+      return {
+        ...message,
+        parts: updatePass(message.parts, event.pass, event.attempt, (part) =>
+          updateRound(part, event.round, (round) => ({
+            ...round,
+            model: event.model,
+            streaming: event.streaming,
+          }))
+        ),
+      };
+    case "pass_delta":
+      return {
+        ...message,
+        parts: updatePass(message.parts, event.pass, event.attempt, (part) =>
+          updateRound(part, event.round, (round) => ({
+            ...round,
+            text: round.text + event.delta,
+            streaming: true,
+          }))
+        ),
+      };
+    case "pass_round_end":
+      return {
+        ...message,
+        parts: updatePass(message.parts, event.pass, event.attempt, (part) =>
+          updateRound(part, event.round, (round) => ({
+            ...round,
+            streaming: false,
+            outcome: event.outcome,
+            error: event.error,
+            tokensIn: event.tokensIn,
+            tokensOut: event.tokensOut,
+            latencyMs: event.latencyMs,
+          }))
+        ),
+      };
+    case "pass_complete":
+      return {
+        ...message,
+        parts: updatePass(message.parts, event.pass, event.attempt, (part) => ({
+          ...part,
+          status: failedFinish(event.finished) ? "failed" : "done",
+          finished: event.finished,
+          budget: event.budget,
+        })),
+      };
+    case "pass_retry":
+      return {
+        ...message,
+        parts: updatePass(message.parts, event.pass, event.attempt, (part) => ({
+          ...part,
+          retry: { nextAttempt: event.nextAttempt, reason: event.reason },
+        })),
+      };
+    case "verification": {
+      const attempt = event.attempt;
+      const index = message.parts.findLastIndex(
+        (part) =>
+          part.type === "pass" &&
+          part.pass === "verify" &&
+          (attempt === undefined || part.attempt === attempt)
+      );
+      if (index === -1) return message;
+      return {
+        ...message,
+        parts: message.parts.map((part, entryIndex) =>
+          entryIndex === index && part.type === "pass"
+            ? {
+                ...part,
+                checks: [
+                  ...part.checks,
+                  {
+                    label: event.label,
+                    pass: event.pass,
+                    confidence: event.confidence,
+                    backend: event.backend,
+                    reasoning: event.reasoning,
+                    durationMs: event.durationMs,
+                  },
+                ],
+              }
+            : part
+        ),
+      };
+    }
     case "plan": {
       const parts = message.parts.filter(
         (part) => !(part.type === "plan" && part.plan.title === event.plan.title)
@@ -201,7 +423,7 @@ function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
       return {
         ...message,
         status: "complete",
-        parts: markThinkingDone(message.parts),
+        parts: settlePasses(markThinkingDone(message.parts)),
         usage: event.usage ?? message.usage,
       };
     case "error":
@@ -209,7 +431,7 @@ function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
         ...message,
         status: "error",
         error: event.message,
-        parts: markThinkingDone(message.parts),
+        parts: settlePasses(markThinkingDone(message.parts), true),
       };
     case "artifact":
       return message;

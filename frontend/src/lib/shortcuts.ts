@@ -4,6 +4,7 @@ export type Shortcut =
   | "document"
   | "chat"
   | "swap"
+  | "llm-log"
   | "sidebar"
   | "fullscreen"
   | "mode"
@@ -52,6 +53,7 @@ export function shortcutFromEvent(input: ShortcutInput): Shortcut | null {
   if (key === "1") return "document";
   if (key === "2") return "chat";
   if (key === "\\") return "swap";
+  if (key === "`" && !input.shift) return "llm-log";
   if (key === "b" && !input.shift) return "sidebar";
   if (key === "f" && input.shift) return "fullscreen";
   if (key === "e" && !input.shift) return "mode";

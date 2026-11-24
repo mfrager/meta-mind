@@ -134,10 +134,56 @@ export interface ConfirmationPayload {
   accepted?: boolean;
 }
 
+export type PassName = "interpret" | "process" | "verify" | "think";
+
+/** One model round inside a pass. Its text is phase prose, never the answer. */
+export interface PassRound {
+  round: number;
+  model?: string;
+  streaming: boolean;
+  text: string;
+  outcome?: string;
+  error?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  latencyMs?: number;
+}
+
+/** One verification check rendered inside the Verify pass. */
+export interface PassCheck {
+  label: string;
+  pass: boolean;
+  confidence: number;
+  backend?: string;
+  reasoning?: string;
+  durationMs?: number;
+}
+
+/**
+ * A pass card on the assistant message.
+ *
+ * It is display-only: the reply lives in the `text` part that follows, and phase
+ * prose is collapsed by default so it can never be mistaken for the answer.
+ */
+export interface PassPart {
+  type: "pass";
+  pass: PassName;
+  attempt: number;
+  status: "running" | "done" | "failed";
+  finished?: string;
+  model?: string;
+  rounds: PassRound[];
+  tools: TraceStep[];
+  checks: PassCheck[];
+  retry?: { nextAttempt: number; reason: string };
+  budget?: unknown;
+}
+
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string; done?: boolean }
   | { type: "trace"; steps: TraceStep[] }
+  | PassPart
   | { type: "plan"; plan: PlanPayload }
   | { type: "sources"; sources: SourceRef[] }
   | { type: "questionnaire"; payload: QuestionnairePayload }
@@ -176,7 +222,67 @@ export type AgentEvent =
         description?: string;
         input?: unknown;
         output?: string;
+        pass?: PassName;
+        attempt?: number;
+        round?: number;
+        action?: string;
       };
+    }
+  | {
+      type: "pass_start";
+      pass: PassName;
+      attempt: number;
+      model?: string;
+    }
+  | {
+      type: "pass_round";
+      pass: PassName;
+      attempt: number;
+      round: number;
+      model?: string;
+      streaming: boolean;
+    }
+  | {
+      type: "pass_delta";
+      pass: PassName;
+      attempt: number;
+      round: number;
+      delta: string;
+    }
+  | {
+      type: "pass_round_end";
+      pass: PassName;
+      attempt: number;
+      round: number;
+      outcome: string;
+      tokensIn?: number;
+      tokensOut?: number;
+      latencyMs?: number;
+      error?: string;
+    }
+  | {
+      type: "pass_complete";
+      pass: PassName;
+      attempt: number;
+      finished: string;
+      budget?: unknown;
+    }
+  | {
+      type: "pass_retry";
+      pass: PassName;
+      attempt: number;
+      nextAttempt: number;
+      reason: string;
+    }
+  | {
+      type: "verification";
+      label: string;
+      pass: boolean;
+      confidence: number;
+      attempt?: number;
+      backend?: string;
+      reasoning?: string;
+      durationMs?: number;
     }
   | { type: "plan"; plan: PlanPayload }
   | { type: "sources"; sources: SourceRef[] }

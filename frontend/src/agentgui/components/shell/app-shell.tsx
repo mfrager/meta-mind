@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatPane } from "@/agentgui/components/chat/chat-pane";
+import { useLlmActivityStream } from "@/hooks/use-llm-activity-stream.ts";
 import { AppSidebar, SidebarContent } from "@/agentgui/components/navigation/app-sidebar";
 import { AgentSettingsDialog } from "@/agentgui/components/shell/agent-settings-dialog";
 import { PaneLayout } from "@/agentgui/components/shell/pane-layout";
@@ -31,6 +32,7 @@ export function AppShell() {
   const setPaneLayout = useWorkspaceStore((state) => state.setPaneLayout);
   const { pathname } = useLocation();
   const isWorkspace = pathname === "/" || pathname.startsWith("/chat");
+  useLlmActivityStream();
 
   useEffect(() => {
     let cancelled = false;

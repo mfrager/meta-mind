@@ -5,6 +5,7 @@ import { ChatPane } from "@/components/chat/chat-pane.tsx";
 import { DocBody } from "@/components/docs/viewers.tsx";
 import { DocHeader } from "@/components/docs/doc-header.tsx";
 import { StateBoard } from "@/components/state/state-board.tsx";
+import { useLlmActivityStream } from "@/hooks/use-llm-activity-stream.ts";
 import { useChatPending } from "@/lib/store/chat-pending.ts";
 import { useSideStore } from "@/lib/store/side.ts";
 import type { FocusDoc } from "@/lib/wire/focus.ts";
@@ -12,6 +13,7 @@ import { usePaneStore } from "@/lib/store/pane.ts";
 import { WorkspaceSplit } from "@/components/shell/workspace-split.tsx";
 
 export function Workspace() {
+  useLlmActivityStream();
   return (
     <div className="h-full min-h-0">
       <WorkspaceSplit document={<SidePane />} chat={<ChatPane />} />

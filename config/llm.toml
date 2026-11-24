@@ -19,6 +19,10 @@ max_repair_attempts = 1
 timeout_ms = 30000
 max_tokens = 1024
 
+# NIM-backed endpoints return an empty completion for `json_schema`. Ask only
+# for valid JSON and let the substrate validate/repair against the real schema.
+structured_output = "json_object"
+
 [[model]]
 name = "nvidia/nemotron-3.5-lightning-30b-a3b"
 input_cost_micros_per_1k = 150

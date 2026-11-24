@@ -43,6 +43,7 @@ import {
 } from "@/agentgui/components/ai-elements/sources";
 import { Subagent } from "@/agentgui/components/ai-elements/subagent";
 import { Trace } from "@/agentgui/components/ai-elements/trace";
+import { PassBlock } from "@/agentgui/components/chat/pass-block";
 import { Badge } from "@/agentgui/components/ui/badge";
 import { Button } from "@/agentgui/components/ui/button";
 import { Textarea } from "@/agentgui/components/ui/textarea";
@@ -247,6 +248,9 @@ function PartView({
 
     case "trace":
       return <Trace steps={part.steps} />;
+
+    case "pass":
+      return <PassBlock part={part} />;
 
     case "plan":
       return <PlanBlock plan={part.plan} />;

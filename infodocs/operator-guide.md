@@ -60,7 +60,7 @@ script can never silently replace a live provider.
 | Variable | Default | Effect |
 |---|---|---|
 | `MM_CM_V3` | `true` | Attach the seventeen-tool conversation-manager contract to the CME executor. `false` leaves the CME model round without CM tools. |
-| `MM_CME_ENABLED` | `false` | Route `POST /api/chat` through the conversation engine instead of the legacy console controller. |
+| `MM_CME_ENABLED` | `true` | Route `POST /api/chat` through the conversation engine instead of the legacy console controller. Set `false` to roll back. |
 | `MM_AUTOMATION_V1` | `true` | Start session automation, frame timers, and the plan monitor. |
 | `MM_CME_PROACTIVE` | `true` | Attach the proactive plugin engine. |
 | `MM_CME_MEMORY_COMPRESSION` | `true` | Compress completed turns into memory segments. |
@@ -68,16 +68,17 @@ script can never silently replace a live provider.
 | `MM_CME_AGENTSTREAM_LOGGING` | `true` | Write CM turns and frames to agentstream. |
 | `MM_PROMPT_V1` | `false` | Declared prompt-tree flag. The reviewed tree under `config/prompts/` is loaded by the CME prompt path regardless of this flag. |
 | `MM_FRAMES_V1` | `false` | Declared frame flag. Frame tools and timers are governed by `MM_AUTOMATION_V1` and `config/automation.toml`. |
-| `MM_THREE_PASS_V2` | `false` | Run turns through the three-pass runner (Interpret → Process → Verify). Checks, staged writes, retries, and recursive think are implemented; the flag stays off until the live dual-run gate is recorded. |
+| `MM_THREE_PASS_V2` | `true` | Run turns through the three-pass runner (Interpret → Process → Verify). Checks, staged writes, retries, and recursive think are implemented. Set `false` for the single-loop path. |
 | `MM_PROCESS_V1` | `false` | Enable durable process templates/instances (Phase 5). Plan creation uses the four-pass builder, `metamind.plan run=true` starts a process, and `metamind.act` exposes process controls. Keep off until a live soak is recorded. See [`process-pipeline.md`](./process-pipeline.md). |
 
-Rollback to the legacy console route is `MM_CM_V3=false MM_CME_ENABLED=false`.
-Rollback only the CM tool surface is `MM_CM_V3=false` (the CME still runs, with no
-CM tools attached).
+Rollback to the legacy console route is `MM_CME_ENABLED=false`. Rollback to the
+single-loop CME turn (keeping the conversation engine and CM tools) is
+`MM_THREE_PASS_V2=false`. Rollback only the CM tool surface is `MM_CM_V3=false`
+(the CME still runs, with no CM tools attached).
 
 ### Three-pass turns
 
-With `MM_THREE_PASS_V2=true`, a turn is Interpret → Process → Verify. The checks
+With `MM_THREE_PASS_V2=true` (the default), a turn is Interpret → Process → Verify. The checks
 are turn-scoped; Verify stages durable writes and commits only on approval; a
 rejected reply retries Process up to `verify.max_retries`; exhaustion fails with
 `VERIFY_EXHAUSTED` and names the durable changes already made. Retries and

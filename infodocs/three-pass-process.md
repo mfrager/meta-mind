@@ -1,6 +1,6 @@
 # Three-Pass Process (Phase 3)
 
-> **Status:** implemented, off by default · **Date:** 2026-11-23 · **Flag:** `MM_THREE_PASS_V2=false`
+> **Status:** implemented, on by default · **Date:** 2026-11-23 · **Flag:** `MM_THREE_PASS_V2=true` (set `false` for the single-loop path)
 > **Plan:** [`design/five_phase_turn_process_plan.md`](../design/five_phase_turn_process_plan.md) Phase 3
 
 Phase 3 extracts the model/tool loop into one reusable Process pass. The legacy

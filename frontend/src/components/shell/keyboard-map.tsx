@@ -6,6 +6,7 @@ import { hrefFor } from "@/lib/nav.ts";
 import { isTextEntry, shortcutFromEvent } from "@/lib/shortcuts.ts";
 import { useFocusStore } from "@/lib/store/focus.ts";
 import { usePaneStore } from "@/lib/store/pane.ts";
+import { usePrefsStore } from "@/lib/store/prefs.ts";
 import { useViewportTier } from "@/lib/use-tier.ts";
 
 const LATER = "Document tabs arrive with the document pane.";
@@ -104,6 +105,9 @@ export function KeyboardMap() {
             pane.setActivePane(pane.activePane === "document" ? "chat" : "document");
           }
           pane.toggleSwap();
+          break;
+        case "llm-log":
+          usePrefsStore.getState().toggleLlmLogCollapsed();
           break;
         case "sidebar":
           if (tier === "wide") pane.toggleSidebar();

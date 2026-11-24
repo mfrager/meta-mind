@@ -1,6 +1,6 @@
 # Three-Pass Interpret (Phase 2)
 
-> **Status:** implemented, off by default · **Date:** 2026-11-23 · **Flag:** `MM_THREE_PASS_V2=false`
+> **Status:** implemented, on by default · **Date:** 2026-11-23 · **Flag:** `MM_THREE_PASS_V2=true` (set `false` for the single-loop path)
 > **Plan:** [`design/five_phase_turn_process_plan.md`](../design/five_phase_turn_process_plan.md) Phase 2
 
 Phase 2 makes Interpret a real pass. Pure conversation completes after one model

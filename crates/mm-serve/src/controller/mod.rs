@@ -17,7 +17,7 @@ pub(crate) mod turn;
 
 use std::sync::Arc;
 
-use mm_llm::{LlmClient, LlmConfig, OpenAiClient};
+use mm_llm::{CallContext, LlmClient, LlmConfig};
 
 use crate::state::AppState;
 
@@ -79,10 +79,13 @@ pub(crate) fn resolve_client(app: &AppState, cfg: &LlmConfig) -> Option<Arc<dyn 
         .unwrap_or_else(|err| err.into_inner());
     match &*mode {
         ControllerModel::Off => None,
-        ControllerModel::Scripted(client) => Some(Arc::clone(client)),
-        ControllerModel::FromEnv => OpenAiClient::new(cfg).ok().map(|client| {
-            let client: Arc<dyn LlmClient> = Arc::new(client);
-            client
-        }),
+        ControllerModel::Scripted(client) => {
+            Some(app.observed(Arc::clone(client), CallContext::new("controller")))
+        }
+        ControllerModel::FromEnv => crate::llm_feed::openai_client(
+            cfg,
+            app.llm_activity.as_ref(),
+            CallContext::new("controller"),
+        ),
     }
 }

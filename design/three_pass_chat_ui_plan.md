@@ -1,9 +1,18 @@
 # Three-Pass Chat UI: Live Phase Streaming, Tool Cards, and One-Turn Rendering
 
-> **Status:** proposed implementation plan · **Date:** 2026-11-23 · **Baseline:** `integration/cme-rdf-backend`
+> **Status:** implemented (P0–P3; P4 history reconstruction deferred) · **Date:** 2026-11-23 · **Baseline:** `integration/cme-rdf-backend`
 > **Scope:** `frontend/src/agentgui`, `frontend/src/lib`, `crates/mm-serve`, `crates/mm-cme`, `crates/mm-llm`, `config/`
-> **Flags:** `MM_CME_ENABLED` and `MM_THREE_PASS_V2` (both default `false` today)
+> **Flags:** `MM_CME_ENABLED` and `MM_THREE_PASS_V2` (both default `true` now)
 > **Related:** [`three_pass_turn_sequence.md`](./three_pass_turn_sequence.md) (normative pass semantics), [`five_phase_turn_process_plan.md`](./five_phase_turn_process_plan.md) (execution plan, §8), [`conversation_manager_agent_inspector_plan.md`](./conversation_manager_agent_inspector_plan.md) §W (console/inspector)
+
+> **Implementation notes (2026-11-23).** `[turn] stream` (default `true`) switches
+> the CME route to a live SSE response; set it to `false` for the previous
+> post-hoc frames. `LlmClient::complete_stream` and `PassObserver` carry the
+> rounds; `ChatStream` appends each frame before broadcasting it. Nested
+> `metamind.think` passes still render as the existing subagent/tool card rather
+> than parent-attributed pass frames, and reload still shows the in-memory feed
+> (P4). Everything is flag-gated: with `MM_CME_ENABLED=false` the legacy route
+> and buffered transport are unchanged.
 
 ---
 

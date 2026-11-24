@@ -34,7 +34,7 @@ pub struct RoundSummary {
 }
 
 /// What a finished pass produced.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PassSummary {
     /// Which pass finished.
     pub pass: Option<PassKind>,
@@ -52,6 +52,28 @@ pub struct PassSummary {
     pub tokens_out: u32,
     /// The pass's error, when it failed.
     pub error: Option<String>,
+}
+
+impl Default for PassSummary {
+    fn default() -> Self {
+        Self {
+            pass: None,
+            attempt: 0,
+            finished: String::new(),
+            budget: BudgetSnapshot {
+                class: "standard",
+                rounds: 0,
+                steps: 0,
+                tokens: 0,
+                wall_ms: 0,
+                estimated: false,
+            },
+            prompt_hash: None,
+            tokens_in: 0,
+            tokens_out: 0,
+            error: None,
+        }
+    }
 }
 
 /// A turn's display-side observer.
@@ -79,13 +101,7 @@ pub trait PassObserver: Send + Sync {
     fn delta(&self, _pass: PassKind, _attempt: u32, _round: u32, _text: &str) {}
 
     /// One model round ended.
-    fn round_finished(
-        &self,
-        _pass: PassKind,
-        _attempt: u32,
-        _round: u32,
-        _summary: &RoundSummary,
-    ) {
+    fn round_finished(&self, _pass: PassKind, _attempt: u32, _round: u32, _summary: &RoundSummary) {
     }
 
     /// The model asked for a tool.
@@ -107,14 +123,7 @@ pub trait PassObserver: Send + Sync {
     fn check(&self, _pass: PassKind, _attempt: u32, _result: &VerificationResult) {}
 
     /// Process will run again with `next_attempt`.
-    fn retry_scheduled(
-        &self,
-        _pass: PassKind,
-        _attempt: u32,
-        _next_attempt: u32,
-        _reason: &str,
-    ) {
-    }
+    fn retry_scheduled(&self, _pass: PassKind, _attempt: u32, _next_attempt: u32, _reason: &str) {}
 }
 
 /// The observer used when a caller did not attach one.
@@ -137,12 +146,7 @@ pub struct ObserverDeltaSink<'a> {
 
 impl<'a> ObserverDeltaSink<'a> {
     /// Build a sink for one round.
-    pub fn new(
-        observer: &'a dyn PassObserver,
-        pass: PassKind,
-        attempt: u32,
-        round: u32,
-    ) -> Self {
+    pub fn new(observer: &'a dyn PassObserver, pass: PassKind, attempt: u32, round: u32) -> Self {
         Self {
             observer,
             pass,
@@ -154,7 +158,8 @@ impl<'a> ObserverDeltaSink<'a> {
 
 impl DeltaSink for ObserverDeltaSink<'_> {
     fn delta(&mut self, delta: &str) {
-        self.observer.delta(self.pass, self.attempt, self.round, delta);
+        self.observer
+            .delta(self.pass, self.attempt, self.round, delta);
     }
 }
 
@@ -173,10 +178,10 @@ mod tests {
 
     impl PassObserver for Recorder {
         fn delta(&self, pass: PassKind, attempt: u32, round: u32, text: &str) {
-            self.deltas.lock().unwrap().push(format!(
-                "{}:{attempt}:{round}:{text}",
-                pass.as_str()
-            ));
+            self.deltas
+                .lock()
+                .unwrap()
+                .push(format!("{}:{attempt}:{round}:{text}", pass.as_str()));
         }
     }
 

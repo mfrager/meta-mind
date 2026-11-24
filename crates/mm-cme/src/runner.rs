@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 
 use mm_data::{CleanLog, CleanRole, CleanTurn, SessionId, TurnId};
 use mm_llm::{CacheMode, LlmClient, LlmRequest, Message, ProviderToolCall, Purpose};
+
+use crate::observer::{NoopObserver, ObserverDeltaSink, PassObserver, PassSummary, RoundSummary};
 use mm_prompt::{PromptInstance, PromptStore};
 use serde::{Deserialize, Serialize};
 
@@ -426,6 +428,7 @@ pub struct ThreePassRunner {
     repair_text: String,
     verify_repair_text: String,
     context_provider: Option<Arc<dyn PromptContextProvider>>,
+    observer: Arc<dyn PassObserver>,
 }
 
 impl std::fmt::Debug for ThreePassRunner {
@@ -481,7 +484,20 @@ impl ThreePassRunner {
             repair_text,
             verify_repair_text,
             context_provider: None,
+            observer: Arc::new(NoopObserver),
         })
+    }
+
+    /// Attach a display-side observer. It never changes the turn.
+    #[must_use]
+    pub fn with_observer(mut self, observer: Arc<dyn PassObserver>) -> Self {
+        self.observer = observer;
+        self
+    }
+
+    /// The observer in force.
+    pub fn observer(&self) -> Arc<dyn PassObserver> {
+        Arc::clone(&self.observer)
     }
 
     /// Reload prompt variables and `[STATE]` before every Interpret round.
@@ -534,6 +550,9 @@ impl ThreePassRunner {
 
     /// Turn envelope for one turn, lowered by the configured token ceiling.
     pub fn envelope(&self) -> TurnEnvelope {
+        if !self.config.budget.enabled {
+            return TurnEnvelope::unlimited(self.config.verify.max_retries);
+        }
         let mut envelope = TurnEnvelope::standard(self.config.verify.max_retries);
         if self.config.envelope.max_tokens < envelope.limits().tokens {
             let mut limits = envelope.limits();
@@ -551,6 +570,23 @@ impl ThreePassRunner {
     /// protocol violation; the second one ends the pass with
     /// `INTERPRET_PROTOCOL`.
     pub async fn run_interpret(&self, ctx: PassContext, session_id: &str) -> Result<PassOutcome> {
+        self.observer
+            .pass_started(PassKind::Interpret, 1, ctx.model.as_deref());
+        let outcome = self.run_interpret_inner(ctx, session_id).await?;
+        self.observer.pass_finished(&PassSummary {
+            pass: Some(PassKind::Interpret),
+            attempt: 1,
+            finished: outcome.finished.as_str().to_string(),
+            budget: outcome.budget,
+            prompt_hash: outcome.prompt_hashes.last().cloned(),
+            tokens_in: 0,
+            tokens_out: 0,
+            error: outcome.error.clone(),
+        });
+        Ok(outcome)
+    }
+
+    async fn run_interpret_inner(&self, ctx: PassContext, session_id: &str) -> Result<PassOutcome> {
         if ctx.kind != PassKind::Interpret {
             return Err(CmeError::Driver(
                 "run_interpret requires an Interpret context".into(),
@@ -609,9 +645,25 @@ impl ThreePassRunner {
             ledger
                 .reserve_tokens(u64::from(request.max_tokens))
                 .map_err(CmeError::from)?;
-            let response = match self.client.complete(&request).await {
+            let round = prompt_ids.len() as u32;
+            self.observer
+                .round_started(PassKind::Interpret, 1, round, true, ctx.model.as_deref());
+            let started = Instant::now();
+            let mut sink = ObserverDeltaSink::new(&*self.observer, PassKind::Interpret, 1, round);
+            let response = match self.client.complete_stream(&request, &mut sink).await {
                 Ok(response) => response,
                 Err(error) => {
+                    self.observer.round_finished(
+                        PassKind::Interpret,
+                        1,
+                        round,
+                        &RoundSummary {
+                            outcome: "error".into(),
+                            latency_ms: started.elapsed().as_millis() as u64,
+                            error: Some(error.to_string()),
+                            ..RoundSummary::default()
+                        },
+                    );
                     return Ok(self.finish(
                         PassFinish::Error,
                         String::new(),
@@ -629,6 +681,18 @@ impl ThreePassRunner {
             let used = u64::from(response.usage.tokens_in)
                 .saturating_add(u64::from(response.usage.tokens_out));
             ledger.settle_tokens(Some(used)).map_err(CmeError::from)?;
+            self.observer.round_finished(
+                PassKind::Interpret,
+                1,
+                round,
+                &RoundSummary {
+                    outcome: "ok".into(),
+                    tokens_in: response.usage.tokens_in,
+                    tokens_out: response.usage.tokens_out,
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    error: None,
+                },
+            );
 
             if response.tool_calls.is_empty() {
                 if repaired {
@@ -861,6 +925,7 @@ impl ThreePassRunner {
             // directly. Everything else is denied before it reaches a handler.
             let mut round_results = Vec::new();
             for call in &response.tool_calls {
+                self.observer.tool_call(PassKind::Interpret, 1, round, call);
                 let action = action_of(&call.arguments);
                 if !scope.allows(&call.name, action.as_deref()) {
                     let message = format!(
@@ -870,6 +935,8 @@ impl ThreePassRunner {
                     );
                     let result = json_error_code("TOOL_NOT_AVAILABLE", &message);
                     emissions.push(emission(call, result.clone(), false));
+                    self.observer
+                        .tool_result(PassKind::Interpret, 1, round, call, &result, false);
                     round_results.push(Message::tool(call.id.clone(), call.name.clone(), result));
                     continue;
                 }
@@ -877,6 +944,8 @@ impl ThreePassRunner {
                     let message = format!("{} is not a conversation tool", call.name);
                     let result = json_error_code("TOOL_NOT_AVAILABLE", &message);
                     emissions.push(emission(call, result.clone(), false));
+                    self.observer
+                        .tool_result(PassKind::Interpret, 1, round, call, &result, false);
                     round_results.push(Message::tool(call.id.clone(), call.name.clone(), result));
                     continue;
                 }
@@ -888,11 +957,21 @@ impl ThreePassRunner {
                     Ok(result) => {
                         let ok = result_ok(&result);
                         emissions.push(emission(call, result.clone(), ok));
+                        self.observer
+                            .tool_result(PassKind::Interpret, 1, round, call, &result, ok);
                         result
                     }
                     Err(error) => {
                         let result = format!("tool `{}` failed: {error}", call.name);
                         emissions.push(emission(call, result.clone(), false));
+                        self.observer.tool_result(
+                            PassKind::Interpret,
+                            1,
+                            round,
+                            call,
+                            &result,
+                            false,
+                        );
                         result
                     }
                 };
@@ -992,6 +1071,24 @@ impl ThreePassRunner {
 
     /// Run the Verify pass: Phase A, the review model, and a staged journal.
     pub async fn run_verify(&self, ctx: PassContext, session_id: &str) -> Result<VerifyOutcome> {
+        let attempt = ctx.retry_count + 1;
+        self.observer
+            .pass_started(PassKind::Verify, attempt, ctx.model.as_deref());
+        let outcome = self.run_verify_inner(ctx, session_id).await?;
+        self.observer.pass_finished(&PassSummary {
+            pass: Some(PassKind::Verify),
+            attempt,
+            finished: outcome.finished.as_str().to_string(),
+            budget: outcome.budget,
+            prompt_hash: outcome.prompt_hashes.last().cloned(),
+            tokens_in: 0,
+            tokens_out: 0,
+            error: outcome.error.clone(),
+        });
+        Ok(outcome)
+    }
+
+    async fn run_verify_inner(&self, ctx: PassContext, session_id: &str) -> Result<VerifyOutcome> {
         if ctx.kind != PassKind::Verify {
             return Err(CmeError::Driver(
                 "run_verify requires a Verify context".into(),
@@ -1036,6 +1133,10 @@ impl ThreePassRunner {
         let verification = self
             .run_checks(&registered, &process_output, &verify_context)
             .await;
+        for result in &verification {
+            self.observer
+                .check(PassKind::Verify, ctx.retry_count + 1, result);
+        }
         let checks_failed = verification.iter().any(|result| !result.pass);
         let mut journal = MutationJournal::new(session_id);
         let mut prompt_ids = Vec::new();
@@ -1086,9 +1187,32 @@ impl ThreePassRunner {
             ledger
                 .reserve_tokens(u64::from(request.max_tokens))
                 .map_err(CmeError::from)?;
-            let response = match self.client.complete(&request).await {
+            let attempt = ctx.retry_count + 1;
+            let round = prompt_ids.len() as u32;
+            self.observer.round_started(
+                PassKind::Verify,
+                attempt,
+                round,
+                true,
+                ctx.model.as_deref(),
+            );
+            let started = Instant::now();
+            let mut sink =
+                ObserverDeltaSink::new(&*self.observer, PassKind::Verify, attempt, round);
+            let response = match self.client.complete_stream(&request, &mut sink).await {
                 Ok(response) => response,
                 Err(error) => {
+                    self.observer.round_finished(
+                        PassKind::Verify,
+                        attempt,
+                        round,
+                        &RoundSummary {
+                            outcome: "error".into(),
+                            latency_ms: started.elapsed().as_millis() as u64,
+                            error: Some(error.to_string()),
+                            ..RoundSummary::default()
+                        },
+                    );
                     return Ok(self.finish_verify(
                         PassFinish::Error,
                         prompt_ids,
@@ -1107,6 +1231,18 @@ impl ThreePassRunner {
             let used = u64::from(response.usage.tokens_in)
                 .saturating_add(u64::from(response.usage.tokens_out));
             ledger.settle_tokens(Some(used)).map_err(CmeError::from)?;
+            self.observer.round_finished(
+                PassKind::Verify,
+                attempt,
+                round,
+                &RoundSummary {
+                    outcome: "ok".into(),
+                    tokens_in: response.usage.tokens_in,
+                    tokens_out: response.usage.tokens_out,
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    error: None,
+                },
+            );
 
             if response.tool_calls.is_empty() {
                 if repaired {
@@ -1370,7 +1506,8 @@ impl ThreePassRunner {
             // replace its question with the parent session's variables.
             None,
             self.config.think.budget_class,
-        );
+        )
+        .with_budgeting(self.config.budget.enabled);
         let run = pass
             .run(
                 &mut turn,
@@ -1522,7 +1659,8 @@ impl ThreePassRunner {
             Arc::new(DenyUnconfirmed),
             None,
             self.config.step.budget_class,
-        );
+        )
+        .with_budgeting(self.config.budget.enabled);
         let run = pass
             .run(
                 &mut turn,

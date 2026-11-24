@@ -20,6 +20,9 @@ async fn boot_cme() -> (TempDir, Arc<AppState>, axum::Router) {
     let lock = ConsoleLock::acquire(dir.path()).unwrap();
     let flags = FeatureFlags {
         cme_enabled: true,
+        // These tests target the conversation-manager contract and its tool
+        // surface, not the three-pass runner, which is on by default.
+        three_pass_v2: false,
         ..FeatureFlags::default()
     };
     let state = Arc::new(

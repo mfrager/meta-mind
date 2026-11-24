@@ -8,7 +8,7 @@ use mm_core::ulid_string;
 use mm_decision::{
     hosted, CoreId, DecisionCore, DecisionQuestion, DecisionState, HostedCore, RulesCore,
 };
-use mm_llm::{OpenAiClient, SchemaRegistry};
+use mm_llm::SchemaRegistry;
 use mm_memory::{Memory, MemoryEngine, MemoryKind};
 use mm_selfeng::{
     changeset::{self, ChangeSetStore},
@@ -234,15 +234,15 @@ async fn hosted_answer(
     state: &DecisionState,
 ) -> Result<mm_decision::DecisionAnswer, String> {
     let cfg = llm_config(app);
-    let client = OpenAiClient::new(&cfg)
-        .map_err(|_| "no language-model provider is configured".to_string())?;
+    let client = crate::llm_feed::observed_openai(
+        &cfg,
+        app.llm_activity.as_ref(),
+        mm_llm::CallContext::new("controller"),
+    )
+    .ok_or_else(|| "no language-model provider is configured".to_string())?;
     let mut registry = SchemaRegistry::new();
     hosted::register(&mut registry).map_err(|err| err.to_string())?;
-    let core = HostedCore::new(
-        std::sync::Arc::new(client),
-        std::sync::Arc::new(registry),
-        256,
-    );
+    let core = HostedCore::new(client, std::sync::Arc::new(registry), 256);
     core.answer(question, state)
         .await
         .map_err(|err| err.to_string())

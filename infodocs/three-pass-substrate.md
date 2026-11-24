@@ -1,6 +1,6 @@
 # Three-Pass Substrate (Phase 1)
 
-> **Status:** implemented, behavior-neutral · **Date:** 2026-11-23 · **Flags:** `MM_THREE_PASS_V2=false`, `MM_PROCESS_V1=false`
+> **Status:** implemented · **Date:** 2026-11-23 · **Flags:** `MM_THREE_PASS_V2=true`, `MM_PROCESS_V1=false`
 > **Plan:** [`design/five_phase_turn_process_plan.md`](../design/five_phase_turn_process_plan.md) Phase 1
 
 Phase 1 lands the contracts every later pass and process step uses. No route, prompt,
@@ -21,7 +21,7 @@ untouched.
 | Events | `pass_started`, `pass_completed`, `verification_registered`, `verification_result`, `retry_scheduled`, `write_staged`, `write_committed`, `write_discarded` |
 | Clean log | `mm_data::CleanLog` projection of user messages and approved final replies |
 | Config | `config/three_pass.toml`, parsed and validated by `mm_cme::ThreePassConfig` |
-| Flags | `MM_THREE_PASS_V2`, `MM_PROCESS_V1` (both default off) |
+| Flags | `MM_THREE_PASS_V2` (default on), `MM_PROCESS_V1` (default off) |
 
 ## 2. Verification
 

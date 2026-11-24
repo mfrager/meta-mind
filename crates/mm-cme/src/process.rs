@@ -16,6 +16,7 @@ use crate::budget::{BudgetClass, BudgetLedger, BudgetSnapshot, TurnEnvelope};
 use crate::chunk::{ChunkEvent, ChunkState};
 use crate::error::{CmeError, Result};
 use crate::executor::{ConfirmationHandler, PromptContextProvider, ToolHandler};
+use crate::observer::{NoopObserver, ObserverDeltaSink, PassObserver, RoundSummary};
 use crate::pass_scope::PassScope;
 use crate::planner::ToolPolicy;
 use crate::prompt::PromptVariables;
@@ -97,6 +98,9 @@ pub struct ProcessPass {
     confirm: Arc<dyn ConfirmationHandler>,
     provider: Option<Arc<dyn PromptContextProvider>>,
     budget_class: BudgetClass,
+    budgeted: bool,
+    observer: Arc<dyn PassObserver>,
+    attempt: u32,
 }
 
 impl std::fmt::Debug for ProcessPass {
@@ -125,7 +129,25 @@ impl ProcessPass {
             confirm,
             provider,
             budget_class,
+            budgeted: true,
+            observer: Arc::new(NoopObserver),
+            attempt: 1,
         }
+    }
+
+    /// Enable or disable the pass's resource ledger and loop caps.
+    #[must_use]
+    pub fn with_budgeting(mut self, budgeted: bool) -> Self {
+        self.budgeted = budgeted;
+        self
+    }
+
+    /// Attach the turn's display observer and the attempt this pass is running.
+    #[must_use]
+    pub fn with_observer(mut self, observer: Arc<dyn PassObserver>, attempt: u32) -> Self {
+        self.observer = observer;
+        self.attempt = attempt;
+        self
     }
 
     /// Run until the model returns text, the loop cap is reached, or the budget
@@ -157,7 +179,11 @@ impl ProcessPass {
                 "PROMPT_UNAVAILABLE: prompt tree is unavailable; no model call was made".into(),
             )
         })?;
-        let mut budget = BudgetLedger::new(self.budget_class);
+        let mut budget = if self.budgeted {
+            BudgetLedger::new(self.budget_class)
+        } else {
+            BudgetLedger::unlimited(self.budget_class)
+        };
         let tools = self.visible_tools(plan, request.scope);
         let mut messages: Vec<Message> = Vec::new();
         let mut rounds = 0u32;
@@ -199,12 +225,50 @@ impl ProcessPass {
                 .min(4_096);
             llm_request.temperature = 0.2;
             budget.reserve_tokens(u64::from(llm_request.max_tokens))?;
-            let response = self.client.complete(&llm_request).await?;
+            let pass = crate::runner::PassKind::Process;
+            self.observer.round_started(
+                pass,
+                self.attempt,
+                rounds,
+                llm_request.schema.is_none(),
+                Some(model),
+            );
+            let started = std::time::Instant::now();
+            let mut sink = ObserverDeltaSink::new(&*self.observer, pass, self.attempt, rounds);
+            let response = match self.client.complete_stream(&llm_request, &mut sink).await {
+                Ok(response) => response,
+                Err(error) => {
+                    self.observer.round_finished(
+                        pass,
+                        self.attempt,
+                        rounds,
+                        &RoundSummary {
+                            outcome: "error".into(),
+                            latency_ms: started.elapsed().as_millis() as u64,
+                            error: Some(error.to_string()),
+                            ..RoundSummary::default()
+                        },
+                    );
+                    return Err(error.into());
+                }
+            };
             let used = u64::from(response.usage.tokens_in)
                 .saturating_add(u64::from(response.usage.tokens_out));
             tokens_in = tokens_in.saturating_add(response.usage.tokens_in);
             tokens_out = tokens_out.saturating_add(response.usage.tokens_out);
             budget.settle_tokens(Some(used))?;
+            self.observer.round_finished(
+                pass,
+                self.attempt,
+                rounds,
+                &RoundSummary {
+                    outcome: "ok".into(),
+                    tokens_in: response.usage.tokens_in,
+                    tokens_out: response.usage.tokens_out,
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    error: None,
+                },
+            );
 
             if response.tool_calls.is_empty() {
                 break response.text;
@@ -214,13 +278,17 @@ impl ProcessPass {
                     "model requested a tool but the turn's policy forbids tools".into(),
                 ));
             }
-            if rounds as usize >= MAX_TOOL_ROUNDS {
+            if self.budgeted && rounds as usize >= MAX_TOOL_ROUNDS {
                 return Err(CmeError::Driver("tool round cap".into()));
             }
-            if tool_steps >= MAX_TOOL_STEPS {
+            if self.budgeted && tool_steps >= MAX_TOOL_STEPS {
                 return Err(CmeError::Driver("tool step cap".into()));
             }
-            let remaining = MAX_TOOL_STEPS - tool_steps;
+            let remaining = if self.budgeted {
+                MAX_TOOL_STEPS - tool_steps
+            } else {
+                response.tool_calls.len()
+            };
             let calls = response
                 .tool_calls
                 .iter()
@@ -236,6 +304,7 @@ impl ProcessPass {
                 .run_tool_calls(
                     turn,
                     &calls,
+                    rounds,
                     request.scope,
                     request.child_budget,
                     &mut budget,
@@ -350,16 +419,19 @@ impl ProcessPass {
 
     /// Run the model's tool calls under the turn's policy and return the tool
     /// messages to append to the model transcript.
+    #[allow(clippy::too_many_arguments)]
     async fn run_tool_calls(
         &self,
         turn: &mut Turn,
         calls: &[ProviderToolCall],
+        round: u32,
         scope: Option<PassScope>,
         child_budget: bool,
         budget: &mut BudgetLedger,
         tool_emissions: &mut Vec<ToolCallEmission>,
         mutations: &mut Vec<ProcessMutation>,
     ) -> Result<Vec<Message>> {
+        let pass = crate::runner::PassKind::Process;
         let policy = turn
             .plan
             .as_ref()
@@ -372,6 +444,7 @@ impl ProcessPass {
         }
         let mut messages = Vec::with_capacity(calls.len());
         for call in calls {
+            self.observer.tool_call(pass, self.attempt, round, call);
             if let Some(scope) = scope {
                 let action = action_of(&call.arguments);
                 if !scope.allows(&call.name, action.as_deref()) {
@@ -387,6 +460,8 @@ impl ProcessPass {
                         result: result.clone(),
                         ok: false,
                     };
+                    self.observer
+                        .tool_result(pass, self.attempt, round, call, &result, false);
                     turn.tool_results.push(result.clone());
                     turn.tool_calls.push(emission.clone());
                     tool_emissions.push(emission);
@@ -411,6 +486,8 @@ impl ProcessPass {
                             result: result.clone(),
                             ok: false,
                         };
+                        self.observer
+                            .tool_result(pass, self.attempt, round, call, &result, false);
                         turn.tool_results.push(result.clone());
                         turn.tool_calls.push(emission.clone());
                         tool_emissions.push(emission);
@@ -496,6 +573,8 @@ impl ProcessPass {
                     mutations.push(effect);
                 }
             }
+            self.observer
+                .tool_result(pass, self.attempt, round, call, &result, ok);
             turn.tool_results.push(result.clone());
             turn.tool_calls.push(emission.clone());
             tool_emissions.push(emission);

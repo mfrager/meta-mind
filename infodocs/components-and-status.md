@@ -493,17 +493,17 @@ inputs to the code-agent stage; the recorded session is what makes the qualifica
   the legacy path's. The declared `MM_PROMPT_V1`/`MM_FRAMES_V1` flags are not read
   by the runtime: the prompt tree and frame timers are governed by the CME path
   and `MM_AUTOMATION_V1` instead. The CM tool surface is attached to the CME executor
-  only when `MM_CM_V3=true` (the default); `MM_CME_ENABLED` still chooses the CME
-  versus the legacy console route. The Phase 1 three-pass substrate (verification
+  only when `MM_CM_V3=true` (the default); `MM_CME_ENABLED` chooses the CME versus
+  the legacy console route and is now also on by default. The Phase 1 three-pass substrate (verification
   backends, pass scopes, prompts, budget envelope, clean log), Phase 2
   Interpret pass (fast path, protocol repair, implicit action check, pass
   telemetry), Phase 3 Process pass (extracted reusable loop, `cm.process.v1`
   brief, 17-tool scope, child budget reservation, legacy parity), and Phase 4
   Verify (parallel checks, staged writes committed only on approval, `cm.verify.v1`
   review with override guard, retry loop and `VERIFY_EXHAUSTED`, recursive think
-  under the Think scope, pass timeline) are implemented but inert while
-  `MM_THREE_PASS_V2` is off; the legacy path still advertises exactly the
-  seventeen work tools. Phase 5's durable process pipeline is implemented behind
+  under the Think scope, pass timeline) are implemented and on by default via
+  `MM_THREE_PASS_V2=true`; setting it to `false` restores the single-loop turn,
+  which still advertises exactly the seventeen work tools. Phase 5's durable process pipeline is implemented behind
   `MM_PROCESS_V1` (off): `mm-process` templates, RDF instances, queues/leases,
   waits, sub-processes, plan builder and plan→process tools. Its backend service
   runtime is still a typed stub, typed `data.*` CRUD for process documents is not

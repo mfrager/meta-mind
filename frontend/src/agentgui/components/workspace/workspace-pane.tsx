@@ -1,5 +1,6 @@
 "use client";
 
+import { LlmLogDock } from "@/components/chat/llm-log-dock.tsx";
 import { ArtifactView } from "@/agentgui/components/workspace/artifact-view";
 import { StateView } from "@/agentgui/components/workspace/state-view";
 import { Badge } from "@/agentgui/components/ui/badge";
@@ -90,7 +91,7 @@ export function WorkspacePane() {
   const showingState = !active;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-col bg-surface" data-agent-workspace-pane>
       <div className="pane-header flex h-11 shrink-0 items-stretch gap-1 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1.5">
           <div
@@ -316,6 +317,8 @@ export function WorkspacePane() {
       ) : (
         <StateView sessionId={activeSessionId} />
       )}
+
+      <LlmLogDock />
     </div>
   );
 }

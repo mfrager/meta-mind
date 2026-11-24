@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use ulid::Ulid;
 
 use crate::error::Result;
@@ -283,6 +284,9 @@ pub struct Usage {
     pub latency_ms: u32,
 }
 
+/// The completion ceiling a builder uses until the service applies its config.
+pub const DEFAULT_MAX_TOKENS: u32 = 1024;
+
 /// A request to the substrate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmRequest {
@@ -315,7 +319,7 @@ impl LlmRequest {
             model: None,
             messages,
             schema: None,
-            max_tokens: 1024,
+            max_tokens: DEFAULT_MAX_TOKENS,
             temperature: 0.0,
             cache: CacheMode::Use,
             trace_id: None,
@@ -444,6 +448,16 @@ pub trait LlmClient: Send + Sync {
     /// True when the adapter makes schema-valid output by construction.
     fn decoder(&self) -> DecoderKind {
         DecoderKind::None
+    }
+
+    /// Make a schema available to an adapter that asks the provider for native
+    /// JSON Schema output.
+    ///
+    /// The service owns the authoritative registry and validates every answer
+    /// afterwards. Adapters that can also constrain the request need the same
+    /// definition; the default is a no-op for clients that cannot.
+    fn provide_schema(&self, _id: SchemaId, _schema: Value) -> Result<()> {
+        Ok(())
     }
 }
 

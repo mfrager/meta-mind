@@ -14,15 +14,15 @@
 //! somebody else's server; a test scans this crate's sources to prove there is none.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::client::{DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Usage};
-use crate::config::{LlmConfig, ProviderEnv};
+use crate::client::{DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, SchemaId, Usage};
+use crate::config::{LlmConfig, ProviderEnv, StructuredOutput};
 use crate::error::{LlmError, Result};
 use crate::replay::NetworkGuard;
 use crate::schema::SchemaRegistry;
@@ -238,10 +238,16 @@ impl Transport for TcpTransport {
             )));
         }
 
-        let chunked = head.to_ascii_lowercase().contains("transfer-encoding: chunked");
+        let chunked = head
+            .to_ascii_lowercase()
+            .contains("transfer-encoding: chunked");
         // A JSON content type means the endpoint ignored `stream`; report that so
         // the adapter can make one ordinary call instead of parsing nothing.
-        if !chunked && head.to_ascii_lowercase().contains("content-type: application/json") {
+        if !chunked
+            && head
+                .to_ascii_lowercase()
+                .contains("content-type: application/json")
+        {
             return Ok(false);
         }
         let length = content_length(&head);
@@ -266,9 +272,7 @@ impl Transport for TcpTransport {
                     rest.drain(..take).collect()
                 };
                 parser.feed(&bytes, on_data);
-                if chunk_buffer.finished
-                    || length.is_some_and(|length| delivered >= length)
-                {
+                if chunk_buffer.finished || length.is_some_and(|length| delivered >= length) {
                     break;
                 }
             }
@@ -507,7 +511,7 @@ pub struct OpenAiClient {
     // `env` holds a key, so the struct's Debug rendering below is hand-written.
     env: ProviderEnv,
     config: LlmConfig,
-    schemas: SchemaRegistry,
+    schemas: RwLock<SchemaRegistry>,
     transport: Arc<dyn Transport>,
 }
 
@@ -540,7 +544,7 @@ impl OpenAiClient {
         Ok(OpenAiClient {
             env,
             config: config.clone(),
-            schemas: SchemaRegistry::new(),
+            schemas: RwLock::new(SchemaRegistry::new()),
             transport: Arc::new(transport),
         })
     }
@@ -555,15 +559,15 @@ impl OpenAiClient {
         OpenAiClient {
             env,
             config: config.clone(),
-            schemas: SchemaRegistry::new(),
+            schemas: RwLock::new(SchemaRegistry::new()),
             transport,
         }
     }
 
     /// Give the adapter the registered schemas, so it can ask for native JSON
     /// Schema output.
-    pub fn with_schemas(mut self, schemas: SchemaRegistry) -> Self {
-        self.schemas = schemas;
+    pub fn with_schemas(self, schemas: SchemaRegistry) -> Self {
+        *self.schemas.write().unwrap_or_else(|e| e.into_inner()) = schemas;
         self
     }
 
@@ -595,7 +599,6 @@ impl OpenAiClient {
             "max_tokens": req.max_tokens,
             "temperature": req.temperature,
         });
-
         if !req.tools.is_empty() {
             body["tool_choice"] = json!("auto");
             body["tools"] = Value::Array(
@@ -616,21 +619,38 @@ impl OpenAiClient {
         }
 
         if let Some(schema_id) = &req.schema {
-            // The provider-native path of the invariant: ask for JSON Schema output
-            // when the endpoint cannot be constrained at decode time. The
-            // response is still validated afterwards — a provider that claims
-            // `strict` is a claim, not a guarantee.
-            let schema = self.schemas.get(schema_id).ok_or_else(|| {
-                LlmError::Config(format!("schema `{schema_id}` is not registered"))
-            })?;
-            body["response_format"] = json!({
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_id.as_str(),
-                    "strict": true,
-                    "schema": schema,
+            match self.config.defaults.structured_output {
+                StructuredOutput::JsonSchema => {
+                    // The provider-native path of the invariant: ask for JSON Schema
+                    // output when the endpoint cannot be constrained at decode time.
+                    // The response is still validated afterwards — a provider that
+                    // claims `strict` is a claim, not a guarantee.
+                    let schema = self
+                        .schemas
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .get(schema_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            LlmError::Config(format!("schema `{schema_id}` is not registered"))
+                        })?;
+                    body["response_format"] = json!({
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": schema_id.as_str(),
+                            "strict": true,
+                            "schema": schema,
+                        }
+                    });
                 }
-            });
+                StructuredOutput::JsonObject => {
+                    // NIM-backed endpoints return an empty completion for
+                    // `json_schema`; `json_object` is their supported mode. The
+                    // service still validates the answer against the full schema.
+                    body["response_format"] = json!({ "type": "json_object" });
+                }
+                StructuredOutput::None => {}
+            }
         }
         Ok(body)
     }
@@ -651,9 +671,27 @@ impl OpenAiClient {
         };
         let tool_calls = parse_tool_calls(message);
         if text.trim().is_empty() && tool_calls.is_empty() {
-            return Err(LlmError::Transport(
-                "the endpoint returned neither text nor tool calls".into(),
-            ));
+            let finish = choice
+                .get("finish_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let reasoning_chars = message
+                .get("reasoning_content")
+                .or_else(|| message.get("reasoning"))
+                .and_then(Value::as_str)
+                .map(str::chars)
+                .map(Iterator::count)
+                .unwrap_or(0);
+            let detail = if reasoning_chars > 0 {
+                format!(
+                    "the endpoint returned {reasoning_chars} reasoning characters but no visible text; disable thinking or raise max_tokens"
+                )
+            } else {
+                "the endpoint returned neither text nor tool calls".to_string()
+            };
+            return Err(LlmError::Transport(format!(
+                "{detail} (finish_reason: {finish})"
+            )));
         }
         let model = value
             .get("model")
@@ -891,6 +929,20 @@ impl LlmClient for OpenAiClient {
         // requested as JSON Schema and validated afterwards.
         DecoderKind::ProviderNative
     }
+
+    fn provide_schema(&self, id: SchemaId, schema: Value) -> Result<()> {
+        let mut schemas = self.schemas.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = schemas.get(&id) {
+            return if existing == &schema {
+                Ok(())
+            } else {
+                Err(LlmError::Config(format!(
+                    "schema `{id}` is already registered with a different definition"
+                )))
+            };
+        }
+        schemas.register(id, schema)
+    }
 }
 
 #[cfg(test)]
@@ -990,6 +1042,42 @@ complexity_ceiling = "medium"
     }
 
     #[test]
+    fn json_object_mode_does_not_send_a_json_schema() {
+        let mut cfg = config();
+        cfg.defaults.structured_output = StructuredOutput::JsonObject;
+        let client = OpenAiClient::from_env(&cfg, Some(env())).unwrap();
+        let req = LlmRequest::new(Purpose::Classify, vec![Message::user("rate this")])
+            .with_schema(SchemaId::new("rating.v1"))
+            .with_model("small");
+        let body = client.request_body(&req, "small").unwrap();
+        assert_eq!(body["response_format"]["type"], "json_object");
+        assert!(body["response_format"].get("json_schema").is_none());
+    }
+
+    #[test]
+    fn a_schema_provided_after_construction_reaches_the_request() {
+        let client = OpenAiClient::from_env(&config(), Some(env())).unwrap();
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text"],
+            "properties": { "text": { "type": "string" } }
+        });
+        client
+            .provide_schema(SchemaId::new("controller.intro"), schema)
+            .unwrap();
+
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hello")])
+            .with_schema(SchemaId::new("controller.intro"))
+            .with_model("small");
+        let body = client.request_body(&req, "small").unwrap();
+        assert_eq!(
+            body["response_format"]["json_schema"]["name"],
+            "controller.intro"
+        );
+    }
+
+    #[test]
     fn a_provider_answer_maps_onto_the_neutral_response_with_cost() {
         let client = OpenAiClient::from_env(&config(), Some(env())).unwrap();
         let answer = json!({
@@ -1050,6 +1138,115 @@ complexity_ceiling = "medium"
         assert_eq!(response.tool_calls.len(), 1);
         assert_eq!(response.tool_calls[0].name, "guide.read");
         assert_eq!(response.tool_calls[0].arguments, "{\"id\":\"start\"}");
+    }
+
+    struct SseTransport {
+        events: Vec<String>,
+        streamed: bool,
+    }
+
+    #[async_trait]
+    impl Transport for SseTransport {
+        async fn post_json(&self, _url: &str, _body: &Value) -> Result<Value> {
+            Ok(json!({"choices":[{"message":{"content":"fallback"}}]}))
+        }
+
+        async fn post_sse(
+            &self,
+            _url: &str,
+            _body: &Value,
+            handler: &mut dyn SseHandler,
+        ) -> Result<bool> {
+            for event in &self.events {
+                handler.data(event);
+            }
+            Ok(self.streamed)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stream_is_assembled_and_forwarded_delta_by_delta() {
+        use crate::client::CollectSink;
+
+        let transport = Arc::new(SseTransport {
+            streamed: true,
+            events: vec![
+                json!({"model":"small","choices":[{"delta":{"content":"Hel"}}]}).to_string(),
+                json!({"choices":[{"delta":{"content":"lo"}}]}).to_string(),
+                json!({
+                    "choices": [],
+                    "usage": {"prompt_tokens": 7, "completion_tokens": 2}
+                })
+                .to_string(),
+                "[DONE]".into(),
+            ],
+        });
+        let client = OpenAiClient::with_transport(&config(), env(), transport);
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
+        let mut sink = CollectSink::default();
+        let response = client.complete_stream(&req, &mut sink).await.unwrap();
+
+        assert_eq!(response.text, "Hello");
+        assert_eq!(sink.0, "Hello");
+        assert_eq!(response.usage.tokens_in, 7);
+        assert_eq!(response.usage.tokens_out, 2);
+        assert!(response.schema_valid);
+    }
+
+    #[tokio::test]
+    async fn accumulated_tool_call_fragments_become_one_call() {
+        use crate::client::CollectSink;
+
+        let transport = Arc::new(SseTransport {
+            streamed: true,
+            events: vec![
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"data.","arguments":"{\"q\":"}}]}}]}).to_string(),
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search","arguments":"\"x\"}"}}]}}]}).to_string(),
+            ],
+        });
+        let client = OpenAiClient::with_transport(&config(), env(), transport);
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
+        let mut sink = CollectSink::default();
+        let response = client.complete_stream(&req, &mut sink).await.unwrap();
+
+        assert_eq!(sink.0, "");
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].name, "data.search");
+        assert_eq!(response.tool_calls[0].arguments, "{\"q\":\"x\"}");
+    }
+
+    #[tokio::test]
+    async fn a_transport_without_streaming_falls_back_to_one_delta() {
+        use crate::client::CollectSink;
+
+        let transport = Arc::new(StubTransport {
+            answer: json!({"choices":[{"message":{"content":"plain"}}]}),
+            calls: std::sync::atomic::AtomicU64::new(0),
+        });
+        let client = OpenAiClient::with_transport(&config(), env(), transport);
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
+        let mut sink = CollectSink::default();
+        let response = client.complete_stream(&req, &mut sink).await.unwrap();
+
+        assert_eq!(response.text, "plain");
+        assert_eq!(sink.0, "plain");
+    }
+
+    #[test]
+    fn the_sse_parser_keeps_partial_lines_until_they_complete() {
+        #[derive(Default)]
+        struct Collect(Vec<String>);
+        impl SseHandler for Collect {
+            fn data(&mut self, data: &str) {
+                self.0.push(data.to_string());
+            }
+        }
+        let mut parser = SseParser::default();
+        let mut collected = Collect::default();
+        parser.feed(b"data: {\"a\":", &mut collected);
+        assert!(collected.0.is_empty());
+        parser.feed(b"1}\n\ndata: [DONE]\n\n", &mut collected);
+        assert_eq!(collected.0, vec!["{\"a\":1}", "[DONE]"]);
     }
 
     #[tokio::test]

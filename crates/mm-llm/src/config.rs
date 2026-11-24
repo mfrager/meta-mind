@@ -115,6 +115,20 @@ impl ModelSpec {
     }
 }
 
+/// How structured requests ask the provider for JSON.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredOutput {
+    /// Send the full JSON Schema in `response_format` (OpenAI-style).
+    #[default]
+    JsonSchema,
+    /// Ask only for valid JSON and validate against the schema afterwards.
+    /// This is the compatible mode for NIM-backed endpoints.
+    JsonObject,
+    /// Send no `response_format`; validation and repair still apply.
+    None,
+}
+
 /// Substrate-wide defaults.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -133,6 +147,8 @@ pub struct LlmDefaults {
     pub max_tokens: u32,
     /// Default model when routing is unavailable.
     pub default_model: Option<String>,
+    /// How structured requests ask the provider for JSON.
+    pub structured_output: StructuredOutput,
 }
 
 impl Default for LlmDefaults {
@@ -145,6 +161,7 @@ impl Default for LlmDefaults {
             timeout_ms: 30_000,
             max_tokens: 1024,
             default_model: None,
+            structured_output: StructuredOutput::JsonSchema,
         }
     }
 }
@@ -302,6 +319,7 @@ semantic_cache_purposes = ["summarize"]
 semantic_cache_threshold = 0.97
 max_repair_attempts = 2
 timeout_ms = 5000
+
 
 [[model]]
 name = "small"

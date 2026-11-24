@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mm_cme::{
-    InterpretResult, PassContext, PassFinish, PassKind, PassScope, PromptVariables,
+    BudgetLimits, InterpretResult, PassContext, PassFinish, PassKind, PassScope, PromptVariables,
     ThreePassConfig, ThreePassRunner, ToolHandler, TurnEnvelope,
 };
 use mm_data::{CleanLog, CleanRole, CleanTurn};
@@ -142,6 +142,16 @@ impl ToolHandler for RecordingTools {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(serde_json::json!({ "ok": true, "name": name, "arguments": arguments }).to_string())
     }
+}
+
+#[test]
+fn the_default_runner_has_no_turn_budget() {
+    let runner = runner(
+        Arc::new(MockClient::new()),
+        Arc::new(RecordingTools::default()),
+    );
+    assert!(!runner.config().budget.enabled);
+    assert_eq!(runner.envelope().limits(), BudgetLimits::UNLIMITED);
 }
 
 #[tokio::test]

@@ -28,6 +28,7 @@ test("the shell map resolves the milestone bindings", () => {
   expect(shortcutFromEvent(press({ key: "1", meta: true }))).toBe("document");
   expect(shortcutFromEvent(press({ key: "2", ctrl: true }))).toBe("chat");
   expect(shortcutFromEvent(press({ key: "\\", meta: true }))).toBe("swap");
+  expect(shortcutFromEvent(press({ key: "`", ctrl: true }))).toBe("llm-log");
   expect(shortcutFromEvent(press({ key: "b", ctrl: true }))).toBe("sidebar");
   expect(shortcutFromEvent(press({ key: "e", meta: true }))).toBe("mode");
   expect(shortcutFromEvent(press({ key: "F", meta: true, shift: true }))).toBe("fullscreen");

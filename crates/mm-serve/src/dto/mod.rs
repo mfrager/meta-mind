@@ -17,6 +17,7 @@ use ts_rs::TS;
 
 pub mod chat;
 pub mod focus;
+pub mod llm_activity;
 
 /// The error codes the UI maps to chip/banner styles (plan `09` §7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

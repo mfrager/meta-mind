@@ -84,6 +84,44 @@ pub enum ChatFrame {
         pass: String,
         turn_id: String,
         attempt: u32,
+        /// The model the pass was routed to.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        /// Set when this pass belongs to a nested think sub-agent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
+    },
+    /// One model round inside a pass began.
+    PassRound {
+        pass: String,
+        turn_id: String,
+        attempt: u32,
+        round: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        /// False for a structured call, which is validated whole and not streamed.
+        streaming: bool,
+        /// Set when this round belongs to a nested think sub-agent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
+    },
+    /// One model round ended.
+    PassRoundEnd {
+        pass: String,
+        turn_id: String,
+        attempt: u32,
+        round: u32,
+        outcome: String,
+        #[serde(rename = "tokensIn")]
+        tokens_in: u32,
+        #[serde(rename = "tokensOut")]
+        tokens_out: u32,
+        #[serde(rename = "latencyMs")]
+        latency_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
     },
     /// A pass emitted text. Only `final:true` tokens are assistant content.
     PassToken {
@@ -91,6 +129,17 @@ pub enum ChatFrame {
         token: String,
         #[serde(rename = "final")]
         is_final: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attempt: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        round: Option<u32>,
+        /// `prose` for model text, `reasoning` for a reasoning channel.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        channel: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
     },
     /// A three-pass pass ended.
     PassComplete {
@@ -105,12 +154,39 @@ pub enum ChatFrame {
             rename = "promptHash"
         )]
         prompt_hash: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attempt: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
+    },
+    /// Process was rejected and will run again.
+    PassRetry {
+        turn_id: String,
+        pass: String,
+        attempt: u32,
+        #[serde(rename = "nextAttempt")]
+        next_attempt: u32,
+        reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
     },
     /// One verification check returned.
     Verification {
         label: String,
         pass: bool,
         confidence: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attempt: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        backend: Option<String>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "durationMs"
+        )]
+        duration_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reasoning: Option<String>,
     },
     /// A working turn began.
     LlmRequestStarted {
@@ -148,6 +224,17 @@ pub enum ChatFrame {
         name: String,
         #[ts(type = "unknown")]
         input: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pass: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attempt: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        round: Option<u32>,
+        /// The action the call targets, when its arguments name one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        action: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
     },
     /// An operation returned.
     ToolResult {
@@ -159,6 +246,14 @@ pub enum ChatFrame {
         output: Value,
         #[serde(rename = "durationMs")]
         duration_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pass: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attempt: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        round: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_tool_id: Option<String>,
     },
     /// A rich block appended to a turn.
     Block {

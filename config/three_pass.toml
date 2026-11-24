@@ -23,6 +23,11 @@ allow_override = false
 budget_class = "standard"
 strategy = "cm.step.v1"
 
+[budget]
+# Turn budgeting is off by default: no round, tool-step, token, or wall-clock cap.
+# Set enabled = true to enforce the per-pass budget classes and the envelope.
+enabled = false
+
 [envelope]
 max_tokens = 184000
 
@@ -35,3 +40,8 @@ max_output_tokens = 512
 budget_class = "think"
 strategy = "cm.think.v1"
 three_pass = false
+
+[turn]
+# Stream each pass's rounds into the chat transport as they happen. When false,
+# a turn is replayed as post-hoc frames after it completes.
+stream = true

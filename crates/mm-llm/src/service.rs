@@ -30,6 +30,7 @@ use crate::accounting::{
 use crate::cached::{self, CacheKey, CachedResponse, ExactCache, FileExactCache};
 use crate::client::{
     CacheMode, DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Role, SchemaId, Usage,
+    DEFAULT_MAX_TOKENS,
 };
 use crate::config::LlmConfig;
 use crate::error::{LlmError, Result};
@@ -135,8 +136,12 @@ impl LlmService {
     }
 
     /// Register an ad-hoc schema by id.
+    ///
+    /// The service keeps the authoritative copy for validation, and forwards it
+    /// to the adapter so provider-native structured output sees the same schema.
     pub fn register_schema(&mut self, id: SchemaId, schema: Value) -> Result<()> {
-        self.schemas.register(id, schema)
+        self.schemas.register(id.clone(), schema.clone())?;
+        self.client.provide_schema(id, schema)
     }
 
     /// Use an explicit router.
@@ -243,6 +248,9 @@ impl LlmService {
 
         let mut resolved = req;
         resolved.model = Some(decision.model.clone());
+        if resolved.max_tokens == DEFAULT_MAX_TOKENS {
+            resolved.max_tokens = self.cfg.defaults.max_tokens;
+        }
 
         // A schema that is named but not registered can never be enforced, so the
         // call is refused before a provider is asked rather than after.
@@ -832,7 +840,14 @@ async fn complete_provider(
         Some(sink) if request.schema.is_none() => {
             client.complete_stream(request, &mut **sink).await
         }
-        _ => client.complete(request).await,
+        Some(sink) => {
+            let response = client.complete(request).await?;
+            if !response.text.is_empty() {
+                sink.delta(&response.text);
+            }
+            Ok(response)
+        }
+        None => client.complete(request).await,
     }
 }
 
@@ -1231,6 +1246,67 @@ complexity_ceiling = "very_high"
         let raw = std::fs::read_to_string(&h.log_path).unwrap();
         assert!(!raw.contains("[redacted]"), "{raw}");
         assert_eq!(h.service.store().audit_count().await.unwrap(), 1);
+        h.graph.shutdown().await.unwrap();
+    }
+
+    #[derive(Default)]
+    struct SchemaClient {
+        seen: Mutex<Vec<SchemaId>>,
+    }
+
+    #[async_trait]
+    impl LlmClient for SchemaClient {
+        async fn complete(&self, _req: &LlmRequest) -> Result<LlmResponse> {
+            Err(LlmError::Transport("not scripted".into()))
+        }
+
+        fn provider(&self) -> &str {
+            "schema-test"
+        }
+
+        fn provide_schema(&self, id: SchemaId, _schema: Value) -> Result<()> {
+            self.seen.lock().unwrap_or_else(|e| e.into_inner()).push(id);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_builder_default_uses_the_configured_completion_ceiling() {
+        let client = Arc::new(MockClient::constant(ScriptedResponse::text("ok")));
+        let h = harness(client.clone(), 0).await;
+        h.service
+            .call(extract_request("Ada Lovelace"))
+            .await
+            .unwrap();
+
+        assert_eq!(client.last().unwrap().max_tokens, 128);
+        h.graph.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn registering_a_schema_forwards_it_to_the_adapter() {
+        let client = Arc::new(SchemaClient::default());
+        let mut h = harness(client.clone(), 0).await;
+        h.service
+            .register_schema(
+                SchemaId::new("controller.intro"),
+                serde_json::json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["text"],
+                    "properties": { "text": { "type": "string" } }
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(
+            client
+                .seen
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_slice(),
+            &[SchemaId::new("controller.intro")]
+        );
         h.graph.shutdown().await.unwrap();
     }
 

@@ -430,7 +430,7 @@ Dual engines: radial tidy (d3-hierarchy) + React Flow graph
 Node/edge language, interaction model, LOD rendering, chat-driven mapping, export
 
 ### F. API & Streaming
-mm-serve (axum) route table; resumable SSE with sequence numbers; event taxonomy; wire types (ts-rs generated); security posture
+mm-serve (axum) route table; resumable SSE with sequence numbers; event taxonomy; wire types (ts-rs generated); security posture; live LLM activity feed (`/api/llm-activity`) and the right-pane log dock (`llm_activity_log_plan.md`)
 
 ---
 
@@ -768,6 +768,31 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **One turn, nested phases** — One assistant message per turn; `PassPart` sections for Interpret/Process/Verify (with rounds, streamed prose, tools, checks, retry notes) render above a single final `text` reply from `final_response` only
 - **UI** — `PassBlock` reuses the reasoning/trace visual language: collapsed headline per pass, open while running, per-round LLM-call headers with usage, inline tool cards with input/result, verification chips, retry dividers; final answer never rendered from phase prose
 - **Plan** — P0 contract/observer, P1 incremental SSE + renderer on fixtures, P2 real provider deltas + cancel/usage, P3 retries/verification/fast path/subagent nesting, P4 history reconstruction and rollout; acceptance, Rust/TS/e2e tests, risks, and decisions included
+- **Status** — P0–P3 implemented: `[turn] stream` defaults on, `LlmClient::complete_stream` + `PassObserver` drive live `pass_round`/`pass_token`/`pass_round_end`/`pass_retry`/`verification`/attributed-tool frames, the chat store appends before broadcasting for exact `?from=<seq>` replay, and `PassBlock` renders one collapsed phase card per pass above the single reply; nested think passes still use the subagent/tool card and history reconstruction remains deferred
+
+---
+
+#### W.5 LLM Activity Log Plan (`llm_activity_log_plan.md`)
+- **Diagnosis** — No cross-cutting live view of model calls: audit `llm.*` records carry routing metadata but not streamed text or replies; chat `pass_*` frames exist only inside a CME chat response; the inspector logs view is paged history, not a tail
+- **Tap** — `mm-llm` gains an opt-in `ActivitySink`, a pass-through `ObservedClient` decorator, delta coalescing (50 ms / 256 chars, 2,000-char call cap), and a task-local `CallContext` (`source`/`sessionId`/`runId`/`pass`/`round`) so agent, automation, process, and summarizer calls are attributed too
+- **Feed** — `mm-serve` owns a bounded in-memory `LlmActivityFeed` (seq + ring + broadcast); `AppState::observed` wraps every client construction; snapshot and resumable SSE routes at `/api/llm-activity` and `/api/llm-activity/stream` using the existing `sse.rs` codec, with `resync` on cursor gaps and `MM_LLM_ACTIVITY` as a kill switch
+- **Wire** — Additive `LlmActivityEvent` (`request` / `delta` / `response` / `error`) with call id, context, purpose, provider/model, tokens, latency, status, redacted previews; generated into `lib/wire/llm_activity.ts`; `wireVersion: 1` unchanged
+- **UI** — A docked `LlmLogDock` at the bottom of the right workspace pane: connection dot, filter, pause/clear/collapse, visible drag grip and keyboard resize; monospace rows for REQ/STR/RSP/ERR with in-place delta merge, expandable details, pinned auto-scroll, and rAF-batched rendering; store bounded to 500 rows, cursor-safe pause buffering and reconnect
+- **Policy** — Local-only, ephemeral ring, server-side redaction and truncation: user excerpt only by default, no system prompt, no tool arguments, no provider bodies, no keys
+- **Plan** — P0 `mm-llm` observer, P1 feed/wiring/routes, P2 frontend transport + dock, P3 polish (filters, resize, keyboard, e2e); acceptance, Rust/TS tests, risks, and decisions included
+- **Retention** — Ephemeral only: bounded in-memory ring, no disk, no history endpoint, no backfill from `llm_calls`
+- **Status** — P0–P3 implemented: observer primitive, bounded feed, client wrapping, chat/controller/process scopes, snapshot and resumable SSE routes; generated wire types, snapshot/SSE hook with reconnect/gap recovery, bounded delta-merging store, and the `LlmLogDock` at the bottom of the active agent workspace pane with filters, clear, pause/resume, collapse, persisted height, row expansion, jump-to-latest, the `Ctrl+\`` toggle, and a scripted live e2e
+
+---
+
+#### W.6 Agentstream LLM Gateway Plan (`agentstream_llm_gateway_plan.md`)
+- **Purpose** — Make `AgentstreamLlm` (new `mm-llm-agentstream` crate) the only public LLM client interface; every logical LLM call and each actual provider round is journaled in agentstream before the call starts and once when it ends
+- **Audit** — Three current provider paths: `mm-serve` `OpenAiClient`, `mm-cli decision` direct construction, and Hermes's private HTTP/SSE client; `LlmService`/controller also construct services directly
+- **Gateway** — One façade owns `LlmService`, a private provider profile pool (`default`, `hermes`), schema registration, per-call timeout, and a live broadcast; callers never receive an adapter or endpoint
+- **Journal** — Additive `llm_request` / `llm_response` / `llm_error` / `llm_models` agentstream events (`mm.llm.call.v1`), session resolution for chat/agent/system, `callId` shared with `llm_calls`, bounded text and no full prompts/tool arguments/secrets; pre-call append is fail-closed, deltas stay live-only
+- **Hermes** — Replace its HTTP/SSE/JSON/`/models` implementation with neutral `LlmRequest`/`LlmResponse` mapping; preserve `mm_status`, finish reason, tool calls, usage, timeouts, and `agent/<run_id>` trace; add `Purpose::Agent`
+- **Retirement** — Remove `ObservedClient`, `AppState::observed`, `llm_feed` construction, direct `LlmService` construction, and CLI `OpenAiClient`; keep `LlmActivityFeed` and dock as subscribers with unchanged `wireVersion: 1`
+- **Scope** — Pi explicitly excluded (`mm-pi`/`PiBackend` unchanged); enforcement via workspace source guard and phase-by-phase migration P0–P6
 
 ---
 

@@ -5,7 +5,7 @@
 //!
 //! | variable | default | effect |
 //! |---|---|---|
-//! | `MM_CME_ENABLED` | `false` | `POST /api/chat` uses the CME driver |
+//! | `MM_CME_ENABLED` | `true` | `POST /api/chat` uses the CME driver |
 //! | `MM_CME_PROACTIVE` | `true` | attach the built-in proactive plugins |
 //! | `MM_CME_VOICE_TIER` | unset | pre-negotiate `tier1`, `tier2` or `tier3` |
 //! | `MM_CME_MEMORY_COMPRESSION` | `true` | compress completed turns |
@@ -16,8 +16,9 @@
 //! | `MM_PROMPT_V1` | `false` | load the reviewed prompt tree for CM turns |
 //! | `MM_AUTOMATION_V1` | `true` | enable session automation/frame timers |
 //! | `MM_FRAMES_V1` | `false` | enable frame stack execution |
-//! | `MM_THREE_PASS_V2` | `false` | run turns through Interpret → Process → Verify |
+//! | `MM_THREE_PASS_V2` | `true` | run turns through Interpret → Process → Verify |
 //! | `MM_PROCESS_V1` | `false` | enable the durable process pipeline |
+//! | `MM_LLM_ACTIVITY` | `true` | build the live LLM activity feed and observe clients |
 
 use mm_cme::VoiceTier;
 
@@ -50,12 +51,14 @@ pub struct FeatureFlags {
     pub three_pass_v2: bool,
     /// Enable the durable process pipeline.
     pub process_v1: bool,
+    /// Build the live LLM activity feed and wrap model clients.
+    pub llm_activity: bool,
 }
 
 impl Default for FeatureFlags {
     fn default() -> Self {
         Self {
-            cme_enabled: false,
+            cme_enabled: true,
             proactive_enabled: true,
             voice_tier: None,
             memory_compression_enabled: true,
@@ -66,8 +69,9 @@ impl Default for FeatureFlags {
             prompt_v1: false,
             automation_v1: false,
             frames_v1: false,
-            three_pass_v2: false,
+            three_pass_v2: true,
             process_v1: false,
+            llm_activity: true,
         }
     }
 }
@@ -104,6 +108,7 @@ impl FeatureFlags {
             frames_v1: env_bool("MM_FRAMES_V1", defaults.frames_v1),
             three_pass_v2: env_bool("MM_THREE_PASS_V2", defaults.three_pass_v2),
             process_v1: env_bool("MM_PROCESS_V1", defaults.process_v1),
+            llm_activity: env_bool("MM_LLM_ACTIVITY", defaults.llm_activity),
         }
     }
 }
@@ -124,9 +129,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_enable_the_cm_contract_but_keep_the_legacy_route() {
+    fn defaults_enable_the_cm_contract_and_the_conversation_engine() {
         let flags = FeatureFlags::default();
-        assert!(!flags.cme_enabled);
+        assert!(flags.cme_enabled);
         assert!(flags.proactive_enabled);
         assert!(flags.memory_compression_enabled);
         assert!(flags.agentstream_logging);
@@ -135,8 +140,9 @@ mod tests {
         assert!(!flags.prompt_v1);
         assert!(!flags.automation_v1);
         assert!(!flags.frames_v1);
-        assert!(!flags.three_pass_v2);
+        assert!(flags.three_pass_v2);
         assert!(!flags.process_v1);
+        assert!(flags.llm_activity);
     }
 
     #[test]

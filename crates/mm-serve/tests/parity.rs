@@ -7,6 +7,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse};
 use mm_serve::controller::ControllerModel;
+use mm_serve::feature_flags::FeatureFlags;
 use mm_serve::routes::router;
 use mm_serve::state::{AppState, ConsoleLock};
 use tower::ServiceExt;
@@ -195,7 +196,21 @@ async fn a_scripted_controller_reads_budgets_and_change_sets() {
     let dir = tempfile::tempdir().unwrap();
     let cfg = mm_core::Config::for_data_dir(dir.path());
     let lock = ConsoleLock::acquire(dir.path()).unwrap();
-    let state = Arc::new(AppState::boot(cfg, lock).await.unwrap());
+    // The scripted controller is the legacy path; the conversation engine is on
+    // by default, so this test opts out explicitly.
+    let state = Arc::new(
+        AppState::boot_with_flags(
+            cfg,
+            lock,
+            FeatureFlags {
+                cme_enabled: false,
+                three_pass_v2: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap(),
+    );
     let script = vec![
         ScriptedResponse::text("").with_tool_calls(vec![
             ProviderToolCall {
