@@ -237,6 +237,9 @@ impl LlmClient for MockClient {
             schema_valid: next.schema_valid,
             decoder: self.decoder,
             tool_calls: next.tool_calls,
+            finish_reason: None,
+            provider_metadata: Default::default(),
+            streamed: false,
         })
     }
 

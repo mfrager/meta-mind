@@ -755,6 +755,9 @@ impl LlmService {
             schema_valid: true,
             decoder: hit.decoder,
             tool_calls: hit.tool_calls.clone(),
+            finish_reason: None,
+            provider_metadata: Default::default(),
+            streamed: false,
         })
     }
 

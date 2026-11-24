@@ -46,6 +46,10 @@ pub enum LlmError {
     /// A replay session was missing, malformed, or did not cover a request.
     #[error("llm replay error: {0}")]
     Replay(String),
+    /// The agentstream journal could not record the call. A call is never sent
+    /// without its required pre-call journal entry.
+    #[error("llm journal error: {0}")]
+    Journal(String),
     /// Something tried to open a socket while the network guard was armed.
     #[error("network egress is forbidden: {0}")]
     NetworkForbidden(String),
@@ -65,6 +69,7 @@ impl LlmError {
             LlmError::Config(_) => "config",
             LlmError::BudgetExhausted(_) => "budget_exhausted",
             LlmError::Replay(_) => "replay",
+            LlmError::Journal(_) => "journal",
             LlmError::NetworkForbidden(_) => "network_forbidden",
         }
     }
@@ -78,6 +83,7 @@ impl LlmError {
             LlmError::ProviderNotConfigured(_)
             | LlmError::Transport(_)
             | LlmError::NetworkForbidden(_)
+            | LlmError::Journal(_)
             | LlmError::BudgetExhausted(_) => CallStatus::ProviderError,
             _ => CallStatus::ProviderError,
         }
@@ -96,6 +102,7 @@ impl LlmError {
             LlmError::Config(_) => "mm.llm.config",
             LlmError::BudgetExhausted(_) => "mm.llm.budget_exhausted",
             LlmError::Replay(_) => "mm.llm.replay",
+            LlmError::Journal(_) => "mm.llm.journal",
             LlmError::NetworkForbidden(_) => "mm.llm.network_forbidden",
         }
     }
@@ -140,6 +147,7 @@ mod tests {
             LlmError::Config("x".into()),
             LlmError::BudgetExhausted("x".into()),
             LlmError::Replay("x".into()),
+            LlmError::Journal("x".into()),
             LlmError::NetworkForbidden("x".into()),
         ];
         let mut kinds: Vec<&str> = errors.iter().map(LlmError::kind).collect();
@@ -172,5 +180,14 @@ mod tests {
         assert_eq!(e.status(), CallStatus::ProviderError);
         // The message names what is missing, so the fix is obvious.
         assert!(e.to_string().contains("OPENAI_BASE_URL"));
+    }
+
+    #[test]
+    fn a_journal_failure_is_distinct_from_an_io_or_transport_failure() {
+        let e = LlmError::Journal("agentstream is closed".into());
+        assert_eq!(e.kind(), "journal");
+        assert_eq!(e.code(), "mm.llm.journal");
+        assert_eq!(e.status(), CallStatus::ProviderError);
+        assert!(e.to_string().contains("agentstream"));
     }
 }

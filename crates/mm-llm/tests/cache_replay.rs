@@ -171,6 +171,9 @@ fn answer(text: &str) -> LlmResponse {
         schema_valid: true,
         decoder: DecoderKind::ProviderNative,
         tool_calls: Vec::new(),
+        finish_reason: None,
+        provider_metadata: Default::default(),
+        streamed: false,
     }
 }
 

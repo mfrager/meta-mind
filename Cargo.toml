@@ -15,6 +15,7 @@ members = [
     "crates/mm-eventlog",
     "crates/mm-codex",
     "crates/mm-llm",
+    "crates/mm-llm-agentstream",
     "crates/mm-being",
     "crates/mm-memory",
     "crates/mm-epistemic",
@@ -118,6 +119,7 @@ mm-search = { path = "crates/mm-search" }
 mm-eventlog = { path = "crates/mm-eventlog" }
 mm-codex = { path = "crates/mm-codex" }
 mm-llm = { path = "crates/mm-llm" }
+mm-llm-agentstream = { path = "crates/mm-llm-agentstream" }
 mm-being = { path = "crates/mm-being" }
 mm-memory = { path = "crates/mm-memory" }
 mm-epistemic = { path = "crates/mm-epistemic" }

@@ -4,6 +4,8 @@
 //! reduced to this shape by an adapter, so nothing above this layer can depend on
 //! a vendor's JSON, and swapping providers cannot change a caller.
 
+use std::collections::BTreeMap;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -36,11 +38,14 @@ pub enum Purpose {
     Diagnose,
     /// Talk with the operator as the being. Not a semantic-cache purpose.
     Converse,
+    /// A downstream agent turn. Pinned to the agent provider profile and never
+    /// served by the semantic cache.
+    Agent,
 }
 
 impl Purpose {
     /// Every purpose, in a stable order.
-    pub const ALL: [Purpose; 9] = [
+    pub const ALL: [Purpose; 10] = [
         Purpose::Interpret,
         Purpose::Plan,
         Purpose::Extract,
@@ -50,6 +55,7 @@ impl Purpose {
         Purpose::Classify,
         Purpose::Diagnose,
         Purpose::Converse,
+        Purpose::Agent,
     ];
 
     /// The stored form (`code_review`, not `codereview`).
@@ -64,6 +70,7 @@ impl Purpose {
             Purpose::Classify => "classify",
             Purpose::Diagnose => "diagnose",
             Purpose::Converse => "converse",
+            Purpose::Agent => "agent",
         }
     }
 
@@ -309,6 +316,15 @@ pub struct LlmRequest {
     /// Functions the provider may call. Empty on a schema request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolSchema>,
+    /// Provider profile name. `None` means the default profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Per-call wall-clock ceiling. `None` uses the profile's timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    /// Stable call identifier assigned by the agentstream gateway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<Ulid>,
 }
 
 impl LlmRequest {
@@ -324,6 +340,9 @@ impl LlmRequest {
             cache: CacheMode::Use,
             trace_id: None,
             tools: Vec::new(),
+            provider: None,
+            timeout_ms: None,
+            call_id: None,
         }
     }
 
@@ -354,6 +373,24 @@ impl LlmRequest {
     /// Offer these tools. A request cannot also carry a schema.
     pub fn with_tools(mut self, tools: Vec<ToolSchema>) -> Self {
         self.tools = tools;
+        self
+    }
+
+    /// Select a named provider profile.
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.provider = Some(provider.into());
+        self
+    }
+
+    /// Set a per-call wall-clock ceiling.
+    pub fn with_timeout(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    /// Attach the call id the gateway and ledger will share.
+    pub fn with_call_id(mut self, call_id: Ulid) -> Self {
+        self.call_id = Some(call_id);
         self
     }
 
@@ -390,6 +427,16 @@ pub struct LlmResponse {
     /// Tool calls on the assistant message. Empty when the answer is text.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ProviderToolCall>,
+    /// The provider's stop reason, when it supplied one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+    /// Non-content provider metadata needed by a caller (for example Hermes's
+    /// `mm_status`). Never contains prompts, keys, headers, or tool arguments.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provider_metadata: BTreeMap<String, Value>,
+    /// Whether the provider used server-sent events.
+    #[serde(default)]
+    pub streamed: bool,
 }
 
 /// Receives the text of a completion while it is still being produced.
@@ -502,5 +549,77 @@ mod tests {
         assert_eq!(req.schema.as_ref().unwrap().as_str(), "extract.v1");
         assert_eq!(req.model.as_deref(), Some("small"));
         assert_eq!(req.user_excerpt(5), "hello");
+    }
+
+    #[test]
+    fn new_request_fields_are_additive_and_round_trip() {
+        let call_id = Ulid::from_parts(7, 9);
+        let req = LlmRequest::new(Purpose::Agent, vec![Message::user("hello")])
+            .with_provider("hermes")
+            .with_timeout(120_000)
+            .with_call_id(call_id);
+        assert_eq!(req.provider.as_deref(), Some("hermes"));
+        assert_eq!(req.timeout_ms, Some(120_000));
+        assert_eq!(req.call_id, Some(call_id));
+        let encoded = serde_json::to_value(&req).unwrap();
+        let decoded: LlmRequest = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, req);
+    }
+
+    #[test]
+    fn a_request_without_the_new_fields_still_deserializes() {
+        let old = serde_json::json!({
+            "purpose": "converse",
+            "model": null,
+            "messages": [{"role": "user", "content": "hi"}],
+            "schema": null,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "cache": "use",
+            "trace_id": null,
+            "tools": []
+        });
+        let req: LlmRequest = serde_json::from_value(old).unwrap();
+        assert_eq!(req.provider, None);
+        assert_eq!(req.timeout_ms, None);
+        assert_eq!(req.call_id, None);
+    }
+
+    #[test]
+    fn response_metadata_is_additive_and_round_trips() {
+        let mut response = LlmResponse {
+            call_id: Ulid::from_parts(1, 2),
+            text: "ok".into(),
+            model: "small".into(),
+            usage: Usage::default(),
+            cached: false,
+            schema_valid: true,
+            decoder: DecoderKind::None,
+            tool_calls: Vec::new(),
+            finish_reason: Some("stop".into()),
+            provider_metadata: BTreeMap::from([("mm_status".into(), Value::from("done"))]),
+            streamed: true,
+        };
+        let encoded = serde_json::to_value(&response).unwrap();
+        let decoded: LlmResponse = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, response);
+
+        response.finish_reason = None;
+        response.provider_metadata.clear();
+        response.streamed = false;
+        let old = serde_json::json!({
+            "call_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "text": "ok",
+            "model": "small",
+            "usage": {"tokens_in": 0, "tokens_out": 0, "cost_micros": 0, "latency_ms": 0},
+            "cached": false,
+            "schema_valid": true,
+            "decoder": "none",
+            "tool_calls": []
+        });
+        let old: LlmResponse = serde_json::from_value(old).unwrap();
+        assert_eq!(old.finish_reason, None);
+        assert!(old.provider_metadata.is_empty());
+        assert!(!old.streamed);
     }
 }

@@ -505,6 +505,9 @@ mod tests {
                 schema_valid: true,
                 decoder: DecoderKind::None,
                 tool_calls: Vec::new(),
+                finish_reason: None,
+                provider_metadata: Default::default(),
+                streamed: false,
             }
         }
     }
@@ -549,6 +552,9 @@ mod tests {
                 schema_valid: true,
                 decoder: DecoderKind::None,
                 tool_calls: Vec::new(),
+                finish_reason: None,
+                provider_metadata: Default::default(),
+                streamed: false,
             })
         }
 

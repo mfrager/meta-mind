@@ -1946,6 +1946,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-llm-agentstream"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mm-core",
+ "mm-data",
+ "mm-llm",
+ "mm-log",
+ "mm-store-graph",
+ "mm-store-sqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
 name = "mm-log"
 version = "0.1.0"
 dependencies = [

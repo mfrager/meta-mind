@@ -93,6 +93,16 @@ pub enum EventType {
     WriteCommitted,
     /// A staged write set was discarded after rejection.
     WriteDiscarded,
+    /// A logical model call is about to be sent.
+    LlmRequest,
+    /// One actual provider round inside a logical call.
+    LlmAttempt,
+    /// A model call returned a response.
+    LlmResponse,
+    /// A model call failed before producing a response.
+    LlmError,
+    /// A provider model probe completed.
+    LlmModels,
     /// Anything else.
     Custom,
 }
@@ -134,6 +144,11 @@ impl EventType {
             Self::WriteStaged => "write_staged",
             Self::WriteCommitted => "write_committed",
             Self::WriteDiscarded => "write_discarded",
+            Self::LlmRequest => "llm_request",
+            Self::LlmAttempt => "llm_attempt",
+            Self::LlmResponse => "llm_response",
+            Self::LlmError => "llm_error",
+            Self::LlmModels => "llm_models",
             Self::Custom => "custom",
         }
     }
@@ -543,6 +558,137 @@ pub fn agent_message(session_id: &str, text: impl Into<String>) -> AgentstreamEv
     )
 }
 
+/// The payload schema for every first-class LLM call event.
+pub const LLM_CALL_SCHEMA: &str = "mm.llm.call.v1";
+
+/// A logical call is about to be sent.
+pub fn llm_request(
+    session_id: &str,
+    call_id: &str,
+    payload: Value,
+    model: Option<&str>,
+) -> AgentstreamEvent {
+    llm_event(
+        session_id,
+        EventType::LlmRequest,
+        llm_payload(payload, "request", Some(call_id), None),
+        model,
+    )
+}
+
+/// One actual provider round inside a logical call.
+pub fn llm_attempt(
+    session_id: &str,
+    call_id: &str,
+    attempt_no: u32,
+    payload: Value,
+    model: Option<&str>,
+) -> AgentstreamEvent {
+    llm_event(
+        session_id,
+        EventType::LlmAttempt,
+        llm_payload(payload, "attempt", Some(call_id), Some(attempt_no)),
+        model,
+    )
+}
+
+/// A logical call returned a response.
+pub fn llm_response(
+    session_id: &str,
+    call_id: &str,
+    payload: Value,
+    model: Option<&str>,
+) -> AgentstreamEvent {
+    llm_event(
+        session_id,
+        EventType::LlmResponse,
+        llm_payload(payload, "response", Some(call_id), None),
+        model,
+    )
+}
+
+/// A logical call failed before producing a response.
+pub fn llm_error(
+    session_id: &str,
+    call_id: &str,
+    payload: Value,
+    model: Option<&str>,
+) -> AgentstreamEvent {
+    llm_event(
+        session_id,
+        EventType::LlmError,
+        llm_payload(payload, "error", Some(call_id), None),
+        model,
+    )
+}
+
+/// A provider model probe completed.
+pub fn llm_models(
+    session_id: &str,
+    provider: &str,
+    models: &[String],
+    reason: Option<&str>,
+) -> AgentstreamEvent {
+    llm_event(
+        session_id,
+        EventType::LlmModels,
+        serde_json::json!({
+            "schema": LLM_CALL_SCHEMA,
+            "phase": "models",
+            "provider": provider,
+            "available": reason.is_none(),
+            "models": models,
+            "reason": reason,
+        }),
+        None,
+    )
+}
+
+fn llm_event(
+    session_id: &str,
+    event_type: EventType,
+    payload: Value,
+    model: Option<&str>,
+) -> AgentstreamEvent {
+    AgentstreamEvent::new(
+        session_id,
+        event_type,
+        payload,
+        EventProvenance {
+            source: "llm".to_owned(),
+            model: model.map(str::to_owned),
+        },
+    )
+}
+
+fn llm_payload(
+    payload: Value,
+    phase: &str,
+    call_id: Option<&str>,
+    attempt_no: Option<u32>,
+) -> Value {
+    let mut object = match payload {
+        Value::Object(object) => object,
+        other => {
+            let mut object = serde_json::Map::new();
+            object.insert("value".to_owned(), other);
+            object
+        }
+    };
+    object.insert(
+        "schema".to_owned(),
+        Value::String(LLM_CALL_SCHEMA.to_owned()),
+    );
+    object.insert("phase".to_owned(), Value::String(phase.to_owned()));
+    if let Some(call_id) = call_id {
+        object.insert("callId".to_owned(), Value::String(call_id.to_owned()));
+    }
+    if let Some(attempt_no) = attempt_no {
+        object.insert("attemptNo".to_owned(), Value::from(attempt_no));
+    }
+    Value::Object(object)
+}
+
 /// Who spoke in the clean log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -752,6 +898,60 @@ mod clean_log_tests {
         ] {
             assert_eq!(kind.as_str(), name);
         }
+    }
+
+    #[test]
+    fn llm_event_names_are_stable() {
+        for (kind, name) in [
+            (EventType::LlmRequest, "llm_request"),
+            (EventType::LlmAttempt, "llm_attempt"),
+            (EventType::LlmResponse, "llm_response"),
+            (EventType::LlmError, "llm_error"),
+            (EventType::LlmModels, "llm_models"),
+        ] {
+            assert_eq!(kind.as_str(), name);
+        }
+    }
+
+    #[test]
+    fn llm_constructors_set_the_schema_and_phase() {
+        let request = llm_request(
+            "s1",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            json!({"provider": "default"}),
+            Some("small"),
+        );
+        assert_eq!(request.event_type, EventType::LlmRequest);
+        assert_eq!(request.payload["schema"], LLM_CALL_SCHEMA);
+        assert_eq!(request.payload["phase"], "request");
+        assert_eq!(request.payload["provider"], "default");
+        assert_eq!(request.provenance.source, "llm");
+        assert_eq!(request.provenance.model.as_deref(), Some("small"));
+
+        let attempt = llm_attempt("s1", "01ARZ3NDEKTSV4RRFFQ69G5FAV", 2, json!({}), None);
+        assert_eq!(attempt.payload["phase"], "attempt");
+        assert_eq!(attempt.payload["attemptNo"], 2);
+
+        let models = llm_models("s1", "hermes", &["model-a".into()], None);
+        assert_eq!(models.payload["phase"], "models");
+        assert_eq!(models.payload["available"], true);
+        assert_eq!(models.payload["models"], json!(["model-a"]));
+    }
+
+    #[test]
+    fn an_old_event_still_deserializes_after_the_new_variants() {
+        let old = serde_json::json!({
+            "event_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "session_id": "s1",
+            "turn_id": null,
+            "timestamp": 1,
+            "event_type": "user_message",
+            "payload": {"text": "hello"},
+            "provenance": {"source": "user", "model": null}
+        });
+        let event: AgentstreamEvent = serde_json::from_value(old).unwrap();
+        assert_eq!(event.event_type, EventType::UserMessage);
+        assert_eq!(event.payload["text"], "hello");
     }
 
     #[test]

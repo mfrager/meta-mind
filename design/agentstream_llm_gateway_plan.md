@@ -9,6 +9,14 @@
 > the migration order, and the acceptance tests. No code below ships until its phase is
 > implemented and verified.
 >
+> **Implementation status (2026-11-23):** P0 is implemented. `mm-llm-agentstream` exists with the
+> gateway contract types (`AgentstreamLlm`, `GatewayParts`, `GatewayBuilder`, `ProviderProfile`,
+> `ProviderProfiles`, `LiveLlmEvent`, `JournalMode`); `LlmRequest`/`LlmResponse` carry the
+> additive provider, timeout, call-id, finish-reason, metadata, and streamed fields;
+> `Purpose::Agent` and `LlmError::Journal` exist; agentstream has `llm_request`, `llm_attempt`,
+> `llm_response`, `llm_error`, and `llm_models` events plus constructors. The workspace source
+> guards are present but ignored until the P1–P4 cutover. P1 is not implemented.
+>
 > **Pi is explicitly out of scope.** `mm-pi` is an external process protocol, not an
 > OpenAI-compatible LLM client. `PiBackend` and the Pi RPC path stay exactly as they are.
 

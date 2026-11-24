@@ -440,6 +440,9 @@ mod tests {
                 name: "memory.add".into(),
                 arguments: "{}".into(),
             }],
+            finish_reason: None,
+            provider_metadata: Default::default(),
+            streamed: false,
         }
     }
 

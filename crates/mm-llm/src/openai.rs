@@ -721,6 +721,9 @@ impl OpenAiClient {
             schema_valid: false,
             decoder: DecoderKind::ProviderNative,
             tool_calls,
+            finish_reason: None,
+            provider_metadata: Default::default(),
+            streamed: false,
         })
     }
 }
@@ -917,6 +920,9 @@ impl LlmClient for OpenAiClient {
             schema_valid: true,
             decoder: DecoderKind::ProviderNative,
             tool_calls: calls,
+            finish_reason: None,
+            provider_metadata: Default::default(),
+            streamed: true,
         })
     }
 
