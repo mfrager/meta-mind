@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use mm_llm::{LlmClient, LlmRequest, Message, Purpose};
+use mm_llm::{CallContext, LlmClient, LlmRequest, Message, Purpose};
 use mm_prompt::PromptStore;
 use serde_json::Value;
 
@@ -109,10 +109,13 @@ impl TurnSummarizer {
         if let Some(model) = &self.model {
             request = request.with_model(model.clone());
         }
-        let response = tokio::time::timeout(SUMMARY_TIMEOUT, client.complete(&request))
-            .await
-            .ok()?
-            .ok()?;
+        let response = tokio::time::timeout(
+            SUMMARY_TIMEOUT,
+            mm_llm::scope(CallContext::new("summarize"), client.complete(&request)),
+        )
+        .await
+        .ok()?
+        .ok()?;
         let mut summary = parse_summary(&response.text)?;
         if summary.artifacts.is_empty() {
             summary.artifacts = artifacts.to_vec();

@@ -9,13 +9,49 @@
 > the migration order, and the acceptance tests. No code below ships until its phase is
 > implemented and verified.
 >
-> **Implementation status (2026-11-23):** P0 is implemented. `mm-llm-agentstream` exists with the
-> gateway contract types (`AgentstreamLlm`, `GatewayParts`, `GatewayBuilder`, `ProviderProfile`,
-> `ProviderProfiles`, `LiveLlmEvent`, `JournalMode`); `LlmRequest`/`LlmResponse` carry the
-> additive provider, timeout, call-id, finish-reason, metadata, and streamed fields;
-> `Purpose::Agent` and `LlmError::Journal` exist; agentstream has `llm_request`, `llm_attempt`,
-> `llm_response`, `llm_error`, and `llm_models` events plus constructors. The workspace source
-> guards are present but ignored until the P1–P4 cutover. P1 is not implemented.
+> **Implementation status (2026-11-24):** P0, P1, P2, P3, P4, P5, and P6 are implemented. `mm-llm-agentstream`
+> owns the gateway contract and core (`AgentstreamLlm`, `GatewayParts`, `GatewayBuilder`,
+> `ProviderProfile`, `ProviderProfiles`, `ProviderPool`, `LiveLlmEvent`, `JournalMode`). The
+> gateway appends a required `llm_request` before dispatch, one `llm_attempt` per provider round,
+> and one terminal `llm_response`/`llm_error`; it owns `LlmService`, schema forwarding, the
+> `default`/`hermes` profiles, per-profile timeout and `omit_max_tokens`, injected scripted/replay
+> clients, and a bounded live broadcast. `LlmService` now honours a gateway-assigned call id and
+> reports the selected profile through `provider_for`.
+>
+> P2 builds one `Arc<AgentstreamLlm>` at server boot and routes the controller, CME, process,
+> automation, summarizer, and hosted-decision paths through it. `LlmActivityFeed` subscribes to
+> the gateway live events and projects them onto the unchanged activity DTO. Scripted controller
+> mode injects its `MockClient` into the gateway. `AppState::observed`, the old server-side
+> provider wrappers, and `controller::turn::service` are gone; no source under `mm-serve/src`
+> constructs an `OpenAiClient`.
+>
+> P3 removes Hermes's private HTTP/SSE/JSON transport. `HermesBackend::with_gateway` maps
+> `AgentRequest` onto the gateway's neutral request and maps `LlmResponse` back into the same
+> `AgentTurnResult`, scoped to `agent/<run_id>`. `HermesBackend::refresh` probes through
+> `gateway.models("hermes")`, which journals an `llm_models` event and preserves the redacted
+> unavailable reason. The Phase 6 fake server covers streaming, non-streaming, JSON fallback,
+> request-body policy, status/usage mapping, and probe journaling. Pi remains unchanged.
+>
+> P4 moves the CLI's remaining callers onto the gateway. `decision --core hosted` opens the
+> persistent data layer and journals its call there; `llm replay` and `llm schema-reject` build
+> gateways over an in-memory journal with injected replay and mock clients. No direct
+> `OpenAiClient` or `LlmService` construction remains outside the gateway and its own tests, and
+> the workspace source guard passes.
+>
+> P5 retires the observation decorator. `mm-llm` now keeps only the neutral `CallContext` and
+> `scope` in `mm_llm::call`; `ObservedClient`, `ActivitySink`, the old `observe` wrapper, and the
+> decorator's tests are gone. The gateway's live bus owns delta coalescing and the 256-char /
+> 50 ms / 2,000-char display policy, including `MM_LLM_ACTIVITY_DELTA_MS`. `LlmActivityFeed`
+> projects gateway live events only, and its tests publish through `LiveLlmEvent` rather than a
+> second client wrapper.
+>
+> P6 makes the migration enforceable. `tests/no_direct_clients.rs` is a required test: it scans
+> workspace `src/` trees, allows the adapter's own definition, and asserts one gateway site for
+> `OpenAiClient::from_env` and `LlmService::new`. `MM_LLM_AGENTSTREAM=off` (also `false`, `0`, `no`)
+> makes the gateway's live calls and model probes return one configuration error without journaling
+> or dialing; the health line reports the disabled reason. The README, operator guide, LLM
+> integration doc, design index, and the historical activity plan now describe the gateway as the
+> live door and mark the decorator as superseded.
 >
 > **Pi is explicitly out of scope.** `mm-pi` is an external process protocol, not an
 > OpenAI-compatible LLM client. `PiBackend` and the Pi RPC path stay exactly as they are.
@@ -1111,13 +1147,15 @@ meant to remove, and its calls would remain invisible to agentstream.
 - `crates/mm-llm/src/client.rs` — `LlmRequest`, `LlmResponse`, `LlmClient`
 - `crates/mm-llm/src/service.rs` — routing, cache, validation, repair, accounting
 - `crates/mm-llm/src/openai.rs` — the only provider adapter and transport
-- `crates/mm-llm/src/activity.rs` — current `ObservedClient` and `CallContext`
+- `crates/mm-llm/src/call.rs` — neutral `CallContext` and `scope` (the old activity decorator is gone)
 - `crates/mm-data/src/agentstream.rs` — store, event types, sessions, projections
-- `crates/mm-agent/src/hermes.rs` — current direct Hermes HTTP client
+- `crates/mm-agent/src/hermes.rs` — Hermes `AgentRequest`/`LlmResponse` mapping through the gateway
 - `crates/mm-agent/src/agentstream.rs` — `agent/<run_id>` session and replay
-- `crates/mm-serve/src/llm_feed.rs` — current server construction and activity tap
-- `crates/mm-serve/src/controller/turn.rs` — controller service construction and scope
-- `crates/mm-cli/src/decision.rs` — hosted decision direct construction
+- `crates/mm-serve/src/state.rs` — gateway construction and live-feed subscription
+- `crates/mm-serve/src/llm_feed.rs` — activity projection from gateway live events
+- `crates/mm-serve/src/controller/turn.rs` — controller scope and gateway call path
+- `crates/mm-cli/src/llm_gateway.rs` — CLI gateway construction over a data-layer or in-memory journal
+- `crates/mm-cli/src/decision.rs` — hosted decision through the gateway
 - `crates/mm-cli/src/llm_cmd.rs` — replay/mock service construction
 - `design/llm_activity_log_plan.md` — current activity dock and observer design
 - `design/three_pass_turn_sequence.md` — pass/session semantics

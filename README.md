@@ -181,6 +181,7 @@ is resolved against the repository root, and `--data-dir` overrides it.
 |---|---|
 | `MM_CONFIG` | Path to the config file, instead of `config/metamind.toml`. |
 | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | **Both** are required for any hosted model path: the hosted decision core, the metacog scan, live Pi authoring. With either missing, those paths report `Unavailable` and say which variables are missing. |
+| `MM_LLM_AGENTSTREAM` | Live-call kill switch, default on. Set `off` (or `false`, `0`, `no`) to make every live gateway call return one configuration error. There is no direct-client fallback. |
 | `MM_DATA_DIR` | Documented as a data-dir override, and implemented in `mm-core` (`config.rs:379`) — but **no caller applies it**, so it has no effect on the CLI. Use `--data-dir` instead. |
 | `MM_CLI_BIN` | Test-harness override for which CLI binary the e2e tests drive. Not needed for normal use. |
 | `MM_OXIGRAPH_VERSION`, `MM_CODEX_LOG_SOURCE`, `MM_SUBJECT_SCRIPT`, `MM_INCIDENT`, `MM_LOG` | Internal/test knobs used by specific fixtures. |
@@ -470,6 +471,14 @@ mm-cli llm verify-cache   # re-hash each cached body against its index row
 
 These all run offline. A real call needs the provider variables; without them the substrate reports
 `Unavailable` rather than guessing.
+
+Every live model call goes through `AgentstreamLlm` in `mm-llm-agentstream`. The gateway selects a
+named provider profile (`default` for `OPENAI_*`, `hermes` for `MM_AGENT_HERMES_*`) and journals a
+required request event before dispatch, one attempt event per provider round, and one terminal
+response or error. The Hermes agent uses the same gateway and keeps its `agent/<run_id>` trace. If
+the journal cannot accept the request, no provider call is made. `MM_LLM_AGENTSTREAM=off` disables
+live calls explicitly; it never falls back to a direct client. The activity dock remains a live,
+ephemeral projection of the gateway's events.
 
 ### 6.3 Epistemic discipline
 

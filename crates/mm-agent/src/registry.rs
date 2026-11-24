@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use mm_data::agentstream::AgentstreamStore;
 use mm_data::rdf::new_id;
+use mm_llm_agentstream::AgentstreamLlm;
 use mm_prompt::PromptStore;
 use tokio::sync::Mutex;
 
@@ -210,15 +211,16 @@ impl AgentRuntime {
         }
     }
 
-    /// Resolve Hermes from the environment and probe it.
+    /// Resolve Hermes from the environment and probe it through the boot gateway.
     pub async fn from_env(
         store: Arc<AgentstreamStore>,
         prompts: Arc<PromptStore>,
         base_dir: impl Into<PathBuf>,
         summarizer: TurnSummarizer,
         config_file: Option<&Path>,
+        gateway: Option<Arc<AgentstreamLlm>>,
     ) -> Self {
-        let hermes = HermesBackend::from_config_file(config_file);
+        let hermes = HermesBackend::from_config_file(config_file, gateway);
         hermes.refresh().await;
         let pi = PiBackend::from_env();
         pi.refresh();

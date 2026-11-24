@@ -1,27 +1,23 @@
 //! The in-process LLM activity feed.
 //!
-//! The feed is the only owner of activity sequencing. [`ObservedClient`] calls
-//! the [`ActivitySink`] methods synchronously; those methods map the substrate's
+//! The feed is the only owner of activity sequencing. It subscribes to the
+//! gateway's live events; [`LlmActivityFeed::publish_live`] maps the gateway's
 //! request/response shapes into the wire events the right-pane dock renders,
-//! apply redaction and bounds, and publish.
+//! applies redaction and bounds, and publishes.
 //!
 //! Publishing is deliberately cheap: a short ring lock, a `VecDeque` push, and a
 //! non-awaiting `broadcast::send`. There is no logger call and no disk write
 //! here. The feed is a display projection that may drop events under load; the
 //! audit log and `llm_calls` remain authoritative.
-//!
-//! [`ObservedClient`]: mm_llm::ObservedClient
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mm_llm::redact::Redactor;
-use mm_llm::{
-    ActivitySink, CallContext, DeltaPolicy, LlmClient, LlmError, LlmRequest, LlmResponse,
-    ObservedClient, OpenAiClient, Role,
-};
+use mm_llm::{CallContext, LlmRequest, LlmResponse, Role};
+use mm_llm_agentstream::LiveLlmEvent;
 use tokio::sync::broadcast;
 
 use crate::dto::llm_activity::{LlmActivityEvent, LlmActivitySnapshot};
@@ -88,9 +84,8 @@ impl PreviewPolicy {
         self.redactor.excerpt(text, self.reply_chars)
     }
 
-    fn error(&self, error: &LlmError) -> String {
-        self.redactor
-            .excerpt(&error.to_string(), self.request_chars.max(512))
+    fn error(&self, message: &str) -> String {
+        self.redactor.excerpt(message, self.request_chars.max(512))
     }
 }
 
@@ -154,14 +149,6 @@ impl LlmActivityFeed {
         self.capacity
     }
 
-    /// The streaming window this feed's observed clients should use.
-    pub fn delta_policy(&self) -> DeltaPolicy {
-        DeltaPolicy {
-            flush_ms: env_usize("MM_LLM_ACTIVITY_DELTA_MS", 50) as u64,
-            ..DeltaPolicy::default()
-        }
-    }
-
     /// Assign a cursor, retain the event, and broadcast it.
     ///
     /// A broadcast with no subscribers is not an error: activity is optional.
@@ -211,9 +198,40 @@ impl LlmActivityFeed {
     pub fn subscribe(&self) -> broadcast::Receiver<(u64, LlmActivityEvent)> {
         self.tx.subscribe()
     }
+
+    /// Project one gateway live event onto the existing activity wire shape.
+    pub fn publish_live(&self, event: LiveLlmEvent) {
+        match event {
+            LiveLlmEvent::Request {
+                call_id,
+                context,
+                provider,
+                streamed,
+                request,
+            } => self.request(call_id, &context, &provider, streamed, &request),
+            LiveLlmEvent::Delta {
+                call_id,
+                text,
+                total_chars,
+                truncated,
+            } => self.delta(call_id, &text, total_chars, truncated),
+            LiveLlmEvent::Response {
+                call_id,
+                latency_ms,
+                response,
+            } => self.response(call_id, latency_ms, &response),
+            LiveLlmEvent::Error {
+                call_id,
+                latency_ms,
+                partial_chars,
+                kind,
+                message,
+            } => self.error_parts(call_id, latency_ms, partial_chars, &kind, &message),
+        }
+    }
 }
 
-impl ActivitySink for LlmActivityFeed {
+impl LlmActivityFeed {
     fn request(
         &self,
         call_id: ulid::Ulid,
@@ -277,102 +295,27 @@ impl ActivitySink for LlmActivityFeed {
             tool_calls: response.tool_calls.len() as u32,
         });
     }
+}
 
-    fn error(&self, call_id: ulid::Ulid, latency_ms: u64, partial_chars: u32, error: &LlmError) {
+impl LlmActivityFeed {
+    fn error_parts(
+        &self,
+        call_id: ulid::Ulid,
+        latency_ms: u64,
+        partial_chars: u32,
+        kind: &str,
+        message: &str,
+    ) {
         self.publish(LlmActivityEvent::Error {
             seq: 0,
             at: now_ms(),
             call_id: mm_core::ulid_string(&call_id),
-            status: error.kind().to_string(),
-            error: self.preview.error(error),
+            status: kind.to_string(),
+            error: self.preview.error(message),
             latency_ms,
             partial_chars,
         });
     }
-}
-
-/// Wrap `client` when the feed is enabled; otherwise return it unchanged.
-pub fn observe(
-    client: Arc<dyn LlmClient>,
-    feed: Option<&Arc<LlmActivityFeed>>,
-    context: CallContext,
-) -> Arc<dyn LlmClient> {
-    match feed {
-        Some(feed) => {
-            let sink: Arc<dyn ActivitySink> = Arc::clone(feed) as Arc<dyn ActivitySink>;
-            Arc::new(
-                ObservedClient::new(client, sink)
-                    .with_context(context)
-                    .with_delta_policy(feed.delta_policy()),
-            )
-        }
-        None => client,
-    }
-}
-
-/// A sink used when the feed is disabled but a caller needs the concrete
-/// observer type (the hosted decision core is generic over a sized client).
-struct NullActivitySink;
-
-impl ActivitySink for NullActivitySink {
-    fn request(
-        &self,
-        _call_id: ulid::Ulid,
-        _context: &CallContext,
-        _provider: &str,
-        _streamed: bool,
-        _request: &LlmRequest,
-    ) {
-    }
-
-    fn delta(&self, _call_id: ulid::Ulid, _text: &str, _total_chars: u32, _truncated: bool) {}
-
-    fn response(&self, _call_id: ulid::Ulid, _latency_ms: u64, _response: &LlmResponse) {}
-
-    fn error(
-        &self,
-        _call_id: ulid::Ulid,
-        _latency_ms: u64,
-        _partial_chars: u32,
-        _error: &LlmError,
-    ) {
-    }
-}
-
-/// Build a provider client and return the concrete observer.
-///
-/// `HostedCore` is generic over a sized `LlmClient`; this is the adapter that
-/// keeps that call path observed without special-casing the decision core.
-pub fn observed_openai(
-    config: &mm_llm::LlmConfig,
-    feed: Option<&Arc<LlmActivityFeed>>,
-    context: CallContext,
-) -> Option<Arc<ObservedClient>> {
-    let inner: Arc<dyn LlmClient> = Arc::new(OpenAiClient::new(config).ok()?);
-    let (sink, delta): (Arc<dyn ActivitySink>, DeltaPolicy) = match feed {
-        Some(feed) => (
-            Arc::clone(feed) as Arc<dyn ActivitySink>,
-            feed.delta_policy(),
-        ),
-        None => (Arc::new(NullActivitySink), DeltaPolicy::default()),
-    };
-    Some(Arc::new(
-        ObservedClient::new(inner, sink)
-            .with_context(context)
-            .with_delta_policy(delta),
-    ))
-}
-
-/// Build the provider client and wrap it in one step.
-///
-/// This is the only place `mm-serve` constructs an `OpenAiClient`, so a test can
-/// prove no call path bypasses observation.
-pub fn openai_client(
-    config: &mm_llm::LlmConfig,
-    feed: Option<&Arc<LlmActivityFeed>>,
-    context: CallContext,
-) -> Option<Arc<dyn LlmClient>> {
-    observed_openai(config, feed, context).map(|client| client as Arc<dyn LlmClient>)
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
@@ -392,11 +335,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use mm_llm::{
-        CollectSink, DecoderKind, LlmClient, LlmRequest, Message, ProviderToolCall, Purpose,
-        ScriptedResponse, Usage,
-    };
+    use mm_llm::{DecoderKind, Message, ProviderToolCall, Purpose, Usage};
     use serde_json::json;
 
     fn context(source: &str) -> CallContext {
@@ -450,63 +389,35 @@ mod tests {
         mm_llm::accounting::new_call_id()
     }
 
-    struct StreamingMock;
-
-    #[async_trait]
-    impl LlmClient for StreamingMock {
-        async fn complete(&self, _request: &LlmRequest) -> mm_llm::Result<LlmResponse> {
-            Ok(response("hello world"))
-        }
-
-        async fn complete_stream(
-            &self,
-            _request: &LlmRequest,
-            sink: &mut dyn mm_llm::DeltaSink,
-        ) -> mm_llm::Result<LlmResponse> {
-            sink.delta("hello ");
-            sink.delta("world");
-            Ok(response("hello world"))
-        }
-
-        fn provider(&self) -> &str {
-            "stream-mock"
-        }
+    fn gateway_request(feed: &LlmActivityFeed, id: ulid::Ulid, request: LlmRequest) {
+        feed.publish_live(LiveLlmEvent::Request {
+            call_id: id,
+            context: context("chat"),
+            provider: "mock-provider".into(),
+            streamed: true,
+            request,
+        });
     }
 
-    #[tokio::test]
-    async fn an_observed_stream_becomes_deltas_and_a_response() {
-        let feed = Arc::new(LlmActivityFeed::with_capacity(8));
-        let client = observe(
-            Arc::new(StreamingMock),
-            Some(&feed),
-            CallContext::new("chat"),
-        );
-        let mut collect = CollectSink::default();
-        let answer = client
-            .complete_stream(&request("hi"), &mut collect)
-            .await
-            .unwrap();
-        assert_eq!(answer.text, "hello world");
-        assert_eq!(collect.0, "hello world");
-
-        let events = feed.snapshot(None, 8).events;
-        let kinds: Vec<&str> = events.iter().map(LlmActivityEvent::kind).collect();
-        assert_eq!(kinds, ["request", "delta", "response"]);
-        match &events[1] {
-            LlmActivityEvent::Delta { text, chars, .. } => {
-                assert_eq!(text, "hello world");
-                assert_eq!(*chars, 11);
-            }
-            other => panic!("expected a delta, got {other:?}"),
-        }
+    fn gateway_delta(feed: &LlmActivityFeed, id: ulid::Ulid, text: &str, chars: u32) {
+        feed.publish_live(LiveLlmEvent::Delta {
+            call_id: id,
+            text: text.into(),
+            total_chars: chars,
+            truncated: false,
+        });
     }
 
     #[test]
     fn sequence_starts_at_one_and_increases() {
         let feed = LlmActivityFeed::with_capacity(8);
         let id = call_id();
-        feed.request(id, &context("chat"), "mock", false, &request("hello"));
-        feed.response(id, 10, &response("hi"));
+        gateway_request(&feed, id, request("hello"));
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 10,
+            response: response("hi"),
+        });
 
         let snapshot = feed.snapshot(None, 8);
         assert_eq!(snapshot.oldest_seq, 1);
@@ -527,7 +438,7 @@ mod tests {
     fn the_ring_evicts_the_oldest_and_reports_the_gap() {
         let feed = LlmActivityFeed::with_capacity(2);
         for index in 0..4 {
-            feed.delta(call_id(), &format!("fragment {index}"), index, false);
+            gateway_delta(&feed, call_id(), &format!("fragment {index}"), index);
         }
         let snapshot = feed.snapshot(Some(1), 10);
         assert_eq!(snapshot.oldest_seq, 3, "the first two events were evicted");
@@ -546,7 +457,7 @@ mod tests {
     fn a_snapshot_returns_the_newest_limit() {
         let feed = LlmActivityFeed::with_capacity(10);
         for index in 0..5 {
-            feed.delta(call_id(), &format!("{index}"), index, false);
+            gateway_delta(&feed, call_id(), &format!("{index}"), index);
         }
         let snapshot = feed.snapshot(None, 2);
         assert_eq!(
@@ -564,13 +475,7 @@ mod tests {
     fn a_request_carries_context_counts_and_a_bounded_preview() {
         let feed = LlmActivityFeed::with_capacity(8);
         let id = call_id();
-        feed.request(
-            id,
-            &context("chat"),
-            "mock-provider",
-            true,
-            &request(&"x".repeat(1_000)),
-        );
+        gateway_request(&feed, id, request(&"x".repeat(1_000)));
 
         match &feed.snapshot(None, 1).events[0] {
             LlmActivityEvent::Request {
@@ -616,9 +521,24 @@ mod tests {
     fn deltas_and_outcomes_map_onto_the_wire() {
         let feed = LlmActivityFeed::with_capacity(8);
         let id = call_id();
-        feed.delta(id, "partial", 7, true);
-        feed.response(id, 42, &response(&"reply ".repeat(2_000)));
-        feed.error(id, 9, 3, &LlmError::Transport("connection reset".into()));
+        feed.publish_live(LiveLlmEvent::Delta {
+            call_id: id,
+            text: "partial".into(),
+            total_chars: 7,
+            truncated: true,
+        });
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 42,
+            response: response(&"reply ".repeat(2_000)),
+        });
+        feed.publish_live(LiveLlmEvent::Error {
+            call_id: id,
+            latency_ms: 9,
+            partial_chars: 3,
+            kind: "transport".into(),
+            message: "connection reset".into(),
+        });
 
         let events = feed.snapshot(None, 8).events;
         assert_eq!(events.len(), 3);
@@ -680,10 +600,18 @@ mod tests {
 
         let mut cached = response("cached");
         cached.cached = true;
-        feed.response(id, 1, &cached);
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 1,
+            response: cached,
+        });
         let mut invalid = response("invalid");
         invalid.schema_valid = false;
-        feed.response(id, 1, &invalid);
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 1,
+            response: invalid,
+        });
 
         let events = feed.snapshot(None, 8).events;
         assert!(matches!(
@@ -700,8 +628,8 @@ mod tests {
     fn subscribers_receive_published_events_in_order() {
         let feed = LlmActivityFeed::with_capacity(8);
         let mut receiver = feed.subscribe();
-        feed.delta(call_id(), "one", 3, false);
-        feed.delta(call_id(), "two", 6, false);
+        gateway_delta(&feed, call_id(), "one", 3);
+        gateway_delta(&feed, call_id(), "two", 6);
 
         let first = receiver.try_recv().expect("first event");
         let second = receiver.try_recv().expect("second event");
@@ -717,13 +645,5 @@ mod tests {
         assert_eq!(snapshot.oldest_seq, 1);
         assert_eq!(snapshot.next_seq, 1);
         assert!(snapshot.events.is_empty());
-    }
-
-    #[test]
-    fn observing_without_a_feed_returns_the_same_client() {
-        let client: Arc<dyn LlmClient> =
-            Arc::new(mm_llm::MockClient::constant(ScriptedResponse::text("hi")));
-        let observed = observe(Arc::clone(&client), None, CallContext::new("chat"));
-        assert!(Arc::ptr_eq(&client, &observed));
     }
 }

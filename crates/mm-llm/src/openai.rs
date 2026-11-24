@@ -42,6 +42,14 @@ pub trait Transport: Send + Sync {
     /// POST `body` as JSON to `url` and return the parsed response body.
     async fn post_json(&self, url: &str, body: &Value) -> Result<Value>;
 
+    /// GET a JSON document. Used by model discovery; transports that cannot make
+    /// an ordinary GET report that explicitly.
+    async fn get_json(&self, _url: &str) -> Result<Value> {
+        Err(LlmError::Transport(
+            "this transport does not support model discovery".into(),
+        ))
+    }
+
     /// POST `body` and report each server-sent event's `data:` payload.
     ///
     /// Returns `false` when the transport cannot stream, so the adapter can fall
@@ -153,6 +161,48 @@ impl TcpTransport {
         Ok((stream, host))
     }
 
+    /// Open a socket and write one GET request, returning the connected stream.
+    async fn send_get(&self, url: &str) -> Result<(tokio::net::TcpStream, String)> {
+        let (scheme, host, port, path) = split_url(url)?;
+        if scheme != "http" {
+            return Err(LlmError::Transport(format!(
+                "the built-in transport speaks plain HTTP only (got `{scheme}://`); \
+                 terminate TLS in front of the kernel and point OPENAI_BASE_URL at it"
+            )));
+        }
+        NetworkGuard::attempt(&host)?;
+
+        let auth = match &self.api_key {
+            Some(key) if key.contains(['\r', '\n']) => {
+                return Err(LlmError::Config(
+                    "OPENAI_API_KEY must not contain a newline".into(),
+                ))
+            }
+            Some(key) => format!("Authorization: Bearer {key}\r\n"),
+            None => String::new(),
+        };
+        let head = format!(
+            "GET {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json\r\n\
+             {auth}Connection: close\r\n\r\n"
+        );
+        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let mut stream = tokio::time::timeout(
+            budget,
+            tokio::net::TcpStream::connect((host.as_str(), port)),
+        )
+        .await
+        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|e| LlmError::Transport(format!("cannot connect to {host}:{port}: {e}")))?;
+        tokio::time::timeout(budget, async {
+            stream.write_all(head.as_bytes()).await?;
+            stream.flush().await
+        })
+        .await
+        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|e| LlmError::Transport(format!("cannot write the request: {e}")))?;
+        Ok((stream, host))
+    }
+
     /// Read one socket chunk. The timeout is per read, not per stream, because a
     /// long completion is allowed to take longer than one request timeout overall.
     async fn read_chunk(
@@ -172,6 +222,17 @@ impl TcpTransport {
 impl Transport for TcpTransport {
     async fn post_json(&self, url: &str, body: &Value) -> Result<Value> {
         let (mut stream, host) = self.send(url, body).await?;
+        let mut raw = Vec::new();
+        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        tokio::time::timeout(budget, stream.read_to_end(&mut raw))
+            .await
+            .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+            .map_err(|e| LlmError::Transport(format!("cannot read a response from {host}: {e}")))?;
+        parse_http_response(&raw)
+    }
+
+    async fn get_json(&self, url: &str) -> Result<Value> {
+        let (mut stream, host) = self.send_get(url).await?;
         let mut raw = Vec::new();
         let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
         tokio::time::timeout(budget, stream.read_to_end(&mut raw))
@@ -383,6 +444,8 @@ struct StreamAccumulator<'a> {
     tokens_in: &'a mut u32,
     tokens_out: &'a mut u32,
     answered_model: &'a mut String,
+    finish_reason: &'a mut Option<String>,
+    provider_metadata: &'a mut BTreeMap<String, Value>,
     failure: &'a mut Option<LlmError>,
 }
 
@@ -403,6 +466,10 @@ impl SseHandler for StreamAccumulator<'_> {
         if let Some(name) = value.get("model").and_then(Value::as_str) {
             *self.answered_model = name.to_string();
         }
+        if let Some(marker) = value.get("mm_status").and_then(Value::as_str) {
+            self.provider_metadata
+                .insert("mm_status".into(), Value::String(marker.to_owned()));
+        }
         if let Some(usage) = value.get("usage") {
             *self.tokens_in = usage
                 .get("prompt_tokens")
@@ -416,6 +483,9 @@ impl SseHandler for StreamAccumulator<'_> {
         let Some(choice) = value.get("choices").and_then(|c| c.get(0)) else {
             return;
         };
+        if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
+            *self.finish_reason = Some(reason.to_owned());
+        }
         let delta = match choice.get("delta") {
             Some(delta) => delta,
             None => match choice.get("message") {
@@ -513,6 +583,7 @@ pub struct OpenAiClient {
     config: LlmConfig,
     schemas: RwLock<SchemaRegistry>,
     transport: Arc<dyn Transport>,
+    omit_max_tokens: bool,
 }
 
 impl std::fmt::Debug for OpenAiClient {
@@ -546,6 +617,7 @@ impl OpenAiClient {
             config: config.clone(),
             schemas: RwLock::new(SchemaRegistry::new()),
             transport: Arc::new(transport),
+            omit_max_tokens: false,
         })
     }
 
@@ -561,7 +633,15 @@ impl OpenAiClient {
             config: config.clone(),
             schemas: RwLock::new(SchemaRegistry::new()),
             transport,
+            omit_max_tokens: false,
         }
+    }
+
+    /// Omit `max_tokens` from the request body, preserving endpoints that reject it.
+    #[must_use]
+    pub fn with_omit_max_tokens(mut self, omit: bool) -> Self {
+        self.omit_max_tokens = omit;
+        self
     }
 
     /// Give the adapter the registered schemas, so it can ask for native JSON
@@ -584,6 +664,31 @@ impl OpenAiClient {
         )
     }
 
+    /// The URL model discovery is read from.
+    pub fn models_endpoint(&self) -> String {
+        format!("{}/models", self.env.base_url.trim_end_matches('/'))
+    }
+
+    /// Read the models the endpoint advertises.
+    ///
+    /// The response shape is OpenAI-compatible: `{"data": [{"id": ...}]}`.
+    /// A missing `data` array is an empty catalog, matching the old Hermes probe.
+    pub async fn models(&self) -> Result<Vec<String>> {
+        NetworkGuard::attempt(&self.env.base_url)?;
+        let value = self.transport.get_json(&self.models_endpoint()).await?;
+        Ok(value
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|model| model.get("id").and_then(Value::as_str))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
     /// The request body for `req`, answered by `model`.
     pub fn request_body(&self, req: &LlmRequest, model: &str) -> Result<Value> {
         if req.schema.is_some() && !req.tools.is_empty() {
@@ -596,9 +701,12 @@ impl OpenAiClient {
         let mut body = json!({
             "model": model,
             "messages": messages,
-            "max_tokens": req.max_tokens,
+            "stream": false,
             "temperature": req.temperature,
         });
+        if !self.omit_max_tokens {
+            body["max_tokens"] = json!(req.max_tokens);
+        }
         if !req.tools.is_empty() {
             body["tool_choice"] = json!("auto");
             body["tools"] = Value::Array(
@@ -698,6 +806,14 @@ impl OpenAiClient {
             .and_then(Value::as_str)
             .unwrap_or(requested_model)
             .to_string();
+        let finish_reason = choice
+            .get("finish_reason")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let mut provider_metadata = BTreeMap::new();
+        if let Some(marker) = value.get("mm_status").and_then(Value::as_str) {
+            provider_metadata.insert("mm_status".into(), Value::String(marker.to_owned()));
+        }
         let tokens_in = usage_field(value, "prompt_tokens");
         let tokens_out = usage_field(value, "completion_tokens");
         let cost_micros = self
@@ -721,8 +837,8 @@ impl OpenAiClient {
             schema_valid: false,
             decoder: DecoderKind::ProviderNative,
             tool_calls,
-            finish_reason: None,
-            provider_metadata: Default::default(),
+            finish_reason,
+            provider_metadata,
             streamed: false,
         })
     }
@@ -849,6 +965,8 @@ impl LlmClient for OpenAiClient {
         let mut tokens_in = 0u32;
         let mut tokens_out = 0u32;
         let mut answered_model = model.clone();
+        let mut finish_reason = None;
+        let mut provider_metadata = BTreeMap::new();
         let mut failure: Option<LlmError> = None;
 
         let streamed = {
@@ -859,6 +977,8 @@ impl LlmClient for OpenAiClient {
                 tokens_in: &mut tokens_in,
                 tokens_out: &mut tokens_out,
                 answered_model: &mut answered_model,
+                finish_reason: &mut finish_reason,
+                provider_metadata: &mut provider_metadata,
                 failure: &mut failure,
             };
             self.transport
@@ -920,8 +1040,8 @@ impl LlmClient for OpenAiClient {
             schema_valid: true,
             decoder: DecoderKind::ProviderNative,
             tool_calls: calls,
-            finish_reason: None,
-            provider_metadata: Default::default(),
+            finish_reason,
+            provider_metadata,
             streamed: true,
         })
     }
@@ -1007,6 +1127,18 @@ complexity_ceiling = "medium"
         );
         assert_eq!(client.provider(), "openai");
         assert_eq!(client.decoder(), DecoderKind::ProviderNative);
+    }
+
+    #[test]
+    fn a_profile_can_omit_max_tokens() {
+        let req =
+            LlmRequest::new(Purpose::Converse, vec![Message::user("hello")]).with_model("small");
+        let client = OpenAiClient::from_env(&config(), Some(env()))
+            .unwrap()
+            .with_omit_max_tokens(true);
+        let body = client.request_body(&req, "small").unwrap();
+        assert!(body.get("max_tokens").is_none());
+        assert_eq!(body["temperature"], 0.0);
     }
 
     #[test]

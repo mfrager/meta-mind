@@ -254,13 +254,13 @@ impl BuiltCore {
 ///   silently falling back to nothing.
 /// * `local`: a distilled head from `--head <file>`. Without one the core is
 ///   `Unavailable` with that as the reason, which is the state Phase 11 will change.
-/// * `hosted`: `mm-llm`'s provider adapter, when a provider is configured. With no
+/// * `hosted`: the agentstream gateway over the live data layer. With no
 ///   `OPENAI_BASE_URL`/`OPENAI_API_KEY` the core is `Unavailable` and says so.
-pub fn build_core(
+pub async fn build_core(
     id: CoreId,
     rules: Option<&Path>,
     head: Option<&Path>,
-    cfg: &Config,
+    kernel: &Kernel,
     repo_root: &Path,
 ) -> Result<BuiltCore, MmError> {
     match id {
@@ -294,17 +294,28 @@ pub fn build_core(
             let llm_path = repo_root.join("config").join("llm.toml");
             let llm_cfg = LlmConfig::load_or_default(&llm_path)
                 .map_err(|e| MmError::Config(e.to_string()))?;
-            let client = match mm_llm::OpenAiClient::new(&llm_cfg) {
-                Ok(client) => client,
-                Err(e) => return Ok(BuiltCore::unavailable(id, e.to_string())),
-            };
+            if mm_llm::ProviderEnv::from_env().is_none() {
+                return Ok(BuiltCore::unavailable(
+                    id,
+                    "llm provider is not configured: OPENAI_BASE_URL and OPENAI_API_KEY must both be set",
+                ));
+            }
+            let session =
+                crate::llm_gateway::GatewaySession::live(kernel, &llm_cfg, repo_root).await?;
             let mut registry = SchemaRegistry::new();
             register_structured::<mm_decision::HostedDecisionReply>(&mut registry)
                 .map_err(|e| MmError::Config(e.to_string()))?;
-            let client = client.with_schemas(registry.clone());
-            let _ = cfg;
+            let schema_id = mm_llm::SchemaId::new(mm_decision::hosted::HOSTED_DECISION_SCHEMA_ID);
+            let schema = registry.get(&schema_id).cloned().ok_or_else(|| {
+                MmError::Internal("hosted decision schema was not registered".into())
+            })?;
+            session
+                .gateway
+                .register_schema(schema_id, schema)
+                .await
+                .map_err(|e| MmError::Internal(format!("hosted decision schema: {e}")))?;
             let core = mm_decision::HostedCore::new(
-                Arc::new(client),
+                Arc::clone(&session.gateway),
                 Arc::new(registry),
                 llm_cfg.defaults.max_tokens,
             );

@@ -19,7 +19,7 @@ use mm_data::{
     ScheduledAction, ScheduledActionSpec, ScheduledActionStatus, SessionBundle, StateOrigin,
     StatusValue,
 };
-use mm_llm::{LlmClient, LlmRequest, Message, Purpose};
+use mm_llm::{CallContext, LlmClient, LlmRequest, Message, Purpose};
 use mm_prompt::PromptStore;
 use serde::Deserialize;
 use tokio::sync::{broadcast, watch};
@@ -261,8 +261,8 @@ impl ActionExecutor for PromptActionExecutor {
         if let Some(model) = &self.model {
             request = request.with_model(model.clone());
         }
-        let response = client
-            .complete(&request)
+        let context = CallContext::new("automation").with_session(action.spec.session_id.clone());
+        let response = mm_llm::scope(context, client.complete(&request))
             .await
             .map_err(|error| error.to_string())?;
         let text = response.text.trim().to_owned();
@@ -299,7 +299,7 @@ impl PromptFrameExecutor {
 impl FrameExecutor for PromptFrameExecutor {
     async fn execute(
         &self,
-        _session_id: &str,
+        session_id: &str,
         frame: &FrameUtterance,
         bundle: &SessionBundle,
     ) -> Result<String, String> {
@@ -340,8 +340,8 @@ impl FrameExecutor for PromptFrameExecutor {
         if let Some(model) = &self.model {
             request = request.with_model(model.clone());
         }
-        let response = client
-            .complete(&request)
+        let context = CallContext::new("automation").with_session(session_id);
+        let response = mm_llm::scope(context, client.complete(&request))
             .await
             .map_err(|error| error.to_string())?;
         let text = response.text.trim().to_owned();

@@ -17,6 +17,12 @@
 > `LlmLogDock` at the bottom of the active agent workspace pane. P3 adds filters, clear, pause/resume,
 > collapse, persisted height, row expansion, jump-to-latest, the `Ctrl+\`` toggle, and a scripted
 > live e2e.
+>
+> **Superseded for provider access (2026-11-24):** `ObservedClient`, `ActivitySink`, `TeeSink`,
+> and the decorator-owned delta policy were retired by Phase 5 of
+> `agentstream_llm_gateway_plan.md`. `CallContext`/`scope` now live in `mm_llm::call`, the gateway
+> live bus owns delta coalescing, and `LlmActivityFeed` projects gateway events only. The dock,
+> wire shape, filters, pause/clear/resize, and reconnect behavior below are unchanged.
 
 ---
 

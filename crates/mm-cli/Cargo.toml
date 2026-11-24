@@ -29,6 +29,7 @@ mm-store-sqlite = { workspace = true }
 mm-store-graph = { workspace = true }
 mm-eventlog = { workspace = true }
 mm-llm = { workspace = true }
+mm-llm-agentstream = { workspace = true }
 mm-being = { workspace = true }
 mm-memory = { workspace = true }
 mm-epistemic = { workspace = true }

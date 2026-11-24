@@ -688,7 +688,10 @@ impl GraphStore {
             name.as_str()
         );
         let mut rows = self.sparql(graph, &query).await?;
-        rows.sort_by_key(|r| r.to_string());
+        // Cached, not `sort_by_key`: the key renders the whole row as JSON, and
+        // `sort_by_key` calls it O(n log n) times. On a large graph that is the
+        // dominant cost of every full read. Same ordering, one key per row.
+        rows.sort_by_cached_key(|r| r.to_string());
         Ok(rows)
     }
 

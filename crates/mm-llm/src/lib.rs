@@ -16,10 +16,10 @@
 #![forbid(unsafe_code)]
 
 pub mod accounting;
-pub mod activity;
 pub mod backend_llguidance;
 pub mod backend_xgrammar;
 pub mod cached;
+pub mod call;
 pub mod client;
 pub mod config;
 pub mod error;
@@ -35,10 +35,8 @@ pub mod semantic_cache;
 pub mod service;
 
 pub use accounting::{CallAccount, CallStatus, LlmStats, PurposeStats, StatsWindow};
-pub use activity::{
-    current_context, scope, ActivitySink, CallContext, DeltaPolicy, ObservedClient,
-};
 pub use cached::{CacheKey, CachedResponse, ExactCache, FileExactCache};
+pub use call::{current_context, scope, CallContext};
 pub use client::{
     CacheMode, CollectSink, DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Message,
     ProviderToolCall, Purpose, Role, SchemaId, ToolSchema, Usage,

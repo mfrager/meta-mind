@@ -20,6 +20,7 @@ mod graph_cmd;
 mod kernel;
 mod library;
 mod llm_cmd;
+mod llm_gateway;
 mod logs_cmd;
 mod memory;
 mod policy_cmd;

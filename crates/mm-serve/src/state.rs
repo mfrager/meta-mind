@@ -6,7 +6,8 @@
 //! its migrations, then the logger, then the event log, then the RDF store.
 //! A graph that fails to open is reported on the health line; it does not
 //! abort the rest of the boot. The language-model line reads `OPENAI_BASE_URL`
-//! and `OPENAI_API_KEY` (already loaded from `<repo>/.env` by `main`).
+//! and `OPENAI_API_KEY` (already loaded from `<repo>/.env` by `main`) and reports
+//! `MM_LLM_AGENTSTREAM=off` as the reason no live call can run.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
@@ -27,7 +28,8 @@ use mm_data::{
     CLEAN_LOG_MAX_CHARS,
 };
 use mm_eventlog::EventLog;
-use mm_llm::{CallContext, LlmClient, LlmConfig, ProviderEnv, ThresholdRouter};
+use mm_llm::{LlmClient, LlmConfig, ProviderEnv, ThresholdRouter};
+use mm_llm_agentstream::{AgentstreamLlm, GatewayBuilder, GatewayParts, ProviderProfiles};
 use mm_log::Logger;
 use mm_store_graph::GraphStore;
 use mm_store_sqlite::SqliteStore;
@@ -47,7 +49,6 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::feature_flags::FeatureFlags;
 use crate::interjection::InterjectionRouter;
-use crate::llm_feed::observe;
 use crate::llm_feed::LlmActivityFeed;
 use crate::metrics::Metrics;
 use crate::plan_monitor::PlanMonitor;
@@ -75,6 +76,10 @@ pub struct AppState {
     pub being_error: Option<String>,
     /// How the controller reaches a model. Tests replace the default.
     pub controller_model: std::sync::Mutex<ControllerModel>,
+    /// The one language-model gateway every server call path shares.
+    pub llm: Option<Arc<AgentstreamLlm>>,
+    /// Why the gateway could not be built, when `llm` is `None`.
+    pub llm_error: Option<String>,
     /// When set, the firewall denies the next write with this reason. Tests use it.
     pub firewall_denial: std::sync::Mutex<Option<String>>,
     /// The audit-chained logger.
@@ -127,14 +132,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Wrap a client in the activity observer when the feed is enabled.
-    ///
-    /// Every server construction path that can call a model goes through here
-    /// or [`crate::llm_feed::openai_client`], so no call bypasses the feed.
-    pub fn observed(&self, client: Arc<dyn LlmClient>, context: CallContext) -> Arc<dyn LlmClient> {
-        observe(client, self.llm_activity.as_ref(), context)
-    }
-
     /// Resolve configuration exactly like `mm-cli` (`--data-dir` wins over
     /// `--config`, which wins over the repository default).
     pub fn resolve_config(
@@ -239,8 +236,10 @@ impl AppState {
                 MmError::Internal(format!("conversation state service failed: {error}"))
             })?,
         );
-        let llm_config = LlmConfig::load_or_default(&Config::repo_root().join("config/llm.toml"))
-            .unwrap_or_default();
+        let mut llm_config =
+            LlmConfig::load_or_default(&Config::repo_root().join("config/llm.toml"))
+                .unwrap_or_default();
+        llm_config.cache_dir = cfg.store.data_dir.join("llm-cache");
         // `config/llm.toml` stays authoritative for routing; the registry is a
         // boot-time mirror so the configured catalog is inspectable in SQLite.
         sync_llm_models(&sqlite, &llm_config).await?;
@@ -248,16 +247,81 @@ impl AppState {
             .llm_activity
             .then(LlmActivityFeed::from_env)
             .map(Arc::new);
-        let summarizer_client = crate::llm_feed::openai_client(
-            &llm_config,
-            llm_activity.as_ref(),
-            CallContext::new("summarize"),
-        );
-        let action_client = crate::llm_feed::openai_client(
-            &llm_config,
-            llm_activity.as_ref(),
-            CallContext::new("automation"),
-        );
+        let (llm, llm_error) = match graph.as_ref() {
+            Some(store) => {
+                let parts = GatewayParts::new(
+                    llm_config.clone(),
+                    Arc::clone(&agentstream),
+                    sqlite.clone(),
+                    store.handle().clone(),
+                    Arc::clone(&logger),
+                    ProviderProfiles::standard(),
+                );
+                match GatewayBuilder::new(parts).build() {
+                    Ok(gateway) => {
+                        let mut schemas = mm_llm::SchemaRegistry::new();
+                        mm_decision::hosted::register(&mut schemas).map_err(|error| {
+                            MmError::Internal(format!("hosted decision schema: {error}"))
+                        })?;
+                        let hosted = schemas
+                            .get(&mm_llm::SchemaId::new(
+                                mm_decision::hosted::HOSTED_DECISION_SCHEMA_ID,
+                            ))
+                            .cloned()
+                            .ok_or_else(|| {
+                                MmError::Internal(
+                                    "hosted decision schema was not registered".into(),
+                                )
+                            })?;
+                        gateway
+                            .register_schema(
+                                mm_llm::SchemaId::new(
+                                    mm_decision::hosted::HOSTED_DECISION_SCHEMA_ID,
+                                ),
+                                hosted,
+                            )
+                            .await
+                            .map_err(|error| {
+                                MmError::Internal(format!(
+                                    "hosted decision schema registration: {error}"
+                                ))
+                            })?;
+                        gateway
+                            .register_schema(
+                                mm_llm::SchemaId::new("controller.intro"),
+                                crate::controller::intro::intro_schema(),
+                            )
+                            .await
+                            .map_err(|error| {
+                                MmError::Internal(format!(
+                                    "controller intro schema registration: {error}"
+                                ))
+                            })?;
+                        (Some(Arc::new(gateway)), None)
+                    }
+                    Err(error) => (
+                        None,
+                        Some(format!("language-model gateway failed: {error}")),
+                    ),
+                }
+            }
+            None => (
+                None,
+                Some(
+                    graph_error
+                        .clone()
+                        .unwrap_or_else(|| "the RDF store did not open".into()),
+                ),
+            ),
+        };
+        // Preserve the offline boot: a gateway exists, but no provider
+        // variables means the hosted paths report unavailable without dialing.
+        let llm_client: Option<Arc<dyn LlmClient>> = llm
+            .as_ref()
+            .filter(|_| ProviderEnv::from_env().is_some())
+            .map(|gateway| Arc::clone(gateway) as Arc<dyn LlmClient>);
+        let summarizer_client = llm_client.clone();
+        let action_client = llm_client;
         let summarizer = TurnSummarizer::new(
             summarizer_client,
             Arc::clone(&prompts),
@@ -271,6 +335,7 @@ impl AppState {
                 data.base_dir.clone(),
                 summarizer,
                 Some(&agents_path),
+                llm.clone(),
             )
             .await,
         );
@@ -409,6 +474,8 @@ impl AppState {
             being,
             being_error,
             controller_model: std::sync::Mutex::new(ControllerModel::FromEnv),
+            llm,
+            llm_error,
             firewall_denial: std::sync::Mutex::new(None),
             logger,
             ids,
@@ -434,6 +501,24 @@ impl AppState {
             llm_activity,
             process: std::sync::OnceLock::new(),
         };
+        if let (Some(feed), Some(gateway)) = (&state.llm_activity, &state.llm) {
+            let feed = Arc::downgrade(feed);
+            let mut events = gateway.subscribe();
+            tokio::spawn(async move {
+                loop {
+                    match events.recv().await {
+                        Ok(event) => {
+                            let Some(feed) = feed.upgrade() else {
+                                break;
+                            };
+                            feed.publish_live(event);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+        }
         if let Some(automation) = &state.automation {
             let mut events = automation.subscribe();
             let status = Arc::downgrade(&state.status_service);
@@ -506,7 +591,7 @@ impl AppState {
             .map_err(|error| MmError::Internal(format!("process config: {error}")))?;
         let llm_path = Config::repo_root().join("config/llm.toml");
         let llm = LlmConfig::load_or_default(&llm_path).unwrap_or_default();
-        let client = crate::controller::resolve_client(self, &llm)
+        let client = crate::controller::resolve_client(self)
             .ok_or_else(|| MmError::Internal("process pipeline needs a configured model".into()))?;
         let table =
             mm_cme::RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
@@ -516,11 +601,6 @@ impl AppState {
             .default_model
             .clone()
             .or_else(|| table.default_model.clone());
-        let client: Arc<dyn LlmClient> =
-            match crate::controller::turn::service(self, Arc::clone(&client)) {
-                Some(service) => Arc::new(service),
-                None => client,
-            };
         let runner = Arc::new(crate::process_runner::ProcessStepRunner::new(
             Arc::clone(&self.state_service),
             Arc::clone(&self.rdf_engine),
@@ -598,7 +678,7 @@ impl AppState {
     pub fn cme_executor(self: &Arc<Self>) -> TurnExecutor {
         let path = Config::repo_root().join("config/llm.toml");
         let config = LlmConfig::load_or_default(&path).unwrap_or_default();
-        let Some(client) = crate::controller::resolve_client(self, &config) else {
+        let Some(client) = crate::controller::resolve_client(self) else {
             return TurnExecutor::deterministic();
         };
         if config.models.is_empty() {
@@ -610,13 +690,6 @@ impl AppState {
         );
         let table = RoutingTable::load(&Config::repo_root().join("config/routing_table.toml"))
             .unwrap_or_default();
-        // Route every CM turn through the accounting facade so its calls are in
-        // `llm_calls`; the raw adapter records nothing.
-        let client: Arc<dyn LlmClient> =
-            match crate::controller::turn::service(self, Arc::clone(&client)) {
-                Some(service) => Arc::new(service),
-                None => client,
-            };
         let process = if self.features.process_v1 {
             match self.process_engine() {
                 Ok(engine) => Some(engine),
@@ -990,6 +1063,13 @@ fn lock_holder_alive(holder: &str) -> bool {
 /// (`OPENAI_BASE_URL` and `OPENAI_API_KEY`). Model names come from
 /// `config/llm.toml`. This does not call the endpoint.
 fn llm_status() -> ServiceStatus {
+    if !mm_llm_agentstream::is_enabled() {
+        return ServiceStatus {
+            name: "llm".to_string(),
+            state: ServiceState::Unavailable,
+            reason: Some(mm_llm_agentstream::DISABLED_REASON.to_string()),
+        };
+    }
     let Some(env) = ProviderEnv::from_env() else {
         return ServiceStatus {
             name: "llm".to_string(),
@@ -1176,7 +1256,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_activity_feed_constructs_a_provider_client() {
+    fn server_source_does_not_construct_a_provider_client() {
         // Build the needle so this test's own source does not match it.
         let needle = format!("{}::new", "OpenAiClient");
 
@@ -1205,10 +1285,6 @@ mod tests {
             &needle,
             &mut hits,
         );
-        assert_eq!(hits.len(), 1, "direct provider construction: {hits:?}");
-        assert!(
-            hits[0].ends_with("llm_feed.rs"),
-            "the feed must be the only provider construction path: {hits:?}"
-        );
+        assert!(hits.is_empty(), "direct provider construction: {hits:?}");
     }
 }

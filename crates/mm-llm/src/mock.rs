@@ -243,6 +243,19 @@ impl LlmClient for MockClient {
         })
     }
 
+    async fn complete_stream(
+        &self,
+        req: &LlmRequest,
+        sink: &mut dyn crate::client::DeltaSink,
+    ) -> Result<LlmResponse> {
+        let mut response = self.complete(req).await?;
+        if !response.text.is_empty() {
+            sink.delta(&response.text);
+        }
+        response.streamed = true;
+        Ok(response)
+    }
+
     fn provider(&self) -> &str {
         &self.provider
     }

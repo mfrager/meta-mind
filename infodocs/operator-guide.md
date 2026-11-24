@@ -70,6 +70,7 @@ script can never silently replace a live provider.
 | `MM_FRAMES_V1` | `false` | Declared frame flag. Frame tools and timers are governed by `MM_AUTOMATION_V1` and `config/automation.toml`. |
 | `MM_THREE_PASS_V2` | `true` | Run turns through the three-pass runner (Interpret → Process → Verify). Checks, staged writes, retries, and recursive think are implemented. Set `false` for the single-loop path. |
 | `MM_PROCESS_V1` | `false` | Enable durable process templates/instances (Phase 5). Plan creation uses the four-pass builder, `metamind.plan run=true` starts a process, and `metamind.act` exposes process controls. Keep off until a live soak is recorded. See [`process-pipeline.md`](./process-pipeline.md). |
+| `MM_LLM_AGENTSTREAM` | `true` | Live-call kill switch. `off` makes every live gateway call return one configuration error; no direct-client fallback exists. |
 
 Rollback to the legacy console route is `MM_CME_ENABLED=false`. Rollback to the
 single-loop CME turn (keeping the conversation engine and CM tools) is
@@ -361,6 +362,12 @@ Relevant environment variables:
 | `MM_AGENT_HERMES_TIMEOUT_MS` | Per-turn timeout. |
 | `MM_AGENT_HERMES_MAX_CONTEXT_TOKENS` | Context cap. |
 | `MM_AGENT_ALLOWED_ROOTS` | Additional roots allowed by the workspace resolver. |
+
+Hermes now maps its turns through the shared `AgentstreamLlm` gateway instead of owning an HTTP
+client. Its profile is `hermes`, its calls are journaled under `agent/<run_id>`, and its streamed
+answer still returns as one agent turn. A required journal append that fails before dispatch
+prevents the provider call and reports the journal error; the gateway never falls back to a direct
+client. `MM_LLM_AGENTSTREAM=off` disables live calls explicitly, including the Hermes model probe.
 
 ### Pi
 

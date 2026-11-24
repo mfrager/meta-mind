@@ -225,9 +225,8 @@ mod tests {
     use axum::http::{header, Request, StatusCode};
     use futures::StreamExt;
     use http_body_util::BodyExt;
-    use mm_llm::{
-        ActivitySink, CallContext, LlmRequest, Message, MockClient, Purpose, ScriptedResponse,
-    };
+    use mm_llm::{CallContext, LlmRequest, Message, MockClient, Purpose, ScriptedResponse};
+    use mm_llm_agentstream::LiveLlmEvent;
     use tokio::time::{timeout, Duration};
     use tower::ServiceExt;
 
@@ -267,8 +266,14 @@ mod tests {
         let (_dir, state, app) = booted(FeatureFlags::default()).await;
         let feed = state.llm_activity.as_ref().expect("feed is enabled");
         let id = mm_llm::accounting::new_call_id();
-        feed.delta(id, "one", 3, false);
-        feed.delta(id, "two", 6, false);
+        for (text, chars) in [("one", 3), ("two", 6)] {
+            feed.publish_live(LiveLlmEvent::Delta {
+                call_id: id,
+                text: text.into(),
+                total_chars: chars,
+                truncated: false,
+            });
+        }
 
         let body = snapshot_of(app.clone(), "").await;
         assert_eq!(body["oldestSeq"], 1);
@@ -286,14 +291,19 @@ mod tests {
         let feed = state.llm_activity.as_ref().expect("feed is enabled");
         let id = mm_llm::accounting::new_call_id();
         let context = CallContext::new("chat").with_session("session-1");
-        feed.request(
-            id,
-            &context,
-            "mock",
-            true,
-            &LlmRequest::new(Purpose::Converse, vec![Message::user("hello")]),
-        );
-        feed.delta(id, "fragment", 8, false);
+        feed.publish_live(LiveLlmEvent::Request {
+            call_id: id,
+            context,
+            provider: "mock".into(),
+            streamed: true,
+            request: LlmRequest::new(Purpose::Converse, vec![Message::user("hello")]),
+        });
+        feed.publish_live(LiveLlmEvent::Delta {
+            call_id: id,
+            text: "fragment".into(),
+            total_chars: 8,
+            truncated: false,
+        });
 
         let body = snapshot_of(app.clone(), "?sessionId=session-1").await;
         assert_eq!(
@@ -384,8 +394,16 @@ mod tests {
             .unwrap_or_else(|| panic!("no chat-scoped request in {events:?}"));
         assert!(event["sessionId"].as_str().is_some(), "{event}");
         assert!(event["runId"].as_str().is_some(), "{event}");
-        assert_eq!(event["provider"], "mock");
+        assert_eq!(event["provider"], "default");
         assert!(!event["callId"].as_str().unwrap().is_empty());
+
+        // The feed is subscribed to the gateway, so a call must appear once.
+        // A surviving decorator would publish a second request for the same id.
+        let call_ids: std::collections::HashSet<&str> = events
+            .iter()
+            .filter_map(|event| event["callId"].as_str())
+            .collect();
+        assert_eq!(call_ids.len(), events.len(), "each call is requested once");
     }
 
     async fn first_frame(app: axum::Router, uri: &str) -> String {
@@ -408,8 +426,14 @@ mod tests {
         let (_dir, state, app) = booted(FeatureFlags::default()).await;
         let feed = state.llm_activity.as_ref().expect("feed is enabled");
         let id = mm_llm::accounting::new_call_id();
-        feed.delta(id, "one", 3, false);
-        feed.delta(id, "two", 6, false);
+        for (text, chars) in [("one", 3), ("two", 6)] {
+            feed.publish_live(LiveLlmEvent::Delta {
+                call_id: id,
+                text: text.into(),
+                total_chars: chars,
+                truncated: false,
+            });
+        }
 
         let frame = first_frame(app, "/api/llm-activity/stream?from=1").await;
         assert!(frame.contains("event: activity"), "{frame}");
@@ -422,7 +446,12 @@ mod tests {
         let feed = LlmActivityFeed::with_capacity(2);
         let id = mm_llm::accounting::new_call_id();
         for index in 0..4 {
-            feed.delta(id, &format!("{index}"), index, false);
+            feed.publish_live(LiveLlmEvent::Delta {
+                call_id: id,
+                text: format!("{index}"),
+                total_chars: index,
+                truncated: false,
+            });
         }
 
         let (snapshot, resync) = replay(&feed, Some(1));

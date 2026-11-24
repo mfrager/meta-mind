@@ -186,6 +186,7 @@ pub struct TurnExecutor {
     prompt_variant: Option<String>,
     budget_class: BudgetClass,
     budgeted: bool,
+    pass_observer: Option<Arc<dyn PassObserver>>,
     three_pass: Option<ThreePassRunner>,
     clean_log_provider: Option<Arc<dyn CleanLogProvider>>,
 }
@@ -222,6 +223,7 @@ impl TurnExecutor {
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
             budgeted: true,
+            pass_observer: None,
             three_pass: None,
             clean_log_provider: None,
         }
@@ -243,6 +245,7 @@ impl TurnExecutor {
             prompt_variant: None,
             budget_class: BudgetClass::Standard,
             budgeted: true,
+            pass_observer: None,
             three_pass: None,
             clean_log_provider: None,
         }
@@ -327,9 +330,10 @@ impl TurnExecutor {
         self
     }
 
-    /// Attach a display observer to the three-pass runner, if one is configured.
-    /// The legacy path has no passes to observe.
+    /// Attach a display observer to the pass runner. It covers both the
+    /// three-pass path and the legacy `ProcessPass` tool loop.
     pub fn with_pass_observer(mut self, observer: Arc<dyn PassObserver>) -> Self {
+        self.pass_observer = Some(Arc::clone(&observer));
         if let Some(runner) = self.three_pass.take() {
             self.three_pass = Some(runner.with_observer(observer));
         }
@@ -356,6 +360,9 @@ impl TurnExecutor {
         voice: Option<VoiceTurnConfig>,
     ) -> Result<TurnOutcome> {
         turn.observer = self.observer.clone();
+        // The executor outlives one turn inside a session driver, so a per-turn
+        // display observer must not stay attached after this turn finishes.
+        let pass_observer = self.pass_observer.take();
         let query = turn
             .plan
             .as_ref()
@@ -429,7 +436,7 @@ impl TurnExecutor {
                         .prompt_variables
                         .clone()
                         .unwrap_or_else(|| PromptVariables::for_turn(&plan, session));
-                    let pass = ProcessPass::new(
+                    let mut pass = ProcessPass::new(
                         Arc::clone(client),
                         self.prompts.clone(),
                         Arc::clone(&self.tools),
@@ -438,6 +445,9 @@ impl TurnExecutor {
                         self.budget_class,
                     )
                     .with_budgeting(self.budgeted);
+                    if let Some(observer) = &pass_observer {
+                        pass = pass.with_observer(Arc::clone(observer), 1);
+                    }
                     let run = match pass
                         .run(
                             turn,

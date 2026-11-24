@@ -774,8 +774,8 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 
 #### W.5 LLM Activity Log Plan (`llm_activity_log_plan.md`)
 - **Diagnosis** — No cross-cutting live view of model calls: audit `llm.*` records carry routing metadata but not streamed text or replies; chat `pass_*` frames exist only inside a CME chat response; the inspector logs view is paged history, not a tail
-- **Tap** — `mm-llm` gains an opt-in `ActivitySink`, a pass-through `ObservedClient` decorator, delta coalescing (50 ms / 256 chars, 2,000-char call cap), and a task-local `CallContext` (`source`/`sessionId`/`runId`/`pass`/`round`) so agent, automation, process, and summarizer calls are attributed too
-- **Feed** — `mm-serve` owns a bounded in-memory `LlmActivityFeed` (seq + ring + broadcast); `AppState::observed` wraps every client construction; snapshot and resumable SSE routes at `/api/llm-activity` and `/api/llm-activity/stream` using the existing `sse.rs` codec, with `resync` on cursor gaps and `MM_LLM_ACTIVITY` as a kill switch
+- **Tap (superseded for provider access)** — the original `ActivitySink` / `ObservedClient` decorator and its delta policy were retired in gateway P5; `CallContext` survives in `mm-llm::call`, and the gateway live bus owns request/delta/response/error plus coalescing (50 ms / 256 chars, 2,000-char call cap)
+- **Feed** — `mm-serve` owns a bounded in-memory `LlmActivityFeed` (seq + ring + broadcast) and subscribes to the gateway live bus at boot; snapshot and resumable SSE routes at `/api/llm-activity` and `/api/llm-activity/stream` use the existing `sse.rs` codec, with `resync` on cursor gaps and `MM_LLM_ACTIVITY` as the feed-only kill switch
 - **Wire** — Additive `LlmActivityEvent` (`request` / `delta` / `response` / `error`) with call id, context, purpose, provider/model, tokens, latency, status, redacted previews; generated into `lib/wire/llm_activity.ts`; `wireVersion: 1` unchanged
 - **UI** — A docked `LlmLogDock` at the bottom of the right workspace pane: connection dot, filter, pause/clear/collapse, visible drag grip and keyboard resize; monospace rows for REQ/STR/RSP/ERR with in-place delta merge, expandable details, pinned auto-scroll, and rAF-batched rendering; store bounded to 500 rows, cursor-safe pause buffering and reconnect
 - **Policy** — Local-only, ephemeral ring, server-side redaction and truncation: user excerpt only by default, no system prompt, no tool arguments, no provider bodies, no keys
@@ -791,8 +791,18 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 - **Gateway** — One façade owns `LlmService`, a private provider profile pool (`default`, `hermes`), schema registration, per-call timeout, and a live broadcast; callers never receive an adapter or endpoint
 - **Journal** — Additive `llm_request` / `llm_response` / `llm_error` / `llm_models` agentstream events (`mm.llm.call.v1`), session resolution for chat/agent/system, `callId` shared with `llm_calls`, bounded text and no full prompts/tool arguments/secrets; pre-call append is fail-closed, deltas stay live-only
 - **Hermes** — Replace its HTTP/SSE/JSON/`/models` implementation with neutral `LlmRequest`/`LlmResponse` mapping; preserve `mm_status`, finish reason, tool calls, usage, timeouts, and `agent/<run_id>` trace; add `Purpose::Agent`
-- **Retirement** — Remove `ObservedClient`, `AppState::observed`, `llm_feed` construction, direct `LlmService` construction, and CLI `OpenAiClient`; keep `LlmActivityFeed` and dock as subscribers with unchanged `wireVersion: 1`
-- **Scope** — Pi explicitly excluded (`mm-pi`/`PiBackend` unchanged); enforcement via workspace source guard and phase-by-phase migration P0–P6
+- **Retirement** — `ObservedClient`, `AppState::observed`, `llm_feed` construction, direct `LlmService` construction, and CLI `OpenAiClient` are removed; `LlmActivityFeed` and the dock remain gateway subscribers with unchanged `wireVersion: 1`
+- **Scope** — Pi explicitly excluded (`mm-pi`/`PiBackend` unchanged); enforcement via a required workspace source guard and a `MM_LLM_AGENTSTREAM` kill switch with no direct-client fallback
+- **Status** — P0–P6 implemented and verified: one provider construction site in the gateway, the source guard is a required test, live calls fail explicitly when the kill switch is off, and the docs describe the gateway as the only live LLM door
+
+---
+
+#### W.7 LLM Call Fidelity & Activity Dock v2 Plan (`llm_activity_fidelity_plan.md`)
+- **Diagnosis** — The reported `… reasoning characters but no visible text … (finish_reason: length)` is a budget failure: `max_tokens = 1024` is spent on `reasoning_content`, the adapter reports it as `LlmError::Transport`, and the streaming path ignores reasoning and silently replays the call as a second non-streaming provider round; separately, a 30-second ceiling cuts long calls at the profile, transport, CME, summarizer, automation, and process-lease seams
+- **Phase 1 (backend)** — Per-purpose `max_tokens` budgets; a typed `ReasoningOnly` error; one bounded escalation retry as a child call with `parentCallId` and optional thinking-off knob; streaming parity so a real SSE stream is never replayed; a total-ceiling/idle-bound timeout model replacing the 30 s wall clock; `CallContext` gains trigger/parent/step/tool/origin plus CME pass scopes; the terminal response event rolls up the full streamed body
+- **Phase 2 (dock)** — Client-side call groups from the existing ring: outcomes nested and indented under their request, retries nested one level deeper, filters that keep the request as context, the RSP line carrying the whole rolled-up body, and a second text-only tab with exactly three lines per block and a copy action
+- **Contract** — Additive wire fields only; `wireVersion: 1` unchanged; no new routes, storage, or dependencies; the 20,000-char roll-up cap is server-side and configurable
+- **Plan** — Two phases with file-level seams, Rust/TS test tables, acceptance criteria, risks, and a traceability matrix
 
 ---
 

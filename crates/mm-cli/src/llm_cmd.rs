@@ -21,8 +21,12 @@ use mm_llm::grammar::{self, GrammarSpec};
 use mm_llm::mock::{MockClient, ScriptedResponse};
 use mm_llm::replay::{NetworkGuard, ReplayLlmClient, Session};
 use mm_llm::routing::{Router, RoutingRequest, ThresholdRouter};
-use mm_llm::service::{resolve_cache_dir, LlmService};
+use mm_llm::service::resolve_cache_dir;
+use mm_llm::LlmClient;
+use mm_llm_agentstream::AgentstreamLlm;
 use mm_log::{codes, Level, LogRecord};
+
+use crate::llm_gateway::GatewaySession;
 
 use crate::kernel::Kernel;
 
@@ -68,7 +72,7 @@ fn llm_config(root: &Path) -> Result<LlmConfig, MmError> {
 ///
 /// The registry is per-run rather than global: a schema a command does not need
 /// cannot silently satisfy a call that should have been refused.
-fn register_bench_schemas(service: &mut LlmService, root: &Path) -> Result<usize, MmError> {
+async fn register_bench_schemas(gateway: &AgentstreamLlm, root: &Path) -> Result<usize, MmError> {
     let path = root.join("bench").join("llm").join("schemas.json");
     if !path.is_file() {
         return Ok(0);
@@ -78,31 +82,13 @@ fn register_bench_schemas(service: &mut LlmService, root: &Path) -> Result<usize
         .map_err(|e| MmError::Config(format!("cannot read {}: {e}", path.display())))?;
     let mut count = 0;
     for (id, schema) in entries {
-        service
+        gateway
             .register_schema(SchemaId::new(id), schema)
+            .await
             .map_err(to_mm)?;
         count += 1;
     }
     Ok(count)
-}
-
-/// A service over the kernel's store, graph, and logger.
-fn service_for(
-    kernel: &Kernel,
-    llm_cfg: &LlmConfig,
-    root: &Path,
-    client: Arc<dyn mm_llm::client::LlmClient>,
-) -> Result<LlmService, MmError> {
-    let service = LlmService::new(
-        llm_cfg.clone(),
-        kernel.sqlite.clone(),
-        kernel.graph()?.handle().clone(),
-        Arc::clone(&kernel.logger),
-        client,
-    )
-    .map_err(to_mm)?
-    .with_cache_dir(resolve_cache_dir(root, &llm_cfg.cache_dir));
-    Ok(service)
 }
 
 /// The files of a fixture directory, sorted by name.
@@ -224,8 +210,14 @@ pub async fn replay(
 
     // The recorded session *is* the transport: the client can serve nothing else.
     let client = Arc::new(ReplayLlmClient::new(&session, "replay"));
-    let mut service = service_for(&kernel, &llm_cfg, &root, client.clone())?;
-    register_bench_schemas(&mut service, &root)?;
+    let gateway = GatewaySession::in_memory(
+        &kernel,
+        &llm_cfg,
+        &root,
+        Some(client.clone() as Arc<dyn LlmClient>),
+    )
+    .await?;
+    register_bench_schemas(&gateway.gateway, &root).await?;
 
     kernel
         .logger
@@ -248,7 +240,7 @@ pub async fn replay(
         // exercises the exact cache as well: a second run must serve byte-identical
         // output from the cache.
         request.cache = CacheMode::Use;
-        let response = service.call(request).await.map_err(to_mm)?;
+        let response = gateway.gateway.call(request).await.map_err(to_mm)?;
         cached += usize::from(response.cached);
         if response.text != record.response.text {
             mismatches += 1;
@@ -371,8 +363,8 @@ pub async fn schema_reject(
         )));
     }
 
-    let handle = kernel.graph()?.handle().clone();
     let before = repair_rows(&kernel).await?;
+    let gateway = GatewaySession::in_memory(&kernel, &llm_cfg, &root, None).await?;
     let mut rejected = 0usize;
     let mut wrong = Vec::new();
 
@@ -380,20 +372,14 @@ pub async fn schema_reject(
     for file in &files {
         let fixture: MalformedFixture = serde_json::from_value(read_json(file)?)
             .map_err(|e| MmError::Config(format!("{}: {e}", file.display())))?;
-        let client = Arc::new(MockClient::constant(ScriptedResponse::text(
+        let client: Arc<dyn LlmClient> = Arc::new(MockClient::constant(ScriptedResponse::text(
             fixture.payload.clone(),
         )));
-        let mut service = LlmService::new(
-            llm_cfg.clone(),
-            kernel.sqlite.clone(),
-            handle.clone(),
-            Arc::clone(&kernel.logger),
-            client,
-        )
-        .map_err(to_mm)?
-        .with_cache_dir(resolve_cache_dir(&root, &llm_cfg.cache_dir));
-        service
+        gateway.gateway.set_injected_client(Some(client));
+        gateway
+            .gateway
             .register_schema(SchemaId::new(fixture.name.clone()), fixture.schema.clone())
+            .await
             .map_err(to_mm)?;
 
         let request = LlmRequest::new(Purpose::Extract, vec![Message::user("adversarial fixture")])
@@ -401,7 +387,7 @@ pub async fn schema_reject(
             // Bypass so each fixture always reaches the client, whatever ran before.
             .with_cache(CacheMode::Bypass);
 
-        match service.call(request).await {
+        match gateway.gateway.call(request).await {
             Err(LlmError::SchemaRejected { detail, .. }) if detail.contains(&fixture.expect) => {
                 rejected += 1;
                 println!(

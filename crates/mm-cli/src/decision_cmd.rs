@@ -96,9 +96,10 @@ pub async fn decide(cfg: Config, args: DecideArgs) -> Result<ExitCode, MmError> 
         kind,
         args.rules.as_deref(),
         args.head.as_deref(),
-        &kernel.cfg,
+        &kernel,
         &root,
-    )?;
+    )
+    .await?;
 
     let Some(core) = built.core.as_ref() else {
         let reason = built.reason();
@@ -291,9 +292,10 @@ pub async fn conformance(cfg: Config, args: ConformanceArgs) -> Result<ExitCode,
             kind,
             args.rules.as_deref(),
             args.head.as_deref(),
-            &kernel.cfg,
+            &kernel,
             &root,
-        )?;
+        )
+        .await?;
         let findings = match built.core.as_ref() {
             Some(core) => mm_decision::run_conformance(core.as_ref()),
             None => {
@@ -464,7 +466,7 @@ async fn firewall_eval(cfg: Config, args: FirewallEvalArgs) -> Result<ExitCode, 
     let kernel = Kernel::open(cfg, !args.no_record).await?;
     let mut ctx = FirewallCtx::new(FirewallConfig::default());
     if let Some(kind) = core_kind {
-        let built = build_core(kind, args.rules.as_deref(), None, &kernel.cfg, &root)?;
+        let built = build_core(kind, args.rules.as_deref(), None, &kernel, &root).await?;
         match built.core {
             Some(core) => {
                 ctx.config.core = Some(core);

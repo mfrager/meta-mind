@@ -1,12 +1,8 @@
 //! One conversational turn: a short model loop that may call read tools.
 
-use std::sync::Arc;
 use std::time::Instant;
 
-use mm_llm::{
-    CacheMode, CallContext, LlmClient, LlmRequest, LlmService, Message, Purpose, SchemaId,
-    ToolSchema,
-};
+use mm_llm::{CacheMode, CallContext, LlmRequest, Message, Purpose, ToolSchema};
 use mm_log::{Level, LogRecord};
 use serde_json::{json, Value};
 
@@ -17,7 +13,7 @@ use super::admit::{self, TurnView};
 use super::catalog::{self, Effect, GroupId};
 use super::confirm;
 use super::exec::{self, ToolResult};
-use super::intro::{self, llm_config};
+use super::intro;
 use super::limits::{MAX_MODEL_ROUNDS, MAX_TOOL_STEPS, MODEL_DATA_BYTES};
 use super::persona;
 use super::prompt;
@@ -101,17 +97,8 @@ async fn reply_inner(
         },
     ];
 
-    let cfg = llm_config(app);
     let budgeted = app.three_pass.budget.enabled;
-    let Some(client) = resolve_client(app, &cfg) else {
-        frames.extend(closing(
-            request_id,
-            &format!("{NO_MODEL} {}", facts.llm_reason),
-            false,
-        ));
-        return done(frames);
-    };
-    let Some(service) = service(app, Arc::clone(&client)) else {
+    let Some(client) = resolve_client(app) else {
         frames.extend(closing(
             request_id,
             &format!("{NO_MODEL} {}", facts.llm_reason),
@@ -253,7 +240,7 @@ async fn reply_inner(
             .with_tools(tools)
             .with_cache(CacheMode::Use)
             .with_trace(parse_trace(request_id));
-        let response = match service.call(request).await {
+        let response = match client.complete(&request).await {
             Ok(response) => response,
             Err(err) => {
                 frames.push(ChatFrame::LlmRequestFinished {
@@ -377,23 +364,6 @@ async fn reply_inner(
     frames.extend(closing(request_id, &text, unbacked));
     push_honesty(app, request_id, &mut frames, unbacked, extra).await;
     done(frames)
-}
-
-pub(crate) fn service(app: &AppState, client: Arc<dyn LlmClient>) -> Option<LlmService> {
-    let graph = app.graph.as_ref()?;
-    let cfg = llm_config(app);
-    let mut service = LlmService::new(
-        cfg,
-        app.sqlite.clone(),
-        graph.handle().clone(),
-        Arc::clone(&app.logger),
-        client,
-    )
-    .ok()?;
-    service
-        .register_schema(SchemaId::new("controller.intro"), intro::intro_schema())
-        .ok()?;
-    Some(service)
 }
 
 async fn push_focus(app: &AppState, frames: &mut Vec<ChatFrame>, focus: &Value) {
@@ -750,11 +720,7 @@ pub async fn resume(
 }
 
 async fn close_after_button(app: &AppState, request_id: &str, result: &ToolResult) -> String {
-    let cfg = llm_config(app);
-    let Some(client) = resolve_client(app, &cfg) else {
-        return result.summary.clone();
-    };
-    let Some(service) = service(app, client) else {
+    let Some(client) = resolve_client(app) else {
         return result.summary.clone();
     };
     let request = LlmRequest::new(
@@ -766,7 +732,7 @@ async fn close_after_button(app: &AppState, request_id: &str, result: &ToolResul
     )
     .with_cache(CacheMode::Bypass)
     .with_trace(parse_trace(request_id));
-    match service.call(request).await {
+    match client.complete(&request).await {
         Ok(response) if !response.text.trim().is_empty() => response.text.trim().to_string(),
         _ => result.summary.clone(),
     }

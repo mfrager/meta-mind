@@ -1,18 +1,19 @@
-//! Hermes: a dedicated OpenAI-compatible agent client.
+//! Hermes: a dedicated OpenAI-compatible agent backend.
 //!
-//! This is deliberately separate from `mm-llm::OpenAiClient`. Agent turns have
-//! arbitrary tool payloads, long timeouts, and an SSE-or-JSON transport choice;
-//! the substrate is for typed metamind calls. The client supports `http://`
-//! endpoints only, matching the local Hermes deployment, and never logs the API
-//! key.
+//! Hermes owns configuration, health, and translation only. Provider transport,
+//! SSE decoding, `/models` discovery, and journaling belong to
+//! [`AgentstreamLlm`]; this module maps an [`AgentRequest`] onto a neutral
+//! [`LlmRequest`] and maps the [`LlmResponse`] back into an
+//! [`AgentTurnResult`].
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::Value;
+
+use mm_llm::{CacheMode, CallContext, CollectSink, LlmError, LlmRequest, Message, Purpose, Role};
+use mm_llm_agentstream::AgentstreamLlm;
 
 use crate::{
     AgentArtifact, AgentBackend, AgentError, AgentRequest, AgentRunStatus, AgentToolSummary,
@@ -140,17 +141,29 @@ pub struct HermesProbe {
 }
 
 /// The Hermes backend.
-#[derive(Debug)]
 pub struct HermesBackend {
     config: Option<HermesConfig>,
+    gateway: Option<Arc<AgentstreamLlm>>,
     probe: Mutex<HermesProbe>,
 }
 
+impl std::fmt::Debug for HermesBackend {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HermesBackend")
+            .field("config", &self.config)
+            .field("gateway", &self.gateway.is_some())
+            .field("probe", &self.probe)
+            .finish()
+    }
+}
+
 impl HermesBackend {
-    /// A backend for an explicit configuration.
-    pub fn new(config: HermesConfig) -> Self {
+    /// A backend for an explicit configuration and the boot gateway.
+    pub fn with_gateway(config: HermesConfig, gateway: Arc<AgentstreamLlm>) -> Self {
         Self {
             config: Some(config),
+            gateway: Some(gateway),
             probe: Mutex::new(HermesProbe {
                 available: false,
                 reason: Some("not probed".into()),
@@ -159,26 +172,35 @@ impl HermesBackend {
         }
     }
 
-    /// Resolve the backend from the environment or a config file.
-    pub fn from_env() -> Self {
-        Self::from_config_file(Some(std::path::Path::new("config/agents.toml")))
-    }
-
-    /// Resolve the backend from an explicit config file.
-    pub fn from_config_file(path: Option<&std::path::Path>) -> Self {
-        let config = HermesConfig::from_env_or_file(path);
-        let reason = if config.is_some() {
-            Some("not probed".into())
-        } else {
-            Some(format!("{BASE_URL_ENV} is unset"))
-        };
+    /// An unavailable backend with an exact, redacted reason.
+    pub fn unavailable(reason: impl Into<String>) -> Self {
         Self {
-            config,
+            config: None,
+            gateway: None,
             probe: Mutex::new(HermesProbe {
                 available: false,
-                reason,
+                reason: Some(reason.into()),
                 models: Vec::new(),
             }),
+        }
+    }
+
+    /// Resolve the backend from the environment or a config file and the gateway.
+    pub fn from_env(gateway: Option<Arc<AgentstreamLlm>>) -> Self {
+        Self::from_config_file(Some(std::path::Path::new("config/agents.toml")), gateway)
+    }
+
+    /// Resolve the backend from an explicit config file and the gateway.
+    pub fn from_config_file(
+        path: Option<&std::path::Path>,
+        gateway: Option<Arc<AgentstreamLlm>>,
+    ) -> Self {
+        let Some(config) = HermesConfig::from_env_or_file(path) else {
+            return Self::unavailable(format!("{BASE_URL_ENV} is unset"));
+        };
+        match gateway {
+            Some(gateway) => Self::with_gateway(config, gateway),
+            None => Self::unavailable("the language-model gateway is unavailable"),
         }
     }
 
@@ -206,41 +228,44 @@ impl HermesBackend {
             .clone()
     }
 
-    /// Probe `GET /models` and record availability.
+    /// Probe `/models` through the gateway and record availability.
     pub async fn refresh(&self) -> HermesProbe {
         let Some(config) = &self.config else {
             return self.probe();
         };
-        let result = tokio::time::timeout(
-            Duration::from_secs(3),
-            tokio::task::spawn_blocking({
-                let config = config.clone();
-                move || fetch_models(&config)
-            }),
-        )
-        .await;
-        let probe = match result {
-            Ok(Ok(Ok(models))) => HermesProbe {
-                available: true,
-                reason: None,
-                models,
-            },
-            Ok(Ok(Err(error))) => HermesProbe {
+        let Some(gateway) = &self.gateway else {
+            let probe = HermesProbe {
                 available: false,
-                reason: Some(error),
+                reason: Some("the language-model gateway is unavailable".into()),
                 models: Vec::new(),
-            },
-            Ok(Err(error)) => HermesProbe {
-                available: false,
-                reason: Some(format!("probe failed: {error}")),
-                models: Vec::new(),
-            },
-            Err(_) => HermesProbe {
-                available: false,
-                reason: Some("probe timed out after 3000 ms".into()),
-                models: Vec::new(),
-            },
+            };
+            *self.probe.lock().unwrap_or_else(|error| error.into_inner()) = probe.clone();
+            return probe;
         };
+        let probe =
+            match tokio::time::timeout(Duration::from_secs(3), gateway.models("hermes")).await {
+                Ok(probe) if probe.available => HermesProbe {
+                    available: true,
+                    reason: None,
+                    models: probe.models,
+                },
+                Ok(probe) => HermesProbe {
+                    available: false,
+                    reason: Some(format!(
+                        "{}: {}",
+                        config.base_url,
+                        probe
+                            .reason
+                            .unwrap_or_else(|| "the backend did not answer /models".into())
+                    )),
+                    models: Vec::new(),
+                },
+                Err(_) => HermesProbe {
+                    available: false,
+                    reason: Some("probe timed out after 3000 ms".into()),
+                    models: Vec::new(),
+                },
+            };
         *self.probe.lock().unwrap_or_else(|error| error.into_inner()) = probe.clone();
         probe
     }
@@ -268,6 +293,9 @@ impl HermesBackend {
 impl AgentBackend for HermesBackend {
     async fn run_turn(&self, request: &AgentRequest) -> Result<AgentTurnResult> {
         let config = self.config()?.clone();
+        let gateway = self.gateway.as_ref().ok_or_else(|| {
+            AgentError::Unavailable("the language-model gateway is unavailable".into())
+        })?;
         let mut probe = self.probe();
         if !probe.available {
             probe = self.refresh().await;
@@ -286,135 +314,73 @@ impl AgentBackend for HermesBackend {
             .ok_or_else(|| AgentError::Rejected("no Hermes model is configured".into()))?;
         let messages = build_messages(request)?;
         let timeout = request.timeout_ms.max(1).min(config.timeout_ms.max(1));
-        let body = json!({
-            "model": model,
-            "messages": messages,
-            "stream": config.stream,
-            "temperature": 0.2,
-        });
-        let config_for_call = config.clone();
+        let llm_request = LlmRequest::new(Purpose::Agent, messages)
+            .with_model(model)
+            .with_provider("hermes")
+            .with_cache(CacheMode::Bypass)
+            .with_timeout(timeout);
+        let context = CallContext::new("agent").with_run(request.run_id.clone());
+
         let result = tokio::time::timeout(
             Duration::from_millis(timeout),
-            tokio::task::spawn_blocking(move || {
-                post_completion(&config_for_call, &body, config_for_call.stream)
+            mm_llm::scope(context, async {
+                if config.stream {
+                    let mut sink = CollectSink::default();
+                    gateway.call_stream(llm_request, &mut sink).await
+                } else {
+                    gateway.call(llm_request).await
+                }
             }),
         )
         .await
         .map_err(|_| AgentError::Timeout(timeout))?
-        .map_err(|error| AgentError::Other(format!("Hermes task failed: {error}")))?;
-        result?.ok_or_else(|| AgentError::Other("empty Hermes response".into()))
+        .map_err(map_llm_error)?;
+
+        Ok(map_response(result))
     }
 }
 
-fn build_messages(request: &AgentRequest) -> Result<Vec<Value>> {
+fn build_messages(request: &AgentRequest) -> Result<Vec<Message>> {
     let mut messages = Vec::new();
     if let Some(system) = &request.context {
         if !system.trim().is_empty() {
-            messages.push(json!({ "role": "system", "content": system }));
+            messages.push(Message::system(system));
         }
     }
     if request.messages.is_empty() {
-        messages.push(json!({ "role": "user", "content": request.input }));
+        messages.push(Message::user(request.input.clone()));
     } else {
         for message in &request.messages {
-            messages.push(json!({ "role": message.role, "content": message.content }));
+            let role = match message.role.as_str() {
+                "system" => Role::System,
+                "assistant" => Role::Assistant,
+                "tool" => Role::Tool,
+                _ => Role::User,
+            };
+            messages.push(Message {
+                role,
+                content: message.content.clone(),
+                name: None,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+            });
         }
     }
     Ok(messages)
 }
 
-fn fetch_models(config: &HermesConfig) -> std::result::Result<Vec<String>, String> {
-    let response = http_request(config, "GET", "/models", None, false)
-        .map_err(|error| format!("{}: {error}", config.base_url))?;
-    if response.status != 200 {
-        return Err(format!(
-            "GET {}/models returned HTTP {}",
-            config.base_url.trim_end_matches('/'),
-            response.status
-        ));
-    }
-    let value: Value = serde_json::from_slice(&response.body)
-        .map_err(|error| format!("invalid /models JSON: {error}"))?;
-    Ok(value
-        .get("data")
-        .and_then(Value::as_array)
-        .map(|models| {
-            models
-                .iter()
-                .filter_map(|model| model.get("id").and_then(Value::as_str))
-                .map(str::to_owned)
-                .collect()
+fn map_response(response: mm_llm::LlmResponse) -> AgentTurnResult {
+    let content = response.text.clone();
+    let tool_calls: Vec<AgentToolSummary> = response
+        .tool_calls
+        .iter()
+        .map(|call| AgentToolSummary {
+            name: call.name.clone(),
+            arguments: Some(call.arguments.chars().take(500).collect()),
         })
-        .unwrap_or_default())
-}
-
-fn post_completion(
-    config: &HermesConfig,
-    body: &Value,
-    stream: bool,
-) -> std::result::Result<Option<AgentTurnResult>, AgentError> {
-    let response = http_request(
-        config,
-        "POST",
-        "/chat/completions",
-        Some(body.to_string().as_bytes()),
-        stream,
-    )
-    .map_err(|error| AgentError::Unavailable(format!("{}: {error}", config.base_url)))?;
-    if !(200..300).contains(&response.status) {
-        return Err(AgentError::Rejected(format!(
-            "Hermes returned HTTP {}: {}",
-            response.status,
-            redact_excerpt(&response.body)
-        )));
-    }
-    let text = String::from_utf8_lossy(&response.body);
-    if !stream || !looks_like_sse(&text) {
-        return parse_completion_json(&text, response.model, false, config.model.as_deref());
-    }
-    parse_sse(&text, response.model, config.model.as_deref())
-}
-
-fn parse_completion_json(
-    text: &str,
-    header_model: Option<String>,
-    streamed: bool,
-    configured_model: Option<&str>,
-) -> Result<Option<AgentTurnResult>> {
-    let value: Value = serde_json::from_str(text)
-        .map_err(|error| AgentError::Rejected(format!("invalid Hermes JSON: {error}")))?;
-    if let Some(error) = value.get("error") {
-        return Err(AgentError::Rejected(
-            error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("Hermes returned an error")
-                .to_owned(),
-        ));
-    }
-    let choice = value
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .ok_or_else(|| AgentError::Rejected("Hermes response has no choices".into()))?;
-    let message = choice
-        .get("message")
-        .ok_or_else(|| AgentError::Rejected("Hermes choice has no message".into()))?;
-    let content = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let tool_calls = parse_tool_calls(message.get("tool_calls"));
-    let finish = choice.get("finish_reason").and_then(Value::as_str);
-    let status = status_from(&value, finish, &tool_calls, &content);
-    let model = value
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or(header_model)
-        .or_else(|| configured_model.map(str::to_owned));
-    Ok(Some(AgentTurnResult {
+        .collect();
+    let status = status_from(&response, &tool_calls, &content);
+    AgentTurnResult {
         run_id: String::new(),
         turn: 0,
         status,
@@ -426,114 +392,53 @@ fn parse_completion_json(
         artifacts: Vec::new(),
         next: next_for(status),
         error: None,
-        usage: parse_usage(value.get("usage")),
-        streamed,
-        model,
+        usage: AgentUsage {
+            prompt_tokens: u64::from(response.usage.tokens_in),
+            completion_tokens: u64::from(response.usage.tokens_out),
+        },
+        streamed: response.streamed,
+        model: (!response.model.is_empty()).then_some(response.model),
         raw_ref: None,
-    }))
+    }
 }
 
-fn parse_sse(
-    text: &str,
-    header_model: Option<String>,
-    configured_model: Option<&str>,
-) -> Result<Option<AgentTurnResult>> {
-    let mut content = String::new();
-    let mut tool_calls = Vec::new();
-    let mut finish = None;
-    let mut status_marker = None;
-    let mut usage = AgentUsage::default();
-    let mut model = header_model;
-    let mut saw_event = false;
-    for line in text.lines() {
-        let Some(data) = line.strip_prefix("data:") else {
-            continue;
-        };
-        let data = data.trim();
-        if data == "[DONE]" {
-            break;
+fn map_llm_error(error: LlmError) -> AgentError {
+    match error {
+        LlmError::Timeout(ms) => AgentError::Timeout(u64::from(ms)),
+        LlmError::ProviderNotConfigured(message)
+        | LlmError::Transport(message)
+        | LlmError::NetworkForbidden(message) => AgentError::Unavailable(message),
+        LlmError::Config(message) => AgentError::Rejected(message),
+        LlmError::SchemaRejected { schema_id, detail } => {
+            AgentError::Rejected(format!("{schema_id}: {detail}"))
         }
-        let Ok(value) = serde_json::from_str::<Value>(data) else {
-            continue;
-        };
-        saw_event = true;
-        if model.is_none() {
-            model = value
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-        }
-        if let Some(marker) = value.get("mm_status").and_then(Value::as_str) {
-            status_marker = Some(marker.to_owned());
-        }
-        if let Some(event_usage) = value.get("usage") {
-            let parsed = parse_usage(Some(event_usage));
-            if parsed != AgentUsage::default() {
-                usage = parsed;
-            }
-        }
-        let Some(choice) = value
-            .get("choices")
-            .and_then(Value::as_array)
-            .and_then(|choices| choices.first())
-        else {
-            continue;
-        };
-        if let Some(delta) = choice.get("delta") {
-            if let Some(chunk) = delta.get("content").and_then(Value::as_str) {
-                content.push_str(chunk);
-            }
-            for call in parse_tool_calls(delta.get("tool_calls")) {
-                if !tool_calls
-                    .iter()
-                    .any(|known: &AgentToolSummary| known.name == call.name)
-                {
-                    tool_calls.push(call);
-                }
-            }
-        }
-        if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
-            finish = Some(reason.to_owned());
+        LlmError::CacheMiss(message)
+        | LlmError::BudgetExhausted(message)
+        | LlmError::Replay(message) => AgentError::Rejected(message),
+        LlmError::Io(message) | LlmError::Db(message) | LlmError::Journal(message) => {
+            AgentError::Other(message)
         }
     }
-    if !saw_event {
-        return parse_completion_json(text, model, true, configured_model);
-    }
-    let status = status_marker
-        .as_deref()
-        .and_then(parse_status)
-        .unwrap_or_else(|| status_from(&Value::Null, finish.as_deref(), &tool_calls, &content));
-    Ok(Some(AgentTurnResult {
-        run_id: String::new(),
-        turn: 0,
-        status,
-        workspace: std::path::PathBuf::new(),
-        message: content.clone(),
-        summary: content,
-        summary_detail: None,
-        tool_calls,
-        artifacts: Vec::new(),
-        next: next_for(status),
-        error: None,
-        usage,
-        streamed: true,
-        model: model.or_else(|| configured_model.map(str::to_owned)),
-        raw_ref: None,
-    }))
 }
 
 fn status_from(
-    value: &Value,
-    finish: Option<&str>,
+    response: &mm_llm::LlmResponse,
     tool_calls: &[AgentToolSummary],
     content: &str,
 ) -> AgentRunStatus {
-    if let Some(status) = value.get("mm_status").and_then(Value::as_str) {
-        if let Some(status) = parse_status(status) {
-            return status;
-        }
+    if let Some(status) = response
+        .provider_metadata
+        .get("mm_status")
+        .and_then(Value::as_str)
+        .and_then(parse_status)
+    {
+        return status;
     }
-    if matches!(finish, Some("tool_calls" | "length")) || !tool_calls.is_empty() {
+    if matches!(
+        response.finish_reason.as_deref(),
+        Some("tool_calls" | "length")
+    ) || !tool_calls.is_empty()
+    {
         return AgentRunStatus::Running;
     }
     if asks_question(content) {
@@ -573,235 +478,6 @@ fn asks_question(content: &str) -> bool {
         })
 }
 
-fn parse_tool_calls(value: Option<&Value>) -> Vec<AgentToolSummary> {
-    value
-        .and_then(Value::as_array)
-        .map(|calls| {
-            calls
-                .iter()
-                .filter_map(|call| {
-                    let function = call.get("function")?;
-                    let name = function.get("name").and_then(Value::as_str)?;
-                    let arguments = function
-                        .get("arguments")
-                        .and_then(Value::as_str)
-                        .map(|arguments| arguments.chars().take(500).collect());
-                    Some(AgentToolSummary {
-                        name: name.to_owned(),
-                        arguments,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn parse_usage(value: Option<&Value>) -> AgentUsage {
-    let Some(value) = value else {
-        return AgentUsage::default();
-    };
-    AgentUsage {
-        prompt_tokens: value
-            .get("prompt_tokens")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-        completion_tokens: value
-            .get("completion_tokens")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-    }
-}
-
-fn looks_like_sse(text: &str) -> bool {
-    text.lines().any(|line| line.starts_with("data:"))
-}
-
-fn redact_excerpt(body: &[u8]) -> String {
-    let text = String::from_utf8_lossy(body);
-    mm_llm::redact::excerpt(&text, 300)
-}
-
-struct HttpResponse {
-    status: u16,
-    body: Vec<u8>,
-    model: Option<String>,
-}
-
-fn http_request(
-    config: &HermesConfig,
-    method: &str,
-    path: &str,
-    body: Option<&[u8]>,
-    stream: bool,
-) -> std::result::Result<HttpResponse, String> {
-    let target = split_url(&config.base_url)?;
-    let mut stream_tcp = TcpStream::connect((target.host.as_str(), target.port))
-        .map_err(|error| error.to_string())?;
-    stream_tcp
-        .set_read_timeout(Some(Duration::from_millis(config.timeout_ms.max(1_000))))
-        .map_err(|error| error.to_string())?;
-    stream_tcp
-        .set_write_timeout(Some(Duration::from_millis(config.timeout_ms.max(1_000))))
-        .map_err(|error| error.to_string())?;
-    let path = format!("{}{}", target.path.trim_end_matches('/'), path);
-    let mut request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {}\r\nAccept: {}\r\nContent-Type: application/json\r\nConnection: close\r\n",
-        target.host_header,
-        if stream {
-            "text/event-stream"
-        } else {
-            "application/json"
-        }
-    );
-    if let Some(key) = &config.api_key {
-        request.push_str(&format!("Authorization: Bearer {key}\r\n"));
-    }
-    if let Some(body) = body {
-        request.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    }
-    request.push_str("\r\n");
-    stream_tcp
-        .write_all(request.as_bytes())
-        .map_err(|error| error.to_string())?;
-    if let Some(body) = body {
-        stream_tcp
-            .write_all(body)
-            .map_err(|error| error.to_string())?;
-    }
-    stream_tcp.flush().map_err(|error| error.to_string())?;
-    let mut reader = BufReader::new(stream_tcp);
-    let mut status_line = String::new();
-    reader
-        .read_line(&mut status_line)
-        .map_err(|error| error.to_string())?;
-    let status = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|status| status.parse::<u16>().ok())
-        .ok_or_else(|| format!("invalid HTTP status line: {}", status_line.trim()))?;
-    let mut headers = Vec::new();
-    loop {
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|error| error.to_string())?;
-        if line == "\r\n" || line == "\n" || line.is_empty() {
-            break;
-        }
-        headers.push(line.trim_end().to_ascii_lowercase());
-    }
-    let model = headers
-        .iter()
-        .find_map(|line| line.strip_prefix("x-mm-agent-model:"))
-        .map(str::trim)
-        .map(str::to_owned);
-    let chunked = headers
-        .iter()
-        .any(|line| line.starts_with("transfer-encoding:") && line.contains("chunked"));
-    let content_length = headers
-        .iter()
-        .find_map(|line| line.strip_prefix("content-length:"))
-        .and_then(|value| value.trim().parse::<usize>().ok());
-    let body = if chunked {
-        read_chunked(&mut reader)?
-    } else if let Some(length) = content_length {
-        let mut body = vec![0u8; length];
-        reader
-            .read_exact(&mut body)
-            .map_err(|error| error.to_string())?;
-        body
-    } else {
-        let mut body = Vec::new();
-        reader
-            .read_to_end(&mut body)
-            .map_err(|error| error.to_string())?;
-        body
-    };
-    Ok(HttpResponse {
-        status,
-        body,
-        model,
-    })
-}
-
-fn read_chunked(reader: &mut BufReader<TcpStream>) -> std::result::Result<Vec<u8>, String> {
-    let mut body = Vec::new();
-    loop {
-        let mut size_line = String::new();
-        reader
-            .read_line(&mut size_line)
-            .map_err(|error| error.to_string())?;
-        let size = usize::from_str_radix(size_line.trim().split(';').next().unwrap_or("0"), 16)
-            .map_err(|error| format!("invalid chunk size: {error}"))?;
-        if size == 0 {
-            break;
-        }
-        let mut chunk = vec![0u8; size];
-        reader
-            .read_exact(&mut chunk)
-            .map_err(|error| error.to_string())?;
-        body.extend_from_slice(&chunk);
-        let mut crlf = [0u8; 2];
-        reader
-            .read_exact(&mut crlf)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(body)
-}
-
-struct UrlTarget {
-    host: String,
-    host_header: String,
-    port: u16,
-    path: String,
-}
-
-fn split_url(base: &str) -> std::result::Result<UrlTarget, String> {
-    let Some(rest) = base.strip_prefix("http://") else {
-        if base.starts_with("https://") {
-            return Err("https Hermes endpoints are not supported by the local client".into());
-        }
-        return Err(format!("invalid Hermes base URL: {base}"));
-    };
-    let (authority, path) = match rest.find('/') {
-        Some(index) => (&rest[..index], &rest[index..]),
-        None => (rest, ""),
-    };
-    if authority.is_empty() {
-        return Err("Hermes base URL has no host".into());
-    }
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) => (
-            host.to_owned(),
-            port.parse::<u16>()
-                .map_err(|error| format!("invalid Hermes port: {error}"))?,
-        ),
-        None => (authority.to_owned(), 80),
-    };
-    Ok(UrlTarget {
-        host_header: authority.to_owned(),
-        host,
-        port,
-        path: path.to_owned(),
-    })
-}
-
-/// Extract authenticated models from a `/models` body. Tests use it directly.
-pub fn models_from_json(body: &[u8]) -> Vec<String> {
-    serde_json::from_slice::<Value>(body)
-        .ok()
-        .and_then(|value| {
-            value.get("data").and_then(Value::as_array).map(|models| {
-                models
-                    .iter()
-                    .filter_map(|model| model.get("id").and_then(Value::as_str))
-                    .map(str::to_owned)
-                    .collect()
-            })
-        })
-        .unwrap_or_default()
-}
-
 /// A compact artifact from a relative path in agent text.
 pub fn artifact_for_path(path: &str) -> AgentArtifact {
     AgentArtifact {
@@ -816,36 +492,108 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sse_content_is_accumulated_and_done_is_terminal() {
-        let body = concat!(
-            "data: {\"model\":\"fake\",\"choices\":[{\"delta\":{\"content\":\"hel\"}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}]}\n\n",
-            "data: [DONE]\n\n"
-        );
-        let result = parse_sse(body, None, Some("fake")).unwrap().unwrap();
-        assert_eq!(result.message, "hello");
-        assert_eq!(result.status, AgentRunStatus::Done);
-        assert!(result.streamed);
-    }
-
-    #[test]
     fn a_question_waits_for_input() {
-        let body = json!({
-            "choices": [{ "message": { "content": "Which project should I use?" } }]
-        });
-        let result = parse_completion_json(&body.to_string(), None, false, None)
-            .unwrap()
-            .unwrap();
-        assert_eq!(result.status, AgentRunStatus::WaitingInput);
-        assert_eq!(result.next.as_deref(), Some("wait_for_input"));
+        assert_eq!(
+            status_from(
+                &mm_llm::LlmResponse {
+                    call_id: mm_llm::accounting::new_call_id(),
+                    text: "Which project should I use?".into(),
+                    model: "fake".into(),
+                    usage: mm_llm::Usage::default(),
+                    cached: false,
+                    schema_valid: true,
+                    decoder: mm_llm::DecoderKind::None,
+                    tool_calls: Vec::new(),
+                    finish_reason: Some("stop".into()),
+                    provider_metadata: Default::default(),
+                    streamed: false,
+                },
+                &[],
+                "Which project should I use?"
+            ),
+            AgentRunStatus::WaitingInput
+        );
     }
 
     #[test]
-    fn urls_are_split_without_a_url_crate() {
-        let target = split_url("http://127.0.0.1:9000/v1").unwrap();
-        assert_eq!(target.host, "127.0.0.1");
-        assert_eq!(target.port, 9000);
-        assert_eq!(target.path, "/v1");
-        assert!(split_url("https://example.test/v1").is_err());
+    fn tool_calls_keep_the_run_active_and_truncate_arguments() {
+        let response = mm_llm::LlmResponse {
+            call_id: mm_llm::accounting::new_call_id(),
+            text: String::new(),
+            model: "fake".into(),
+            usage: mm_llm::Usage::default(),
+            cached: false,
+            schema_valid: true,
+            decoder: mm_llm::DecoderKind::None,
+            tool_calls: vec![mm_llm::ProviderToolCall {
+                id: "call-1".into(),
+                name: "read".into(),
+                arguments: "x".repeat(900),
+            }],
+            finish_reason: Some("tool_calls".into()),
+            provider_metadata: Default::default(),
+            streamed: false,
+        };
+        let mapped = map_response(response);
+        assert_eq!(mapped.status, AgentRunStatus::Running);
+        assert_eq!(mapped.next.as_deref(), Some("continue"));
+        assert_eq!(mapped.tool_calls[0].name, "read");
+        assert_eq!(
+            mapped.tool_calls[0]
+                .arguments
+                .as_deref()
+                .unwrap()
+                .chars()
+                .count(),
+            500
+        );
+    }
+
+    #[test]
+    fn mm_status_overrides_finish_reason() {
+        let response = mm_llm::LlmResponse {
+            call_id: mm_llm::accounting::new_call_id(),
+            text: "Still working.".into(),
+            model: "fake".into(),
+            usage: mm_llm::Usage::default(),
+            cached: false,
+            schema_valid: true,
+            decoder: mm_llm::DecoderKind::None,
+            tool_calls: Vec::new(),
+            finish_reason: Some("stop".into()),
+            provider_metadata: [("mm_status".into(), Value::String("running".into()))].into(),
+            streamed: true,
+        };
+        assert_eq!(map_response(response).status, AgentRunStatus::Running);
+    }
+
+    #[test]
+    fn a_system_context_precedes_replayed_messages() {
+        let request = AgentRequest {
+            run_id: "run".into(),
+            session_id: "session".into(),
+            user_id: String::new(),
+            input: "ignored when messages exist".into(),
+            kind: crate::AgentKind::Hermes,
+            mode: crate::AgentTurnMode::New,
+            workspace: std::path::PathBuf::from("/tmp"),
+            context: Some("system".into()),
+            messages: vec![
+                crate::AgentMessage {
+                    role: "user".into(),
+                    content: "first".into(),
+                },
+                crate::AgentMessage {
+                    role: "assistant".into(),
+                    content: "second".into(),
+                },
+            ],
+            timeout_ms: 1_000,
+        };
+        let messages = build_messages(&request).unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, Role::System);
+        assert_eq!(messages[1].content, "first");
+        assert_eq!(messages[2].role, Role::Assistant);
     }
 }

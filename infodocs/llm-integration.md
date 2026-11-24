@@ -19,9 +19,14 @@ endpoint is out of scope: no live provider call has been made in this environmen
 ## 1. The shape of the integration
 
 ```text
-  caller (a struct that owns Arc<dyn LlmClient>)
+  caller (LlmRequest; no provider transport, endpoint, or key)
         │
-        │  LlmRequest { purpose, messages, schema?, cache, trace_id, … }
+        ▼
+  AgentstreamLlm (mm-llm-agentstream) ── select profile: default | hermes
+        │
+        ├─ required llm_request append ── fail ──► configuration/journal error, no provider call
+        ├─ live bus (request / delta / response / error) ──► activity dock projection
+        │
         ▼
   LlmService ── route ──► ThresholdRouter        (deterministic, cheapest sufficient model)
         │           │
@@ -34,6 +39,7 @@ endpoint is out of scope: no live provider call has been made in this environmen
         │      validate ── fail ──► bounded repair ── still bad ──► REJECT     │
         │           │  (never coerce)                                         │
         │           ▼                                                         │
+        ├── one llm_attempt per actual provider round, one terminal event     │
         └── one llm_calls row + llm_repair_attempts rows + audited             │
             llm.accounting.commit record + one mm:LlmCall node ◄──────────────┘
 ```
@@ -47,9 +53,12 @@ Two rules shape everything below, and they are stated at the top of `crates/mm-l
    `LlmService` (the facade), never on an adapter's JSON. That is what makes a second provider a
    small change rather than a second implementation of the contract.
 
-Rule 2 has a documented, deliberate reading: a caller may hold an `Arc<dyn LlmClient>` (the three
-in-tree drivers do — §3.4), because the trait is provider-neutral. What it may not do is reach a
-provider's wire format, or construct an adapter's internals.
+Rule 2 now has one enforcement point: `AgentstreamLlm` is the only public live client, and only
+`crates/mm-llm-agentstream` constructs `OpenAiClient` or `LlmService`. The `LlmClient` trait remains
+the neutral seam for scripted and replay clients injected into the gateway. A caller may type its
+dependency as `Arc<dyn LlmClient>`, but production passes the gateway; reaching an adapter's wire
+format or constructing one directly is what the workspace source guard forbids. `MM_LLM_AGENTSTREAM=off`
+makes every live call return one configuration error and never falls back to a direct client.
 
 ## 2. What a call is
 
@@ -62,19 +71,22 @@ provider's wire format, or construct an adapter's internals.
 | `SchemaId` | The name of a registered strict schema. `None` means an unstructured call. |
 | `DecoderKind` | `llguidance`, `xgrammar`, `provider_native`, `none` — which decoder produced (or was asked to produce) the output. `is_constrained()` is true for the first two only. |
 | `CacheMode` | `Use` (default: consult and populate), `Bypass` (ignore the cache, still account), `Refresh` (ignore a hit, overwrite), `Replay` (serve a recorded session only; a miss is an error, never a request). |
-| `LlmRequest` | `purpose`, `model: Option<String>` (the router fills it), `messages`, `schema`, `max_tokens` (default 1024), `temperature` (default **0.0**), `cache`, `trace_id`. Builder: `new`, `with_schema`, `with_model`, `with_cache`, `with_trace`. |
-| `LlmResponse` | `call_id` (shared with the ledger row and the log record), `text`, the model that actually answered, `Usage`, `cached`, `schema_valid`, `decoder`. |
-| `LlmClient` | `complete`, `provider`, `decoder`. An adapter knows one provider and does not cache, route, retry, account or validate. |
+| `LlmRequest` | `purpose`, `model: Option<String>` (the router fills it), `messages`, `schema`, `max_tokens` (default 1024), `temperature` (default **0.0**), `cache`, `trace_id`; the gateway adds `provider` (profile), `call_id`, `timeout_ms`, and whether the caller asked to stream. Builder: `new`, `with_schema`, `with_model`, `with_cache`, `with_trace`, `with_provider`, `with_timeout`. |
+| `LlmResponse` | `call_id` (shared with the ledger row, the journal event, and the log record), `text`, the model that actually answered, `Usage`, `cached`, `schema_valid`, `decoder`, `tool_calls`, `finish_reason`, `streamed`. |
+| `LlmClient` | `complete`, `complete_stream`, `provider`, `provider_for`, `decoder`. An adapter knows one provider and does not cache, route, retry, account or validate. The gateway is the live implementation; tests inject mocks/replay. |
 
 `Usage { tokens_in, tokens_out, cost_micros, latency_ms }` is what one call cost. Cost is in
 **millionths of a currency unit** so money is never a float.
 
-## 3. The pipeline: `LlmService`
+## 3. The pipeline: the gateway around `LlmService`
 
-`crates/mm-llm/src/service.rs` is "the one place a caller touches": every guarantee is enforced in
-one order, for every call. `LlmService::new` takes the config, the SQLite store, the graph handle,
-the logger, and **one** adapter, and picks the decoder backend from the client (what knows whether
-its endpoint exposes logits) falling back to `config/llm.toml`'s `defaults.decoder`.
+Callers touch `AgentstreamLlm`, which selects a provider profile, appends the required journal
+request, delegates to one `LlmService`, and publishes live events. `crates/mm-llm/src/service.rs`
+is the substrate facade below it: every accounting, cache, validation, repair and provenance
+guarantee is enforced in one order, for every call. `LlmService::new` takes the config, the SQLite
+store, the graph handle, the logger, and **one** adapter, and picks the decoder backend from the
+client (what knows whether its endpoint exposes logits) falling back to
+`config/llm.toml`'s `defaults.decoder`.
 
 The order, and why each step sits where it does:
 
@@ -141,22 +153,23 @@ embedding: a cache whose behaviour changes when a model ships is not a cache.
 `mm-memory` reuses exactly this function for its vector index (`crates/mm-memory/src/index.rs`), so
 there is one embedding in the system, not two.
 
-### 3.4 The service is the facade, but three drivers hold the client
+### 3.4 The gateway is the only live client
 
-Accurate statement of the current wiring: the substrate's *guarantees* live in `LlmService`, and the
-three in-tree model callers each hold `Arc<dyn LlmClient>` instead:
+Accurate statement of the current wiring: application paths hold `Arc<dyn LlmClient>` only because
+that is the neutral call seam, but the value they receive is the gateway. The gateway owns the
+journal, profile selection, timeout, `LlmService`, and the live bus.
 
 | Caller | Holds | Consequence |
 |---|---|---|
-| `HostedCore` (`crates/mm-decision/src/hosted.rs`) | `client` + its own `SchemaRegistry` | Validates and decodes itself; **no** ledger row, cache, grammar persistence or provenance node for this path. |
-| `LlmScanDriver` (`crates/mm-metacog/src/scan.rs`) | `client` + `Arc<SchemaRegistry>` | Same: `client.complete` → `registry.validate` → `decode` → `ScanResult::validate`. |
-| `LlmDiagnoser` (`crates/mm-metaanalysis/src/diagnosis.rs`) | `Arc<dyn LlmClient>` | Parses the answer with `serde_json::from_str` by hand (§7.4). |
+| Server controller, CME, process, automation, summarizer | `Arc<dyn LlmClient>` backed by `AgentstreamLlm` | Journal, ledger, cache, schema validation and provenance all apply. |
+| Hermes (`crates/mm-agent/src/hermes.rs`) | gateway profile `hermes` | The same journal, scoped to `agent/<run_id>`, with one terminal turn back to the agent. |
+| CLI hosted decision / replay / schema-reject | gateway over a data-layer or in-memory journal | Production writes the real journal; tests keep the same path with an explicit in-memory store. |
+| Tests and scripted runs | gateway with an injected `MockClient` / replay client | Scripting changes only the inner client; journaling and live events still run. |
 
-So "every call is accounted" is true of `LlmService` calls and **not** true of these three. The CLI
-wires `HostedCore` for `decide --core hosted` and `conformance --core hosted`; two of the three
-drivers have no production wiring at all (§11). This is the single most important thing to know
-before adding a caller: either go through `LlmService`, or accept that you are bypassing the ledger,
-cache and provenance.
+`HostedCore`, `LlmScanDriver`, and `LlmDiagnoser` still validate/decode their own structured answers,
+but a live call reaches them through the gateway, so the ledger, cache, and provenance are no longer
+bypassed in production. Passing a raw adapter into one of those constructors would still bypass the
+gateway; the source guard makes that construction a visible, deliberate change.
 
 ## 4. Providers, and the two that ship
 
@@ -192,7 +205,9 @@ The `mock-small` spec is declared like any other model on purpose: routing and c
 exercise a real spec rather than a special case. `LlmConfig::load_or_default` is what the CLI uses
 (`crates/mm-cli/src/llm_cmd.rs:llm_config`), so a missing file is a default, not a crash.
 
-Environment: `OPENAI_BASE_URL`, `OPENAI_API_KEY` (`ProviderEnv`). Cache directory:
+Environment: `OPENAI_BASE_URL`, `OPENAI_API_KEY` (`ProviderEnv`) for the `default` profile, and
+`MM_AGENT_HERMES_BASE_URL` / `MM_AGENT_HERMES_API_KEY` / `MM_AGENT_HERMES_MODEL` for `hermes`.
+`MM_LLM_AGENTSTREAM` is the live-call kill switch (default on). Cache directory:
 `resolve_cache_dir(root, cfg.cache_dir)`.
 
 ## 6. Structured results: when the system uses them, and how it guarantees them
@@ -447,7 +462,7 @@ Honest status at `HEAD = 0204d73`. The substrate is heavily tested; the *consume
 
 | Path | State |
 |---|---|
-| `mm-cli decide --core hosted`, `conformance --core hosted` | **Wired.** Builds `OpenAiClient` from config when a provider is configured, registers `HostedDecisionReply`, else `BuiltCore::unavailable(id, reason)` — the firewall then degrades to rules + escalate rather than fabricating (`crates/mm-cli/src/decision.rs:257–306`). |
+| `mm-cli decide --core hosted`, `conformance --core hosted` | **Wired through the gateway.** Builds `AgentstreamLlm` over the data layer when a provider is configured, registers `HostedDecisionReply`, else `BuiltCore::unavailable(id, reason)` — the firewall then degrades to rules + escalate rather than fabricating. |
 | `mm-cli llm …` (`stats`, `replay`, `verify-cache`, `schema-reject`, `routes`, `grammars`) | **Wired**, over the store, a recorded session, or a mock client. This is the substrate's operator surface. |
 | `LlmScanDriver` (metacog) | **Tests only.** `mm-cli episode` runs `MockScanDriver` (`crates/mm-cli/src/episode.rs:468`), i.e. the scan is a fixture, not a call, in the shipped CLI path. |
 | `LlmDiagnoser` (metaanalysis) | **No production wiring.** The default is `HeuristicDiagnoser` (`diagnosis.rs:360`, `lessons.rs:359`). |
@@ -467,6 +482,8 @@ complete cost/provenance story for "what did the being spend on models today" re
 # The substrate as a unit.
 cargo test -p mm-llm                      # accounting, cache_replay, grammar_conformance,
                                           # no_hardcoded_endpoint, routing, schema_reject
+# The gateway and the workspace source guard.
+cargo test -p mm-llm-agentstream          # journal order, profiles, live bus, no_direct_clients
 # Every malformed fixture is rejected, for the right reason, one repair row each.
 mm-cli llm schema-reject --fixtures bench/llm/malformed --assert-all-rejected
 # Every ledger row is complete.
@@ -489,12 +506,13 @@ lives at `bench/tools/adversarial/`; the unused selection split at `bench/tools/
 
 ## 13. Reading order for the code
 
-1. `crates/mm-llm/src/lib.rs` — the two rules, and the module map.
-2. `client.rs` — the vocabulary; everything else is behaviour around these types.
-3. `service.rs` — the pipeline in §3, and `call_structured` / `ensure_valid`.
-4. `cached.rs` + `semantic_cache.rs` — what a hit means and when one is allowed.
-5. `schema.rs` + `grammar.rs` — strictness and constrained decoding.
-6. `routing.rs`, `accounting.rs`, `provenance.rs`, `redact.rs`, `replay.rs` — the guarantees around
+1. `crates/mm-llm-agentstream/src/lib.rs` — the gateway, profiles, journal contract, live events.
+2. `crates/mm-llm/src/lib.rs` — the two substrate rules, and the module map.
+3. `client.rs` — the vocabulary; everything else is behaviour around these types.
+4. `service.rs` — the pipeline in §3, and `call_structured` / `ensure_valid`.
+5. `cached.rs` + `semantic_cache.rs` — what a hit means and when one is allowed.
+6. `schema.rs` + `grammar.rs` — strictness and constrained decoding.
+7. `routing.rs`, `accounting.rs`, `provenance.rs`, `redact.rs`, `replay.rs` — the guarantees around
    a call.
-7. `crates/mm-decision/src/hosted.rs` and `crates/mm-metacog/src/scan.rs` — the two structured
-   callers, i.e. how a caller is supposed to look.
+8. `crates/mm-decision/src/hosted.rs` and `crates/mm-metacog/src/scan.rs` — two structured callers;
+   in production their client is the gateway.

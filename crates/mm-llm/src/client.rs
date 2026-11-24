@@ -492,6 +492,14 @@ pub trait LlmClient: Send + Sync {
     /// The provider's name, recorded in the ledger.
     fn provider(&self) -> &str;
 
+    /// The provider selected for `req`.
+    ///
+    /// A client that dispatches by request (a provider pool) overrides this so
+    /// the ledger and cache key name the selected profile rather than the pool.
+    fn provider_for<'a>(&'a self, _req: &'a LlmRequest) -> &'a str {
+        self.provider()
+    }
+
     /// True when the adapter makes schema-valid output by construction.
     fn decoder(&self) -> DecoderKind {
         DecoderKind::None

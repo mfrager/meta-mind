@@ -22,7 +22,6 @@ use serde_json::{json, Value};
 use crate::state::AppState;
 
 use super::super::exec::ToolResult;
-use super::super::intro::llm_config;
 
 pub async fn goal_add(app: &AppState, input: &Value) -> ToolResult {
     let Some(being) = &app.being else {
@@ -233,16 +232,13 @@ async fn hosted_answer(
     question: &DecisionQuestion,
     state: &DecisionState,
 ) -> Result<mm_decision::DecisionAnswer, String> {
-    let cfg = llm_config(app);
-    let client = crate::llm_feed::observed_openai(
-        &cfg,
-        app.llm_activity.as_ref(),
-        mm_llm::CallContext::new("controller"),
-    )
-    .ok_or_else(|| "no language-model provider is configured".to_string())?;
+    let client = app
+        .llm
+        .as_ref()
+        .ok_or_else(|| "no language-model provider is configured".to_string())?;
     let mut registry = SchemaRegistry::new();
     hosted::register(&mut registry).map_err(|err| err.to_string())?;
-    let core = HostedCore::new(client, std::sync::Arc::new(registry), 256);
+    let core = HostedCore::new(Arc::clone(client), Arc::new(registry), 256);
     core.answer(question, state)
         .await
         .map_err(|err| err.to_string())

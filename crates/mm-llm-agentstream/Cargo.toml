@@ -26,6 +26,9 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 ulid = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [package.metadata.metamind]
 owned_by_phase = 3
 capability = "mm:AgentstreamLlm"

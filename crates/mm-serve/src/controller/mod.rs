@@ -17,7 +17,7 @@ pub(crate) mod turn;
 
 use std::sync::Arc;
 
-use mm_llm::{CallContext, LlmClient, LlmConfig};
+use mm_llm::{LlmClient, ProviderEnv};
 
 use crate::state::AppState;
 
@@ -64,7 +64,7 @@ struct ScriptCall {
 
 /// How a controller turn finds a model.
 pub enum ControllerModel {
-    /// `OpenAiClient` when both provider variables are set, otherwise no model.
+    /// The agentstream gateway when both provider variables are set.
     FromEnv,
     /// Do not call a model, even when the variables are set.
     Off,
@@ -72,20 +72,25 @@ pub enum ControllerModel {
     Scripted(Arc<dyn LlmClient>),
 }
 
-pub(crate) fn resolve_client(app: &AppState, cfg: &LlmConfig) -> Option<Arc<dyn LlmClient>> {
+pub(crate) fn resolve_client(app: &AppState) -> Option<Arc<dyn LlmClient>> {
     let mode = app
         .controller_model
         .lock()
         .unwrap_or_else(|err| err.into_inner());
     match &*mode {
         ControllerModel::Off => None,
-        ControllerModel::Scripted(client) => {
-            Some(app.observed(Arc::clone(client), CallContext::new("controller")))
+        ControllerModel::Scripted(client) => match &app.llm {
+            Some(gateway) => {
+                gateway.set_injected_client(Some(Arc::clone(client)));
+                Some(Arc::clone(gateway) as Arc<dyn LlmClient>)
+            }
+            None => Some(Arc::clone(client)),
+        },
+        ControllerModel::FromEnv => {
+            ProviderEnv::from_env()?;
+            app.llm
+                .as_ref()
+                .map(|gateway| Arc::clone(gateway) as Arc<dyn LlmClient>)
         }
-        ControllerModel::FromEnv => crate::llm_feed::openai_client(
-            cfg,
-            app.llm_activity.as_ref(),
-            CallContext::new("controller"),
-        ),
     }
 }

@@ -13,7 +13,7 @@
 //! was.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -50,7 +50,7 @@ pub struct LlmService {
     graph: GraphHandle,
     logger: Arc<Logger>,
     client: Arc<dyn LlmClient>,
-    schemas: SchemaRegistry,
+    schemas: RwLock<SchemaRegistry>,
     backend: Option<Box<dyn DecoderBackend>>,
     router: Box<dyn Router>,
     cache: FileExactCache,
@@ -92,6 +92,10 @@ impl LlmClient for LlmService {
         self.client.provider()
     }
 
+    fn provider_for<'a>(&'a self, req: &'a LlmRequest) -> &'a str {
+        self.client.provider_for(req)
+    }
+
     fn decoder(&self) -> DecoderKind {
         self.client.decoder()
     }
@@ -121,7 +125,7 @@ impl LlmService {
             graph,
             logger,
             client,
-            schemas: SchemaRegistry::new(),
+            schemas: RwLock::new(SchemaRegistry::new()),
             backend,
             router,
             cache,
@@ -131,16 +135,20 @@ impl LlmService {
     }
 
     /// Register a type's strict schema, so structured calls can name it.
-    pub fn register<T: StructuredOut>(&mut self) -> Result<()> {
-        schema::register_structured::<T>(&mut self.schemas)
+    pub fn register<T: StructuredOut>(&self) -> Result<()> {
+        let mut schemas = self.schemas.write().unwrap_or_else(|e| e.into_inner());
+        schema::register_structured::<T>(&mut schemas)
     }
 
     /// Register an ad-hoc schema by id.
     ///
     /// The service keeps the authoritative copy for validation, and forwards it
     /// to the adapter so provider-native structured output sees the same schema.
-    pub fn register_schema(&mut self, id: SchemaId, schema: Value) -> Result<()> {
-        self.schemas.register(id.clone(), schema.clone())?;
+    pub fn register_schema(&self, id: SchemaId, schema: Value) -> Result<()> {
+        self.schemas
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .register(id.clone(), schema.clone())?;
         self.client.provide_schema(id, schema)
     }
 
@@ -180,8 +188,8 @@ impl LlmService {
     }
 
     /// The registered schemas.
-    pub fn schemas(&self) -> &SchemaRegistry {
-        &self.schemas
+    pub fn schemas(&self) -> std::sync::RwLockReadGuard<'_, SchemaRegistry> {
+        self.schemas.read().unwrap_or_else(|e| e.into_inner())
     }
 
     /// The provider adapter's name.
@@ -232,9 +240,9 @@ impl LlmService {
         sink: &mut Option<&mut dyn DeltaSink>,
     ) -> Result<LlmResponse> {
         let sink = &mut *sink;
-        let provider = self.client.provider().to_string();
+        let provider = self.client.provider_for(&req).to_string();
         let decoder = self.client.decoder();
-        let call_id = accounting::new_call_id();
+        let call_id = req.call_id.unwrap_or_else(accounting::new_call_id);
         let started = Instant::now();
 
         // ---- route ---------------------------------------------------------
@@ -255,7 +263,13 @@ impl LlmService {
         // A schema that is named but not registered can never be enforced, so the
         // call is refused before a provider is asked rather than after.
         if let Some(schema_id) = resolved.schema.clone() {
-            if self.schemas.get(&schema_id).is_none() {
+            if self
+                .schemas
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&schema_id)
+                .is_none()
+            {
                 return Err(LlmError::Config(format!(
                     "schema `{schema_id}` is not registered with this service"
                 )));
@@ -375,7 +389,12 @@ impl LlmService {
 
         // ---- provider ------------------------------------------------------
         let response = match complete_provider(&self.client, &resolved, sink).await {
-            Ok(response) => response,
+            Ok(mut response) => {
+                // The gateway owns call identity: the ledger, the provider
+                // response, and every agentstream event share this id.
+                response.call_id = call_id;
+                response
+            }
             Err(e) => {
                 let mut account =
                     CallAccount::started(call_id, resolved.purpose, &provider, &prompt_hash);
@@ -479,23 +498,31 @@ impl LlmService {
         req: LlmRequest,
     ) -> Result<(T, LlmResponse)> {
         let id = T::schema_id();
-        let schema_value = self.schemas.get(&id).cloned().ok_or_else(|| {
-            LlmError::Config(format!(
-                "schema `{id}` is not registered with this service; call `register::<T>()`"
-            ))
-        })?;
+        let schema_value = self
+            .schemas
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| {
+                LlmError::Config(format!(
+                    "schema `{id}` is not registered with this service; call `register::<T>()`"
+                ))
+            })?;
         self.compile_grammar(&id, &schema_value).await?;
 
         let mut req = req;
         req.schema = Some(id.clone());
         let response = self.call(req).await?;
-        let value =
-            self.schemas
-                .validate(&id, &response.text)
-                .map_err(|e| LlmError::SchemaRejected {
-                    schema_id: id.to_string(),
-                    detail: e.to_string(),
-                })?;
+        let value = self
+            .schemas
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .validate(&id, &response.text)
+            .map_err(|e| LlmError::SchemaRejected {
+                schema_id: id.to_string(),
+                detail: e.to_string(),
+            })?;
         let typed: T = schema::decode(value).map_err(|e| LlmError::SchemaRejected {
             schema_id: id.to_string(),
             detail: e.to_string(),
@@ -529,7 +556,12 @@ impl LlmService {
         started: Instant,
         repairs: &mut Vec<RepairRecord>,
     ) -> Result<LlmResponse> {
-        let mut last = match self.schemas.validate(schema_id, &response.text) {
+        let mut last = match self
+            .schemas
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .validate(schema_id, &response.text)
+        {
             Ok(_) => return Ok(response),
             Err(e) => e,
         };
@@ -564,7 +596,12 @@ impl LlmService {
             .await?;
 
             match self.client.complete(resolved).await {
-                Ok(candidate) => match self.schemas.validate(schema_id, &candidate.text) {
+                Ok(mut candidate) => match self
+                    .schemas
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .validate(schema_id, &candidate.text)
+                {
                     Ok(_) => {
                         repairs.push(RepairRecord {
                             call_id,
@@ -580,6 +617,7 @@ impl LlmService {
                         account.tokens_out += candidate.usage.tokens_out;
                         account.cost_micros += candidate.usage.cost_micros;
                         account.latency_ms = elapsed_ms(started).max(account.latency_ms);
+                        candidate.call_id = call_id;
                         return Ok(candidate);
                     }
                     Err(e) => {

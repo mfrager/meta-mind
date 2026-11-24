@@ -1,8 +1,6 @@
 //! The first turn of a session. Facts are gathered by code. A model may rephrase
 //! them and may not add a number they do not contain.
 
-use std::sync::Arc;
-
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -133,10 +131,7 @@ pub async fn facts(app: &AppState) -> IntroFacts {
 pub async fn compose(app: &AppState) -> String {
     let facts = facts(app).await;
     let fallback = deterministic_text(&facts);
-    let Some(client) = client_for(app) else {
-        return fallback;
-    };
-    let Some(service) = super::turn::service(app, client) else {
+    let Some(client) = resolve_client(app) else {
         return fallback;
     };
     let voice = match &app.being {
@@ -166,22 +161,10 @@ Do not add a goal, a metric, or a capability.",
     )
     .with_schema(mm_llm::SchemaId::new("controller.intro"))
     .with_cache(mm_llm::CacheMode::Bypass);
-    match service.call(request).await {
+    match client.complete(&request).await {
         Ok(response) => accept_phrasing(&response.text, &facts).unwrap_or(fallback),
         Err(_) => fallback,
     }
-}
-
-fn client_for(app: &AppState) -> Option<Arc<dyn mm_llm::LlmClient>> {
-    let cfg = llm_config(app);
-    resolve_client(app, &cfg)
-}
-
-pub(crate) fn llm_config(app: &AppState) -> mm_llm::LlmConfig {
-    let path = mm_core::Config::repo_root().join("config/llm.toml");
-    let mut cfg = mm_llm::LlmConfig::load_or_default(&path).unwrap_or_default();
-    cfg.cache_dir = app.cfg.store.data_dir.join("llm-cache");
-    cfg
 }
 
 pub fn frames(request_id: &str, session_id: &str, text: &str) -> Vec<ChatFrame> {
