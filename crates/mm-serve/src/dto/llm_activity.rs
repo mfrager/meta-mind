@@ -50,6 +50,27 @@ pub enum LlmActivityEvent {
         /// Model round inside the phase.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         round: Option<u32>,
+        /// What caused this call (`user_turn`, `tool_result`, `budget_retry`, …).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trigger: Option<String>,
+        /// The call whose outcome caused this one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_call_id: Option<String>,
+        /// The plan or process step being served.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        step: Option<String>,
+        /// The tool whose result prompted this call.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool: Option<String>,
+        /// Stable call-site label (`cme.think`, `controller.turn`, …).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<String>,
+        /// 1 for the first round, 2 for an escalation retry.
+        #[serde(default)]
+        attempt: u32,
+        /// The call ceiling actually applied, when one applied.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
         /// Why the call is being made (`Purpose::as_str`).
         purpose: String,
         /// The provider adapter's name.
@@ -104,10 +125,30 @@ pub enum LlmActivityEvent {
         tokens_out: u32,
         /// Wall-clock latency.
         latency_ms: u64,
-        /// Redacted, bounded reply excerpt.
+        /// Redacted, bounded reply excerpt (the one-line row summary).
         text: String,
         /// How many tool calls the answer proposed.
         tool_calls: u32,
+        /// Redacted, bounded one-line preview of the proposed calls (name and
+        /// arguments). A fast-path reply or any answer carried by a tool call
+        /// is only visible here, because `text` is the provider's content field.
+        #[serde(default)]
+        tool_preview: String,
+        /// The full streamed body, capped by `MM_LLM_ACTIVITY_STREAM_CHARS`.
+        #[serde(default)]
+        stream_text: String,
+        /// Characters in the body before the cap.
+        #[serde(default)]
+        stream_chars: u32,
+        /// True when `stream_text` was cut at the cap.
+        #[serde(default)]
+        stream_truncated: bool,
+        /// Reasoning the model did before answering, when the provider reported it.
+        #[serde(default)]
+        reasoning_chars: u32,
+        /// 1 for the first round, 2 for an escalation retry.
+        #[serde(default)]
+        attempt: u32,
     },
     /// A call failed.
     Error {
@@ -125,6 +166,20 @@ pub enum LlmActivityEvent {
         latency_ms: u64,
         /// Streaming characters reported before the failure.
         partial_chars: u32,
+        /// Visible characters the provider produced before the failure.
+        /// Mirrors `partial_chars` for the wire contract, where an error and a
+        /// response carry the same character-count field name.
+        #[serde(default)]
+        stream_chars: u32,
+        /// Reasoning characters the model produced before it failed.
+        #[serde(default)]
+        reasoning_chars: u32,
+        /// The provider's finish reason, when it reported one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        finish_reason: Option<String>,
+        /// 1 for the first round, 2 for an escalation retry.
+        #[serde(default)]
+        attempt: u32,
     },
 }
 

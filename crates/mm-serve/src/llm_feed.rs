@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use mm_llm::redact::Redactor;
-use mm_llm::{CallContext, LlmRequest, LlmResponse, Role};
+use mm_llm::redact::{excerpt, Redactor};
+use mm_llm::{CallContext, LlmRequest, LlmResponse, ProviderToolCall, Role};
 use mm_llm_agentstream::LiveLlmEvent;
 use tokio::sync::broadcast;
 
@@ -26,8 +26,12 @@ use crate::dto::llm_activity::{LlmActivityEvent, LlmActivitySnapshot};
 pub const DEFAULT_CAPACITY: usize = 2_000;
 /// Default reply preview length (`MM_LLM_ACTIVITY_PREVIEW_CHARS`).
 pub const DEFAULT_REPLY_PREVIEW_CHARS: usize = 4_000;
+/// Default cap on the rolled-up streamed body (`MM_LLM_ACTIVITY_STREAM_CHARS`).
+pub const DEFAULT_STREAM_CHARS: usize = 20_000;
 /// Request previews show the last user message, bounded to this many chars.
 pub const REQUEST_PREVIEW_CHARS: usize = 240;
+/// Tool-call previews (name and arguments) are bounded to this many chars.
+pub const TOOL_PREVIEW_CHARS: usize = 600;
 /// Frames buffered for live subscribers before a slow client is told to resync.
 const BROADCAST_CAPACITY: usize = 256;
 
@@ -36,6 +40,9 @@ const BROADCAST_CAPACITY: usize = 256;
 struct PreviewPolicy {
     request_chars: usize,
     reply_chars: usize,
+    /// Cap on the rolled-up streamed body carried by the terminal event. The
+    /// deltas keep their own smaller cap; this is the authoritative copy.
+    stream_chars: usize,
     full_prompts: bool,
     redactor: Redactor,
 }
@@ -46,6 +53,7 @@ impl PreviewPolicy {
             request_chars: REQUEST_PREVIEW_CHARS,
             reply_chars: env_usize("MM_LLM_ACTIVITY_PREVIEW_CHARS", DEFAULT_REPLY_PREVIEW_CHARS)
                 .max(1),
+            stream_chars: env_usize("MM_LLM_ACTIVITY_STREAM_CHARS", DEFAULT_STREAM_CHARS).max(1),
             full_prompts: std::env::var("MM_LLM_ACTIVITY_PROMPTS")
                 .map(|value| value.trim().eq_ignore_ascii_case("full"))
                 .unwrap_or(false),
@@ -84,8 +92,71 @@ impl PreviewPolicy {
         self.redactor.excerpt(text, self.reply_chars)
     }
 
+    /// The rolled-up body and whether it was cut at the stream cap.
+    fn stream(&self, text: &str) -> (String, bool) {
+        let (body, _) = self.redactor.apply(text);
+        let chars: Vec<char> = body.chars().collect();
+        if chars.len() <= self.stream_chars {
+            (body, false)
+        } else {
+            (chars.into_iter().take(self.stream_chars).collect(), true)
+        }
+    }
+
     fn error(&self, message: &str) -> String {
         self.redactor.excerpt(message, self.request_chars.max(512))
+    }
+
+    /// The proposed calls as one bounded line: `name {arguments}`.
+    ///
+    /// A reply the provider put in a tool call — the Interpret fast path's
+    /// `metamind.approve` — has no content text, so this preview is the only
+    /// place the dock can show what the model actually returned. Every call is
+    /// named even when another call's arguments are large: a count alone would
+    /// let a multi-call round look like it called one tool.
+    fn tools(&self, calls: &[ProviderToolCall]) -> String {
+        if calls.is_empty() {
+            return String::new();
+        }
+        // Reserve the names and separators first, then divide the rest of the
+        // budget between the arguments so no call is cut out entirely.
+        let name_chars: usize = calls.iter().map(|call| call.name.chars().count()).sum();
+        let separators = 3usize.saturating_mul(calls.len().saturating_sub(1));
+        let overhead = name_chars
+            .saturating_add(calls.len())
+            .saturating_add(separators);
+        // One character per call is reserved for its cut marker, so the whole
+        // line fits the cap with every name intact.
+        let per_call = TOOL_PREVIEW_CHARS
+            .saturating_sub(overhead)
+            .saturating_sub(calls.len())
+            .checked_div(calls.len())
+            .unwrap_or(0);
+        let entries = calls
+            .iter()
+            .map(|call| {
+                // With too many long names for even one argument character, the
+                // names are still all that is shown.
+                if per_call == 0 {
+                    return call.name.clone();
+                }
+                let (arguments, _) = self.redactor.apply(call.arguments.trim());
+                let arguments_chars = arguments.chars().count();
+                let mut arguments = excerpt(&arguments, per_call);
+                if arguments_chars > per_call {
+                    arguments.push('…');
+                }
+                format!("{} {arguments}", call.name)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let mut preview = excerpt(&entries, TOOL_PREVIEW_CHARS);
+        // Each cut argument is already marked in place. Only a cut list needs its
+        // own marker, and a silent cut would read as a complete call.
+        if entries.chars().count() > TOOL_PREVIEW_CHARS {
+            preview.push('…');
+        }
+        preview
     }
 }
 
@@ -207,8 +278,9 @@ impl LlmActivityFeed {
                 context,
                 provider,
                 streamed,
+                attempt,
                 request,
-            } => self.request(call_id, &context, &provider, streamed, &request),
+            } => self.request(call_id, &context, &provider, streamed, attempt, &request),
             LiveLlmEvent::Delta {
                 call_id,
                 text,
@@ -218,15 +290,28 @@ impl LlmActivityFeed {
             LiveLlmEvent::Response {
                 call_id,
                 latency_ms,
+                attempt,
                 response,
-            } => self.response(call_id, latency_ms, &response),
+            } => self.response(call_id, latency_ms, attempt, &response),
             LiveLlmEvent::Error {
                 call_id,
                 latency_ms,
+                attempt,
                 partial_chars,
+                reasoning_chars,
+                finish_reason,
                 kind,
                 message,
-            } => self.error_parts(call_id, latency_ms, partial_chars, &kind, &message),
+            } => self.error_parts(
+                call_id,
+                latency_ms,
+                attempt,
+                partial_chars,
+                reasoning_chars,
+                finish_reason,
+                &kind,
+                &message,
+            ),
         }
     }
 }
@@ -238,6 +323,7 @@ impl LlmActivityFeed {
         context: &CallContext,
         provider: &str,
         streamed: bool,
+        attempt: u32,
         request: &LlmRequest,
     ) {
         self.publish(LlmActivityEvent::Request {
@@ -250,6 +336,13 @@ impl LlmActivityFeed {
             run_id: context.run_id.clone(),
             pass: context.pass.clone(),
             round: context.round,
+            trigger: context.trigger.clone(),
+            parent_call_id: context.parent_call_id.clone(),
+            step: context.step.clone(),
+            tool: context.tool.clone(),
+            origin: context.origin.clone(),
+            attempt,
+            timeout_ms: request.timeout_ms,
             purpose: request.purpose.as_str().to_string(),
             provider: provider.to_string(),
             model: request.model.clone(),
@@ -273,7 +366,12 @@ impl LlmActivityFeed {
         });
     }
 
-    fn response(&self, call_id: ulid::Ulid, latency_ms: u64, response: &LlmResponse) {
+    fn response(&self, call_id: ulid::Ulid, latency_ms: u64, attempt: u32, response: &LlmResponse) {
+        // The response already holds the whole streamed body; the deltas were
+        // only ever a preview. Rolling it up here is what makes the RSP line
+        // complete without widening every fragment.
+        let stream_chars = response.text.chars().count() as u32;
+        let (stream_text, stream_truncated) = self.preview.stream(&response.text);
         let status = if response.cached {
             "cached"
         } else if !response.schema_valid {
@@ -293,16 +391,26 @@ impl LlmActivityFeed {
             latency_ms,
             text: self.preview.reply(&response.text),
             tool_calls: response.tool_calls.len() as u32,
+            tool_preview: self.preview.tools(&response.tool_calls),
+            stream_text,
+            stream_chars,
+            stream_truncated,
+            reasoning_chars: response.reasoning_chars,
+            attempt,
         });
     }
 }
 
 impl LlmActivityFeed {
+    #[allow(clippy::too_many_arguments)]
     fn error_parts(
         &self,
         call_id: ulid::Ulid,
         latency_ms: u64,
+        attempt: u32,
         partial_chars: u32,
+        reasoning_chars: u32,
+        finish_reason: Option<String>,
         kind: &str,
         message: &str,
     ) {
@@ -314,6 +422,10 @@ impl LlmActivityFeed {
             error: self.preview.error(message),
             latency_ms,
             partial_chars,
+            stream_chars: partial_chars,
+            reasoning_chars,
+            finish_reason,
+            attempt,
         });
     }
 }
@@ -337,6 +449,210 @@ mod tests {
     use super::*;
     use mm_llm::{DecoderKind, Message, ProviderToolCall, Purpose, Usage};
     use serde_json::json;
+
+    #[test]
+    fn request_event_carries_trigger_parent_step_tool_origin() {
+        let feed = LlmActivityFeed::with_capacity(8);
+        let id = call_id();
+        let context = context("chat")
+            .with_trigger("tool_result")
+            .with_parent("parent-call")
+            .with_step("step-3")
+            .with_tool("memory.add")
+            .with_origin("cme.turn");
+        let mut req = request("summarize the migration order");
+        req.timeout_ms = Some(120_000);
+        feed.publish_live(LiveLlmEvent::Request {
+            call_id: id,
+            context,
+            provider: "mock".into(),
+            streamed: true,
+            attempt: 2,
+            request: req,
+        });
+
+        let event = feed.snapshot(None, 8).events.remove(0);
+        match event {
+            LlmActivityEvent::Request {
+                trigger,
+                parent_call_id,
+                step,
+                tool,
+                origin,
+                attempt,
+                timeout_ms,
+                ..
+            } => {
+                assert_eq!(trigger.as_deref(), Some("tool_result"));
+                assert_eq!(parent_call_id.as_deref(), Some("parent-call"));
+                assert_eq!(step.as_deref(), Some("step-3"));
+                assert_eq!(tool.as_deref(), Some("memory.add"));
+                assert_eq!(origin.as_deref(), Some("cme.turn"));
+                assert_eq!(attempt, 2);
+                assert_eq!(timeout_ms, Some(120_000));
+            }
+            other => panic!("expected a request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_event_carries_the_full_stream_text() {
+        let feed = LlmActivityFeed::with_capacity(8);
+        let id = call_id();
+        gateway_request(&feed, id, request("hello"));
+        let body = "the whole streamed answer ".repeat(400);
+        let mut answered = response(&body);
+        answered.reasoning_chars = 7;
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 42,
+            attempt: 1,
+            response: answered,
+        });
+
+        let event = feed.snapshot(None, 8).events.remove(1);
+        match event {
+            LlmActivityEvent::Response {
+                stream_text,
+                stream_chars,
+                stream_truncated,
+                text,
+                reasoning_chars,
+                attempt,
+                ..
+            } => {
+                // The roll-up is the whole body, not the one-line preview and not
+                // the 2,000-char delta cap.
+                assert_eq!(stream_text, body);
+                assert_eq!(stream_chars as usize, body.chars().count());
+                assert!(!stream_truncated);
+                assert!(text.chars().count() < body.chars().count());
+                assert_eq!(reasoning_chars, 7, "the answer's reasoning is reported");
+                assert_eq!(attempt, 1);
+            }
+            other => panic!("expected a response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_reply_carried_by_a_tool_call_reaches_the_dock() {
+        let feed = LlmActivityFeed::with_capacity(8);
+        let id = call_id();
+        gateway_request(&feed, id, request("hello"));
+        let mut answered = response("");
+        answered.tool_calls = vec![ProviderToolCall {
+            id: "t1".into(),
+            name: "metamind.approve".into(),
+            arguments: "{\n  \"success\": true,\n  \"reply\": \"Hello — how can I help?\"\n}"
+                .into(),
+        }];
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 12,
+            attempt: 1,
+            response: answered,
+        });
+
+        match &feed.snapshot(None, 8).events[1] {
+            LlmActivityEvent::Response {
+                stream_chars,
+                tool_calls,
+                tool_preview,
+                ..
+            } => {
+                // The Interpret fast path answers inside `metamind.approve`, so
+                // the content field is empty while the chat still gets a reply.
+                assert_eq!(*stream_chars, 0);
+                assert_eq!(*tool_calls, 1);
+                assert!(
+                    tool_preview.starts_with("metamind.approve {"),
+                    "the call is named: {tool_preview}"
+                );
+                assert!(
+                    tool_preview.contains("Hello — how can I help?"),
+                    "the reply the chat showed is visible: {tool_preview}"
+                );
+                assert!(!tool_preview.contains('\n'), "previews are one line");
+            }
+            other => panic!("expected a response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_tool_call_preview_that_was_cut_is_marked() {
+        let feed = LlmActivityFeed::with_capacity(8);
+        let id = call_id();
+        gateway_request(&feed, id, request("hello"));
+        let mut answered = response("");
+        answered.tool_calls = vec![ProviderToolCall {
+            id: "t1".into(),
+            name: "metamind.approve".into(),
+            arguments: format!("{{\"reply\":\"{}\"}}", "x".repeat(TOOL_PREVIEW_CHARS * 2)),
+        }];
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 12,
+            attempt: 1,
+            response: answered,
+        });
+
+        match &feed.snapshot(None, 8).events[1] {
+            LlmActivityEvent::Response { tool_preview, .. } => {
+                assert!(
+                    tool_preview.ends_with('…'),
+                    "the cut is visible: {tool_preview}"
+                );
+                assert_eq!(tool_preview.chars().count(), TOOL_PREVIEW_CHARS);
+            }
+            other => panic!("expected a response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_tool_call_is_named_when_one_payload_is_large() {
+        let feed = LlmActivityFeed::with_capacity(8);
+        let id = call_id();
+        gateway_request(&feed, id, request("hello"));
+        let mut answered = response("");
+        answered.tool_calls = vec![
+            ProviderToolCall {
+                id: "t1".into(),
+                name: "data.query".into(),
+                arguments: format!("{{\"sql\":\"{}\"}}", "x".repeat(4_000)),
+            },
+            ProviderToolCall {
+                id: "t2".into(),
+                name: "conversation.status".into(),
+                arguments: "{\"action\":\"read\"}".into(),
+            },
+        ];
+        feed.publish_live(LiveLlmEvent::Response {
+            call_id: id,
+            latency_ms: 12,
+            attempt: 1,
+            response: answered,
+        });
+
+        match &feed.snapshot(None, 8).events[1] {
+            LlmActivityEvent::Response {
+                tool_calls,
+                tool_preview,
+                ..
+            } => {
+                assert_eq!(*tool_calls, 2);
+                assert!(
+                    tool_preview.contains("data.query {"),
+                    "the large call is still named: {tool_preview}"
+                );
+                assert!(
+                    tool_preview.contains("conversation.status {"),
+                    "the call after the large one is not cut out: {tool_preview}"
+                );
+                assert!(tool_preview.contains('…'), "the cut is visible");
+            }
+            other => panic!("expected a response, got {other:?}"),
+        }
+    }
 
     fn context(source: &str) -> CallContext {
         CallContext::new(source)
@@ -364,6 +680,7 @@ mod tests {
         LlmResponse {
             call_id: mm_llm::accounting::new_call_id(),
             text: text.into(),
+            reasoning_chars: 0,
             model: "response-model".into(),
             usage: Usage {
                 tokens_in: 11,
@@ -395,6 +712,7 @@ mod tests {
             context: context("chat"),
             provider: "mock-provider".into(),
             streamed: true,
+            attempt: 1,
             request,
         });
     }
@@ -416,6 +734,7 @@ mod tests {
         feed.publish_live(LiveLlmEvent::Response {
             call_id: id,
             latency_ms: 10,
+            attempt: 1,
             response: response("hi"),
         });
 
@@ -530,11 +849,15 @@ mod tests {
         feed.publish_live(LiveLlmEvent::Response {
             call_id: id,
             latency_ms: 42,
+            attempt: 1,
             response: response(&"reply ".repeat(2_000)),
         });
         feed.publish_live(LiveLlmEvent::Error {
             call_id: id,
             latency_ms: 9,
+            attempt: 1,
+            reasoning_chars: 0,
+            finish_reason: None,
             partial_chars: 3,
             kind: "transport".into(),
             message: "connection reset".into(),
@@ -603,6 +926,7 @@ mod tests {
         feed.publish_live(LiveLlmEvent::Response {
             call_id: id,
             latency_ms: 1,
+            attempt: 1,
             response: cached,
         });
         let mut invalid = response("invalid");
@@ -610,6 +934,7 @@ mod tests {
         feed.publish_live(LiveLlmEvent::Response {
             call_id: id,
             latency_ms: 1,
+            attempt: 1,
             response: invalid,
         });
 

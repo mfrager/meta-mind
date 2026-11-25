@@ -19,7 +19,7 @@ pub const SUMMARY_THRESHOLD_CHARS: usize = 24_000;
 /// Turns longer than this many completion tokens are summarized.
 pub const SUMMARY_THRESHOLD_TOKENS: u64 = 6_000;
 /// A summarizer call is bounded.
-const SUMMARY_TIMEOUT: Duration = Duration::from_secs(30);
+const SUMMARY_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The turn summarizer.
 #[derive(Clone)]
@@ -111,7 +111,10 @@ impl TurnSummarizer {
         }
         let response = tokio::time::timeout(
             SUMMARY_TIMEOUT,
-            mm_llm::scope(CallContext::new("summarize"), client.complete(&request)),
+            mm_llm::scope(
+                CallContext::new("summarize").with_trigger("summary"),
+                client.complete(&request),
+            ),
         )
         .await
         .ok()?

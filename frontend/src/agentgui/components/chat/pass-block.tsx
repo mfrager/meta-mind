@@ -56,6 +56,9 @@ function StatusMark({ part }: { part: PassPart }) {
   if (part.status === "failed") {
     return <CircleAlertIcon className="size-3 text-destructive" />;
   }
+  if (part.status === "cancelled") {
+    return <XIcon className="size-3 text-muted-foreground" />;
+  }
   return <CircleCheckIcon className="size-3 text-positive" />;
 }
 

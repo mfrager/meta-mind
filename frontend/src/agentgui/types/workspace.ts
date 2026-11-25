@@ -169,7 +169,7 @@ export interface PassPart {
   type: "pass";
   pass: PassName;
   attempt: number;
-  status: "running" | "done" | "failed";
+  status: "running" | "done" | "failed" | "cancelled";
   finished?: string;
   model?: string;
   rounds: PassRound[];

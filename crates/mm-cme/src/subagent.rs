@@ -581,18 +581,24 @@ impl ThinkService {
         session_id: &str,
     ) -> Result<ThinkResult> {
         let started = Instant::now();
+        // A thought is its own call site: the pass scopes inside the runner only
+        // know `process`/`verify`, so the origin has to be set out here.
+        let think_context = mm_llm::current_context()
+            .unwrap_or_default()
+            .with_origin("cme.think");
         if let Some(runtime) = self.runtime.get() {
-            let run = runtime
-                .runner
-                .run_think(crate::runner::ThinkPassRequest {
+            let run = mm_llm::scope(
+                think_context,
+                runtime.runner.run_think(crate::runner::ThinkPassRequest {
                     think_id: session_id.to_owned(),
                     question: question.to_owned(),
                     context: context.map(str::to_owned),
                     focus: focus.to_vec(),
                     model: runtime.model.clone().or_else(|| self.model.clone()),
-                })
-                .await
-                .map_err(|error| SubagentError::Model(error.to_string()))?;
+                }),
+            )
+            .await
+            .map_err(|error| SubagentError::Model(error.to_string()))?;
             return Ok(run.result);
         }
         let Some(client) = &self.client else {
@@ -612,16 +618,27 @@ impl ThinkService {
         let tools = read_only_schemas();
         let mut prompt_tokens = 0u32;
         let mut completion_tokens = 0u32;
-        for _ in 0..THINK_ROUNDS {
+        let mut follow_up_tool: Option<String> = None;
+        for round in 1..=THINK_ROUNDS {
             let mut request =
                 LlmRequest::new(Purpose::Diagnose, messages.clone()).with_tools(tools.clone());
             if let Some(model) = &self.model {
                 request = request.with_model(model.clone());
             }
-            let response = tokio::time::timeout(THINK_TIMEOUT, client.complete(&request))
-                .await
-                .map_err(|_| SubagentError::Model("thinking timed out".into()))?
-                .map_err(|error| SubagentError::Model(error.to_string()))?;
+            let mut context = mm_llm::current_context()
+                .unwrap_or_default()
+                .with_pass("think", Some(round as u32))
+                .with_origin("cme.think");
+            if let Some(tool) = &follow_up_tool {
+                context = context.with_trigger("tool_result").with_tool(tool.clone());
+            }
+            let response = tokio::time::timeout(
+                THINK_TIMEOUT,
+                mm_llm::scope(context, client.complete(&request)),
+            )
+            .await
+            .map_err(|_| SubagentError::Model("thinking timed out".into()))?
+            .map_err(|error| SubagentError::Model(error.to_string()))?;
             prompt_tokens = prompt_tokens.saturating_add(response.usage.tokens_in);
             completion_tokens = completion_tokens.saturating_add(response.usage.tokens_out);
             if response.tool_calls.is_empty() {
@@ -634,6 +651,7 @@ impl ThinkService {
                 result.elapsed_ms = started.elapsed().as_millis() as u64;
                 return Ok(result);
             }
+            follow_up_tool = response.tool_calls.first().map(|call| call.name.clone());
             messages.push(Message::assistant_calls(
                 response.text.clone(),
                 response.tool_calls.clone(),

@@ -62,11 +62,11 @@ impl BudgetClass {
             Self::Deep => BudgetLimits::new(48, 144, 200_000, 900_000),
             Self::Resume => BudgetLimits::new(40, 120, 150_000, 720_000),
             Self::Plan => BudgetLimits::new(8, 16, 16_000, 90_000),
-            Self::Think => BudgetLimits::new(4, 8, 8_000, 90_000),
-            Self::Memory => BudgetLimits::new(2, 2, 4_000, 30_000),
+            Self::Think => BudgetLimits::new(4, 8, 8_000, 180_000),
+            Self::Memory => BudgetLimits::new(2, 2, 4_000, 120_000),
             Self::Frame => BudgetLimits::new(2, 4, 8_000, 45_000),
             Self::Action => BudgetLimits::new(4, 8, 8_000, 60_000),
-            Self::Summarize => BudgetLimits::new(1, 1, 8_000, 30_000),
+            Self::Summarize => BudgetLimits::new(1, 1, 8_000, 120_000),
         }
     }
 }
@@ -531,7 +531,7 @@ mod tests {
         );
         assert_eq!(
             BudgetClass::Think.limits(),
-            BudgetLimits::new(4, 8, 8_000, 90_000)
+            BudgetLimits::new(4, 8, 8_000, 180_000)
         );
         assert_eq!(
             BudgetClass::Frame.limits(),

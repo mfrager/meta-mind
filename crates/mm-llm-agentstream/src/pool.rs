@@ -109,6 +109,7 @@ impl ProviderPool {
 
         let mut config = self.config.clone();
         config.defaults.timeout_ms = profile.timeout_ms.min(u64::from(u32::MAX)) as u32;
+        config.defaults.idle_timeout_ms = profile.idle_timeout_ms.min(u64::from(u32::MAX)) as u32;
         config.defaults.structured_output = profile.structured_output;
 
         let schemas = self
@@ -118,7 +119,8 @@ impl ProviderPool {
             .clone();
         Ok(OpenAiClient::from_env(&config, Some(env))?
             .with_schemas(schemas)
-            .with_omit_max_tokens(profile.omit_max_tokens))
+            .with_omit_max_tokens(profile.omit_max_tokens)
+            .with_thinking(profile.thinking, profile.thinking_style))
     }
 
     fn scope(&self, req: &LlmRequest) -> Option<Arc<CallScope>> {
@@ -131,12 +133,17 @@ impl ProviderPool {
         })
     }
 
-    fn budget_ms(&self, req: &LlmRequest, profile: &ProviderProfile) -> u32 {
-        let requested = req.timeout_ms.unwrap_or(profile.timeout_ms);
-        requested
-            .max(1)
-            .min(profile.timeout_ms.max(1))
-            .min(u64::from(u32::MAX)) as u32
+    /// The wall clock for one call, or `None` when the profile has no ceiling.
+    ///
+    /// The profile's ceiling wins when it sets one; otherwise an explicit caller
+    /// budget applies; otherwise the call is bounded only by its idle timeout.
+    fn budget(&self, req: &LlmRequest, profile: &ProviderProfile) -> Option<Duration> {
+        let ceiling = if profile.timeout_ms > 0 {
+            Some(profile.timeout_ms)
+        } else {
+            req.timeout_ms.filter(|ms| *ms > 0)
+        };
+        ceiling.map(|ms| Duration::from_millis(ms.max(1)))
     }
 
     async fn record(
@@ -153,6 +160,7 @@ impl ProviderPool {
             Ok(_) => "ok",
             Err(LlmError::Timeout(_)) => "timeout",
             Err(LlmError::SchemaRejected { .. }) => "schema_rejected",
+            Err(LlmError::ReasoningOnly { .. }) => "reasoning_only",
             Err(_) => "transport",
         };
         let (model, usage) = match result {
@@ -180,11 +188,13 @@ impl LlmClient for ProviderPool {
             .scope(req)
             .map_or_else(|| 1, |scope| scope.next_attempt());
         let started = Instant::now();
-        let budget = Duration::from_millis(u64::from(self.budget_ms(req, &profile)));
-
-        let result = match tokio::time::timeout(budget, client.complete(req)).await {
-            Ok(result) => result,
-            Err(_) => Err(LlmError::Timeout(self.budget_ms(req, &profile).max(1))),
+        let result = match self.budget(req, &profile) {
+            Some(budget) => match tokio::time::timeout(budget, client.complete(req)).await {
+                Ok(result) => result,
+                Err(_) => Err(LlmError::Timeout(budget.as_millis() as u32)),
+            },
+            // No ceiling: the transport's idle bound is the only stop.
+            None => client.complete(req).await,
         };
         self.record(req, attempt_no, started, &result).await;
         result
@@ -201,11 +211,14 @@ impl LlmClient for ProviderPool {
             .scope(req)
             .map_or_else(|| 1, |scope| scope.next_attempt());
         let started = Instant::now();
-        let budget = Duration::from_millis(u64::from(self.budget_ms(req, &profile)));
-
-        let result = match tokio::time::timeout(budget, client.complete_stream(req, sink)).await {
-            Ok(result) => result,
-            Err(_) => Err(LlmError::Timeout(self.budget_ms(req, &profile).max(1))),
+        let result = match self.budget(req, &profile) {
+            Some(budget) => {
+                match tokio::time::timeout(budget, client.complete_stream(req, sink)).await {
+                    Ok(result) => result,
+                    Err(_) => Err(LlmError::Timeout(budget.as_millis() as u32)),
+                }
+            }
+            None => client.complete_stream(req, sink).await,
         };
         self.record(req, attempt_no, started, &result).await;
         result

@@ -489,6 +489,7 @@ mod tests {
             Ok(LlmResponse {
                 call_id: mm_core::Ulid::from_parts(1, 1),
                 text: self.text.clone(),
+                reasoning_chars: 0,
                 model: "stub".into(),
                 usage: Usage::default(),
                 cached: false,

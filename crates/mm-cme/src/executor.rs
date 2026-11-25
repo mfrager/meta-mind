@@ -19,7 +19,7 @@ use crate::budget::BudgetClass;
 use crate::chunk::ChunkKind;
 use crate::error::{CmeError, Result};
 use crate::observability::{ObserverHandle, SmObserver};
-use crate::observer::PassObserver;
+use crate::observer::{NoopObserver, PassObserver};
 use crate::pass_scope::PassScope;
 use crate::planner::{ResponseModality, TurnContext, TurnPlanner};
 use crate::process::{ProcessPass, ProcessRequest};
@@ -54,6 +54,33 @@ impl TurnLoopPolicy {
         match self {
             Self::ContinueUntilDone => "continue_until_done",
         }
+    }
+}
+
+/// The configuration that belongs to one turn, not to the session.
+///
+/// A session driver keeps one executor for its whole life, so anything a turn
+/// supplies for itself — its display observer, its prompt bundle, its prompt
+/// variant — has to be handed to the driver per turn. Otherwise turn N's
+/// observer and bundle leak into turn N+1.
+#[derive(Clone, Default)]
+pub struct TurnOverrides {
+    /// The current turn's display observer.
+    pub pass_observer: Option<Arc<dyn PassObserver>>,
+    /// The prompt variables rebuilt for this turn's conversation bundle.
+    pub prompt_variables: Option<PromptVariables>,
+    /// The prompt variant selected for this turn.
+    pub prompt_variant: Option<String>,
+}
+
+impl std::fmt::Debug for TurnOverrides {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TurnOverrides")
+            .field("pass_observer", &self.pass_observer.is_some())
+            .field("prompt_variables", &self.prompt_variables.is_some())
+            .field("prompt_variant", &self.prompt_variant)
+            .finish()
     }
 }
 
@@ -338,6 +365,51 @@ impl TurnExecutor {
             self.three_pass = Some(runner.with_observer(observer));
         }
         self
+    }
+
+    /// The per-turn configuration this executor currently carries.
+    ///
+    /// A session driver takes this before the executor moves into a session, so
+    /// every later turn can be configured the same way without rebuilding the
+    /// driver.
+    pub fn turn_overrides(&self) -> TurnOverrides {
+        TurnOverrides {
+            pass_observer: self.pass_observer.clone(),
+            prompt_variables: self.prompt_variables.clone(),
+            prompt_variant: self.prompt_variant.clone(),
+        }
+    }
+
+    /// Replace the per-turn configuration before one turn runs.
+    ///
+    /// `None` clears the value: a turn without an observer must not keep
+    /// streaming into the previous turn's run, and a turn without a variant
+    /// must not inherit the previous one.
+    pub fn set_turn_overrides(&mut self, overrides: TurnOverrides) {
+        if let Some(runner) = self.three_pass.take() {
+            self.three_pass = Some(
+                runner.with_observer(
+                    overrides
+                        .pass_observer
+                        .clone()
+                        .unwrap_or_else(|| Arc::new(NoopObserver)),
+                ),
+            );
+        }
+        self.pass_observer = overrides.pass_observer;
+        self.prompt_variables = overrides.prompt_variables;
+        self.prompt_variant = overrides.prompt_variant;
+    }
+
+    /// Drop the per-turn display observer once the turn has finished.
+    ///
+    /// The session driver keeps the executor between turns, so an observer (and
+    /// the live stream it writes to) must not outlive the turn that installed it.
+    pub fn clear_pass_observer(&mut self) {
+        self.pass_observer = None;
+        if let Some(runner) = self.three_pass.take() {
+            self.three_pass = Some(runner.with_observer(Arc::new(NoopObserver)));
+        }
     }
 
     /// Attach the provider that rebuilds the clean log before Interpret.

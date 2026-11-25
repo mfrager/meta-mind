@@ -296,6 +296,7 @@ mod tests {
             context,
             provider: "mock".into(),
             streamed: true,
+            attempt: 1,
             request: LlmRequest::new(Purpose::Converse, vec![Message::user("hello")]),
         });
         feed.publish_live(LiveLlmEvent::Delta {

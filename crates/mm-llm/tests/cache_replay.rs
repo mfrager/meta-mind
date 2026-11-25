@@ -160,6 +160,7 @@ fn answer(text: &str) -> LlmResponse {
     LlmResponse {
         call_id: mm_llm::accounting::new_call_id(),
         text: text.into(),
+        reasoning_chars: 0,
         model: "small".into(),
         usage: Usage {
             tokens_in: 3,

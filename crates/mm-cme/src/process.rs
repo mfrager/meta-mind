@@ -192,6 +192,8 @@ impl ProcessPass {
         let mut mutations = Vec::new();
         let mut tokens_in = 0u32;
         let mut tokens_out = 0u32;
+        // The tool whose result opened the next round, when there was one.
+        let mut follow_up_tool: Option<String> = None;
 
         let reply = loop {
             rounds += 1;
@@ -235,7 +237,18 @@ impl ProcessPass {
             );
             let started = std::time::Instant::now();
             let mut sink = ObserverDeltaSink::new(&*self.observer, pass, self.attempt, rounds);
-            let response = match self.client.complete_stream(&llm_request, &mut sink).await {
+            let mut context = mm_llm::current_context()
+                .unwrap_or_default()
+                .with_pass(pass.as_str(), Some(rounds));
+            if let Some(tool) = &follow_up_tool {
+                context = context.with_trigger("tool_result").with_tool(tool.clone());
+            }
+            let response = match mm_llm::scope(
+                context,
+                self.client.complete_stream(&llm_request, &mut sink),
+            )
+            .await
+            {
                 Ok(response) => response,
                 Err(error) => {
                     self.observer.round_finished(
@@ -278,17 +291,16 @@ impl ProcessPass {
                     "model requested a tool but the turn's policy forbids tools".into(),
                 ));
             }
-            if self.budgeted && rounds as usize >= MAX_TOOL_ROUNDS {
+            // These caps are the loop's own exit condition. Budgeting adds
+            // token and wall-clock refusal; it must not be the only thing that
+            // can stop a model that keeps asking for tools.
+            if rounds as usize >= MAX_TOOL_ROUNDS {
                 return Err(CmeError::Driver("tool round cap".into()));
             }
-            if self.budgeted && tool_steps >= MAX_TOOL_STEPS {
+            if tool_steps >= MAX_TOOL_STEPS {
                 return Err(CmeError::Driver("tool step cap".into()));
             }
-            let remaining = if self.budgeted {
-                MAX_TOOL_STEPS - tool_steps
-            } else {
-                response.tool_calls.len()
-            };
+            let remaining = MAX_TOOL_STEPS - tool_steps;
             let calls = response
                 .tool_calls
                 .iter()
@@ -313,6 +325,7 @@ impl ProcessPass {
                 )
                 .await?;
             tool_steps += calls.len();
+            follow_up_tool = calls.first().map(|call| call.name.clone());
             messages.extend(results);
         };
 

@@ -87,6 +87,15 @@ export async function openChat(body: {
 }
 
 /**
+ * A turn's finish line is its terminal frame, not the body's EOF. The server
+ * closes the body right after it, but a reader must not depend on that to
+ * settle the turn.
+ */
+function isTerminalFrame(frame: SequencedFrame["frame"]): boolean {
+  return frame.type === "completed" || frame.type === "failed";
+}
+
+/**
  * Open a chat turn and deliver every frame as soon as it arrives.
  *
  * Unlike [`openChat`], this never buffers the body: the first frames (run ids,
@@ -118,6 +127,10 @@ export async function openChatStream(
       if (done) break;
       for (const entry of parser.push(decoder.decode(value, { stream: true }))) {
         onFrame(entry);
+        if (isTerminalFrame(entry.frame)) {
+          await reader.cancel();
+          return;
+        }
       }
     }
     for (const entry of parser.push(decoder.decode())) onFrame(entry);

@@ -10,7 +10,7 @@
 //! and the same number is the SSE `id`, so a client that reconnects with
 //! `?from=<seq>` sees exactly the frames it missed and no duplicates.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use mm_cme::{PassKind, PassObserver, PassSummary, RoundSummary, VerificationResult};
 use mm_llm::ProviderToolCall;
@@ -27,7 +27,10 @@ pub struct ChatStream {
     /// id does not exist until the turn is spawned, and every consumer of these
     /// frames correlates by request anyway.
     request_id: String,
-    sender: mpsc::UnboundedSender<(u64, ChatFrame)>,
+    /// `None` once the turn has ended. Closing is explicit rather than relying
+    /// on the sender's reference count: the session driver retains this stream
+    /// after the request returns, so the last `Arc` is not the end of the turn.
+    sender: Mutex<Option<mpsc::UnboundedSender<(u64, ChatFrame)>>>,
 }
 
 impl ChatStream {
@@ -41,7 +44,7 @@ impl ChatStream {
             Arc::new(Self {
                 state,
                 request_id,
-                sender,
+                sender: Mutex::new(Some(sender)),
             }),
             receiver,
         )
@@ -58,11 +61,35 @@ impl ChatStream {
         };
         // A disconnected browser is not an error: the frame is in the run and a
         // reconnect replays it.
-        let _ = self.sender.send((seq, frame));
+        let sender = self
+            .sender
+            .lock()
+            .expect("chat stream lock")
+            .as_ref()
+            .cloned();
+        if let Some(sender) = sender {
+            let _ = sender.send((seq, frame));
+        }
+    }
+
+    /// End the live response. Idempotent, and safe while other clones of this
+    /// stream are still alive: it drops the only long-lived sender.
+    pub fn close(&self) {
+        self.sender.lock().expect("chat stream lock").take();
     }
 
     fn turn_id(&self) -> &str {
         &self.request_id
+    }
+}
+
+impl Drop for ChatStream {
+    fn drop(&mut self) {
+        // Never panic while unwinding; a poisoned lock still drops the sender
+        // with the struct.
+        if let Ok(mut sender) = self.sender.lock() {
+            sender.take();
+        }
     }
 }
 

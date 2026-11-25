@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyEvent } from "@/agentgui/lib/store/chat-store";
+import { applyEvent, settlePasses } from "@/agentgui/lib/store/chat-store";
 import { eventsForFrame } from "@/agentgui/services/agent-transport";
 import type { AgentEvent, ChatMessage, PassPart } from "@/agentgui/types/workspace";
 import type { ChatFrame } from "@/lib/wire/chat";
@@ -102,6 +102,15 @@ describe("pass rendering", () => {
       output: "found",
     });
     expect(message.parts.some((part) => part.type === "trace")).toBe(false);
+  });
+
+  it("settles an open pass as cancelled, never as done", () => {
+    const started = reduce([
+      { type: "pass_start", pass: "process", attempt: 1 },
+      { type: "pass_round", pass: "process", attempt: 1, round: 1, streaming: true },
+    ]);
+    const cancelled = settlePasses(started.parts, "cancelled");
+    expect((cancelled[0] as PassPart).status).toBe("cancelled");
   });
 
   it("marks a finished failed pass and settles a dropped stream", () => {

@@ -7,7 +7,7 @@ use mm_cme::{
     AffectState, BudgetClass, BudgetConfig, ConversationRouter, MemoryContext, PassConfig,
     PassKind, PreferenceProfile, ProcessPass, ProcessRequest, PromptVariables, RetryContext,
     RetryFailure, RoutingTable, SessionBudgets, SessionContext, ThreePassConfig, ThreePassRunner,
-    ToolHandler, Turn, TurnExecutor, TurnPlan,
+    ToolHandler, Turn, TurnExecutor, TurnPlan, MAX_TOOL_ROUNDS, MAX_TOOL_STEPS,
 };
 use mm_data::{CleanLog, CleanRole, CleanTurn, SessionId, TurnId};
 use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse, ToolSchema};
@@ -145,6 +145,43 @@ fn runner(
     config: ThreePassConfig,
 ) -> ThreePassRunner {
     ThreePassRunner::new(client, store(), tools as Arc<dyn ToolHandler>, config).unwrap()
+}
+
+/// A Process pass with the resource ledger disabled, so only the code-level
+/// ceilings can stop its model/tool loop.
+async fn run_process_without_budgeting(
+    client: Arc<MockClient>,
+    tools: Arc<RecordingTools>,
+) -> mm_cme::Result<mm_cme::ProcessRun> {
+    let mut plan = TurnPlan::simple(SessionId::new("s1"), TurnId::new("t1"), "keep working");
+    plan.tool_policy = mm_cme::ToolPolicy::Allowed;
+    let pass = ProcessPass::new(
+        client,
+        Some(store()),
+        tools,
+        Arc::new(mm_cme::DenyUnconfirmed),
+        None,
+        BudgetClass::Standard,
+    )
+    .with_budgeting(false);
+    let mut turn = Turn::new(plan.clone()).unwrap();
+    pass.run(
+        &mut turn,
+        &plan,
+        "fast",
+        PromptVariables::for_turn(&plan, &session(false, 8_000)),
+        ProcessRequest {
+            application: "cm.process.v1".into(),
+            scope: Some(mm_cme::PassScope::Process),
+            process: Some(mm_cme::ProcessContext::default()),
+            retry: None,
+            clean_log: CleanLog::default(),
+            variant: None,
+            require_reply: true,
+            child_budget: true,
+        },
+    )
+    .await
 }
 
 #[tokio::test]
@@ -474,6 +511,50 @@ async fn process_budget_exhaustion_fails_with_budget_and_no_verify() {
         vec![PassKind::Interpret],
         "the failed Process pass never reached Verify"
     );
+}
+
+#[tokio::test]
+async fn process_stops_at_the_tool_step_cap_and_truncates_an_oversized_batch() {
+    let calls = (0..100)
+        .map(|index| {
+            tool(
+                &format!("call-{index}"),
+                "data.query",
+                serde_json::json!({ "action": "get", "class": "Note" }),
+            )
+        })
+        .collect();
+    let client = Arc::new(MockClient::constant(
+        ScriptedResponse::text("").with_tool_calls(calls),
+    ));
+    let tools = Arc::new(RecordingTools::default());
+    let error = run_process_without_budgeting(Arc::clone(&client), tools.clone())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("tool step cap"), "{error}");
+    assert_eq!(
+        tools.names().len(),
+        MAX_TOOL_STEPS,
+        "one response can only run up to the remaining steps"
+    );
+    assert_eq!(client.calls(), 2, "the next batch is refused");
+}
+
+#[tokio::test]
+async fn process_stops_at_the_tool_round_cap_with_budgeting_off() {
+    let client = Arc::new(MockClient::constant(
+        ScriptedResponse::text("").with_tool_calls(vec![tool(
+            "call-data",
+            "data.query",
+            serde_json::json!({ "action": "get" }),
+        )]),
+    ));
+    let tools = Arc::new(RecordingTools::default());
+    let error = run_process_without_budgeting(Arc::clone(&client), tools)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("tool round cap"), "{error}");
+    assert_eq!(client.calls(), MAX_TOOL_ROUNDS as u64);
 }
 
 #[tokio::test]

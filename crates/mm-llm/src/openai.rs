@@ -27,6 +27,62 @@ use crate::error::{LlmError, Result};
 use crate::replay::NetworkGuard;
 use crate::schema::SchemaRegistry;
 
+/// The progress bound used when a profile asks for no idle ceiling.
+///
+/// Five minutes covers a long reasoning completion while still cutting a socket
+/// that has gone silent, which is the failure the wall clock used to catch.
+pub const DEFAULT_IDLE_TIMEOUT_MS: u32 = 300_000;
+
+/// Whether the provider should reason before answering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ThinkingPolicy {
+    /// Send nothing: the endpoint decides.
+    #[default]
+    ProviderDefault,
+    /// Ask the endpoint to skip reasoning, using the profile's style.
+    Disabled,
+}
+
+/// Which provider knob `ThinkingPolicy::Disabled` writes.
+///
+/// The shapes are not interchangeable, and a proxy that rejects one is a
+/// configuration fix (`thinking_style`) rather than a code change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ThinkingStyle {
+    /// Pick from the model name: OpenAI reasoning models take `reasoning_effort`,
+    /// everything else is assumed to be a chat template with `enable_thinking`.
+    #[default]
+    Auto,
+    /// OpenAI reasoning models: `"reasoning_effort": "none"`.
+    ReasoningEffort,
+    /// vLLM / NIM chat templates: `chat_template_kwargs.enable_thinking = false`.
+    ChatTemplate,
+}
+
+impl ThinkingStyle {
+    /// The concrete knob to write for `model`.
+    ///
+    /// `Auto` assumes an OpenAI reasoning model (`o1`/`o3`/`o4`/`gpt-5`) takes
+    /// `reasoning_effort` and that everything else is served by a chat template.
+    pub fn resolve(self, model: &str) -> ThinkingStyle {
+        match self {
+            ThinkingStyle::Auto => {
+                let name = model.rsplit('/').next().unwrap_or(model);
+                if name.starts_with("o1")
+                    || name.starts_with("o3")
+                    || name.starts_with("o4")
+                    || name.starts_with("gpt-5")
+                {
+                    ThinkingStyle::ReasoningEffort
+                } else {
+                    ThinkingStyle::ChatTemplate
+                }
+            }
+            concrete => concrete,
+        }
+    }
+}
+
 /// Receives server-sent event payloads from a streaming transport.
 ///
 /// A named trait rather than `FnMut` keeps the transport object-safe and avoids
@@ -76,7 +132,9 @@ pub trait Transport: Send + Sync {
 /// confusing error.
 #[derive(Clone)]
 pub struct TcpTransport {
-    timeout_ms: u32,
+    /// Per-I/O progress bound. This is not a ceiling on the call: a long
+    /// completion is fine as long as bytes keep arriving.
+    idle_timeout_ms: u32,
     // The bearer token, if the endpoint wants one. Hand-written Debug below so it
     // never reaches a formatter.
     api_key: Option<String>,
@@ -85,17 +143,22 @@ pub struct TcpTransport {
 impl std::fmt::Debug for TcpTransport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TcpTransport")
-            .field("timeout_ms", &self.timeout_ms)
+            .field("idle_timeout_ms", &self.idle_timeout_ms)
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
 
 impl TcpTransport {
-    /// A transport that gives up after `timeout_ms`.
-    pub fn new(timeout_ms: u32) -> Self {
+    /// A transport whose connect/write/read windows are bounded by
+    /// `idle_timeout_ms`. `0` means the built-in progress bound.
+    pub fn new(idle_timeout_ms: u32) -> Self {
         TcpTransport {
-            timeout_ms,
+            idle_timeout_ms: if idle_timeout_ms == 0 {
+                DEFAULT_IDLE_TIMEOUT_MS
+            } else {
+                idle_timeout_ms
+            },
             api_key: None,
         }
     }
@@ -139,14 +202,14 @@ impl TcpTransport {
              {auth}Content-Length: {}\r\nConnection: close\r\n\r\n",
             payload.len()
         );
-        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let budget = Duration::from_millis(u64::from(self.idle_timeout_ms.max(1)));
 
         let mut stream = tokio::time::timeout(
             budget,
             tokio::net::TcpStream::connect((host.as_str(), port)),
         )
         .await
-        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
         .map_err(|e| LlmError::Transport(format!("cannot connect to {host}:{port}: {e}")))?;
 
         tokio::time::timeout(budget, async {
@@ -155,7 +218,7 @@ impl TcpTransport {
             stream.flush().await
         })
         .await
-        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
         .map_err(|e| LlmError::Transport(format!("cannot write the request: {e}")))?;
 
         Ok((stream, host))
@@ -185,20 +248,20 @@ impl TcpTransport {
             "GET {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json\r\n\
              {auth}Connection: close\r\n\r\n"
         );
-        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let budget = Duration::from_millis(u64::from(self.idle_timeout_ms.max(1)));
         let mut stream = tokio::time::timeout(
             budget,
             tokio::net::TcpStream::connect((host.as_str(), port)),
         )
         .await
-        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
         .map_err(|e| LlmError::Transport(format!("cannot connect to {host}:{port}: {e}")))?;
         tokio::time::timeout(budget, async {
             stream.write_all(head.as_bytes()).await?;
             stream.flush().await
         })
         .await
-        .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+        .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
         .map_err(|e| LlmError::Transport(format!("cannot write the request: {e}")))?;
         Ok((stream, host))
     }
@@ -210,10 +273,10 @@ impl TcpTransport {
         stream: &mut tokio::net::TcpStream,
         buf: &mut [u8],
     ) -> Result<usize> {
-        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let budget = Duration::from_millis(u64::from(self.idle_timeout_ms.max(1)));
         tokio::time::timeout(budget, stream.read(buf))
             .await
-            .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+            .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
             .map_err(|e| LlmError::Transport(format!("cannot read the response: {e}")))
     }
 }
@@ -223,10 +286,10 @@ impl Transport for TcpTransport {
     async fn post_json(&self, url: &str, body: &Value) -> Result<Value> {
         let (mut stream, host) = self.send(url, body).await?;
         let mut raw = Vec::new();
-        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let budget = Duration::from_millis(u64::from(self.idle_timeout_ms.max(1)));
         tokio::time::timeout(budget, stream.read_to_end(&mut raw))
             .await
-            .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+            .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
             .map_err(|e| LlmError::Transport(format!("cannot read a response from {host}: {e}")))?;
         parse_http_response(&raw)
     }
@@ -234,10 +297,10 @@ impl Transport for TcpTransport {
     async fn get_json(&self, url: &str) -> Result<Value> {
         let (mut stream, host) = self.send_get(url).await?;
         let mut raw = Vec::new();
-        let budget = Duration::from_millis(u64::from(self.timeout_ms.max(1)));
+        let budget = Duration::from_millis(u64::from(self.idle_timeout_ms.max(1)));
         tokio::time::timeout(budget, stream.read_to_end(&mut raw))
             .await
-            .map_err(|_| LlmError::Timeout(self.timeout_ms))?
+            .map_err(|_| LlmError::Timeout(self.idle_timeout_ms))?
             .map_err(|e| LlmError::Transport(format!("cannot read a response from {host}: {e}")))?;
         parse_http_response(&raw)
     }
@@ -440,6 +503,10 @@ impl SseParser {
 struct StreamAccumulator<'a> {
     sink: &'a mut dyn DeltaSink,
     text: &'a mut String,
+    /// Reasoning characters seen in the stream. Counted, never forwarded: the
+    /// caller receives visible text only, but a reasoning-only stream has to be
+    /// diagnosable rather than looking like an empty answer.
+    reasoning_chars: &'a mut u32,
     tool_calls: &'a mut BTreeMap<usize, (String, String, String)>,
     tokens_in: &'a mut u32,
     tokens_out: &'a mut u32,
@@ -493,6 +560,13 @@ impl SseHandler for StreamAccumulator<'_> {
                 None => return,
             },
         };
+        if let Some(reasoning) = delta
+            .get("reasoning_content")
+            .or_else(|| delta.get("reasoning"))
+            .and_then(Value::as_str)
+        {
+            *self.reasoning_chars += reasoning.chars().count() as u32;
+        }
         if let Some(content) = delta.get("content").and_then(Value::as_str) {
             if !content.is_empty() {
                 self.text.push_str(content);
@@ -584,6 +658,8 @@ pub struct OpenAiClient {
     schemas: RwLock<SchemaRegistry>,
     transport: Arc<dyn Transport>,
     omit_max_tokens: bool,
+    thinking: ThinkingPolicy,
+    thinking_style: ThinkingStyle,
 }
 
 impl std::fmt::Debug for OpenAiClient {
@@ -611,13 +687,15 @@ impl OpenAiClient {
             )
         })?;
         let transport =
-            TcpTransport::new(config.defaults.timeout_ms).with_api_key(env.api_key.clone());
+            TcpTransport::new(config.defaults.idle_timeout_ms).with_api_key(env.api_key.clone());
         Ok(OpenAiClient {
             env,
             config: config.clone(),
             schemas: RwLock::new(SchemaRegistry::new()),
             transport: Arc::new(transport),
             omit_max_tokens: false,
+            thinking: ThinkingPolicy::default(),
+            thinking_style: ThinkingStyle::default(),
         })
     }
 
@@ -634,7 +712,17 @@ impl OpenAiClient {
             schemas: RwLock::new(SchemaRegistry::new()),
             transport,
             omit_max_tokens: false,
+            thinking: ThinkingPolicy::default(),
+            thinking_style: ThinkingStyle::default(),
         }
+    }
+
+    /// Ask the provider to skip reasoning, using `style` to pick the knob.
+    #[must_use]
+    pub fn with_thinking(mut self, thinking: ThinkingPolicy, style: ThinkingStyle) -> Self {
+        self.thinking = thinking;
+        self.thinking_style = style;
+        self
     }
 
     /// Omit `max_tokens` from the request body, preserving endpoints that reject it.
@@ -707,6 +795,17 @@ impl OpenAiClient {
         if !self.omit_max_tokens {
             body["max_tokens"] = json!(req.max_tokens);
         }
+        if self.thinking == ThinkingPolicy::Disabled {
+            // Only written when a policy asked for it: an unknown field is how a
+            // provider rejects a request, so the default body stays untouched.
+            match self.thinking_style.resolve(model) {
+                ThinkingStyle::ReasoningEffort => body["reasoning_effort"] = json!("none"),
+                ThinkingStyle::ChatTemplate => {
+                    body["chat_template_kwargs"] = json!({ "enable_thinking": false });
+                }
+                ThinkingStyle::Auto => {}
+            }
+        }
         if !req.tools.is_empty() {
             body["tool_choice"] = json!("auto");
             body["tools"] = Value::Array(
@@ -716,7 +815,7 @@ impl OpenAiClient {
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool.name,
+                                "name": tool_name_for_provider(&tool.name),
                                 "description": tool.description,
                                 "parameters": tool.parameters,
                             }
@@ -778,27 +877,31 @@ impl OpenAiClient {
             Some(other) => other.to_string(),
         };
         let tool_calls = parse_tool_calls(message);
+        // Counted for both paths: a successful answer may still have reasoned,
+        // and the terminal event has to explain that cost.
+        let reasoning_chars = message
+            .get("reasoning_content")
+            .or_else(|| message.get("reasoning"))
+            .and_then(Value::as_str)
+            .map(str::chars)
+            .map(|chars| chars.count() as u32)
+            .unwrap_or(0);
         if text.trim().is_empty() && tool_calls.is_empty() {
             let finish = choice
                 .get("finish_reason")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            let reasoning_chars = message
-                .get("reasoning_content")
-                .or_else(|| message.get("reasoning"))
-                .and_then(Value::as_str)
-                .map(str::chars)
-                .map(Iterator::count)
-                .unwrap_or(0);
-            let detail = if reasoning_chars > 0 {
-                format!(
-                    "the endpoint returned {reasoning_chars} reasoning characters but no visible text; disable thinking or raise max_tokens"
-                )
-            } else {
-                "the endpoint returned neither text nor tool calls".to_string()
-            };
+            // The endpoint answered; the model simply ran out of room before it
+            // said anything. That is a budget outcome the retry policy can act
+            // on, not an outage the operator has to decode from a string.
+            if reasoning_chars > 0 {
+                return Err(LlmError::ReasoningOnly {
+                    reasoning_chars,
+                    finish_reason: finish.to_owned(),
+                });
+            }
             return Err(LlmError::Transport(format!(
-                "{detail} (finish_reason: {finish})"
+                "the endpoint returned neither text nor tool calls (finish_reason: {finish})"
             )));
         }
         let model = value
@@ -826,6 +929,7 @@ impl OpenAiClient {
         Ok(LlmResponse {
             call_id: crate::accounting::new_call_id(),
             text,
+            reasoning_chars,
             model,
             usage: Usage {
                 tokens_in,
@@ -844,6 +948,46 @@ impl OpenAiClient {
     }
 }
 
+/// Encode a catalog tool name as the function name an OpenAI-compatible
+/// endpoint accepts.
+///
+/// These endpoints validate `function.name` against `[a-zA-Z0-9_-]+`, so the
+/// `namespace.name` spelling the kernel uses is rejected with an HTTP 400.
+/// Dots become underscores and a literal underscore doubles, which keeps the
+/// mapping reversible: [`tool_name_from_provider`] restores the catalog name
+/// from whatever the model answers with.
+fn tool_name_for_provider(name: &str) -> String {
+    let mut encoded = String::with_capacity(name.len() + 1);
+    for ch in name.chars() {
+        match ch {
+            '.' => encoded.push('_'),
+            '_' => encoded.push_str("__"),
+            ch if ch.is_ascii_alphanumeric() || ch == '-' => encoded.push(ch),
+            // No catalog tool carries another character; replacing it keeps the
+            // request valid rather than failing the whole call.
+            _ => encoded.push('-'),
+        }
+    }
+    encoded
+}
+
+/// Restore the catalog spelling of a tool name the provider echoed back.
+fn tool_name_from_provider(name: &str) -> String {
+    let mut decoded = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '_' if chars.peek() == Some(&'_') => {
+                chars.next();
+                decoded.push('_');
+            }
+            '_' => decoded.push('.'),
+            ch => decoded.push(ch),
+        }
+    }
+    decoded
+}
+
 fn message_json(message: &crate::client::Message) -> Value {
     let mut body = json!({
         "role": match message.role {
@@ -855,7 +999,7 @@ fn message_json(message: &crate::client::Message) -> Value {
         "content": message.content,
     });
     if let Some(name) = &message.name {
-        body["name"] = json!(name);
+        body["name"] = json!(tool_name_for_provider(name));
     }
     if let Some(id) = &message.tool_call_id {
         body["tool_call_id"] = json!(id);
@@ -870,7 +1014,7 @@ fn message_json(message: &crate::client::Message) -> Value {
                         "id": call.id,
                         "type": "function",
                         "function": {
-                            "name": call.name,
+                            "name": tool_name_for_provider(&call.name),
                             "arguments": call.arguments,
                         }
                     })
@@ -890,7 +1034,7 @@ fn parse_tool_calls(message: &Value) -> Vec<crate::client::ProviderToolCall> {
                 .iter()
                 .filter_map(|call| {
                     let function = call.get("function")?;
-                    let name = function.get("name")?.as_str()?.to_string();
+                    let name = tool_name_from_provider(function.get("name")?.as_str()?);
                     let arguments = match function.get("arguments") {
                         Some(Value::String(text)) => text.clone(),
                         Some(other) => other.to_string(),
@@ -961,6 +1105,7 @@ impl LlmClient for OpenAiClient {
         body["stream_options"] = json!({ "include_usage": true });
 
         let mut text = String::new();
+        let mut reasoning_chars = 0u32;
         let mut tool_calls: BTreeMap<usize, (String, String, String)> = BTreeMap::new();
         let mut tokens_in = 0u32;
         let mut tokens_out = 0u32;
@@ -973,6 +1118,7 @@ impl LlmClient for OpenAiClient {
             let mut accumulator = StreamAccumulator {
                 sink,
                 text: &mut text,
+                reasoning_chars: &mut reasoning_chars,
                 tool_calls: &mut tool_calls,
                 tokens_in: &mut tokens_in,
                 tokens_out: &mut tokens_out,
@@ -1002,7 +1148,7 @@ impl LlmClient for OpenAiClient {
             .filter(|(_, name, _)| !name.is_empty())
             .map(|(id, name, arguments)| crate::client::ProviderToolCall {
                 id: if id.is_empty() { "call".into() } else { id },
-                name,
+                name: tool_name_from_provider(&name),
                 arguments: if arguments.is_empty() {
                     "{}".into()
                 } else {
@@ -1010,9 +1156,19 @@ impl LlmClient for OpenAiClient {
                 },
             })
             .collect();
-        // Some proxies ignore `stream` without changing the content type. One
-        // ordinary call is the honest recovery; it still reports one delta.
+        // A stream that delivered frames but only reasoning is a budget outcome.
+        // Re-asking the provider would pay for the same reasoning twice and fail
+        // the same way, so the honest answer is the typed error: the retry policy
+        // above this layer decides whether a larger budget is worth a second call.
         if text.is_empty() && calls.is_empty() {
+            if reasoning_chars > 0 {
+                return Err(LlmError::ReasoningOnly {
+                    reasoning_chars,
+                    finish_reason: finish_reason.clone().unwrap_or_else(|| "unknown".into()),
+                });
+            }
+            // Some proxies ignore `stream` without changing the content type. One
+            // ordinary call is the honest recovery; it still reports one delta.
             let response = self.complete(req).await?;
             if !response.text.is_empty() {
                 sink.delta(&response.text);
@@ -1029,6 +1185,7 @@ impl LlmClient for OpenAiClient {
         Ok(LlmResponse {
             call_id: crate::accounting::new_call_id(),
             text,
+            reasoning_chars,
             model: answered_model,
             usage: Usage {
                 tokens_in,
@@ -1234,6 +1391,56 @@ complexity_ceiling = "medium"
         assert!(response.tool_calls.is_empty());
     }
 
+    #[test]
+    fn provider_function_names_are_safe_and_round_trip() {
+        let client = OpenAiClient::from_env(&config(), Some(env())).unwrap();
+        let call = crate::client::ProviderToolCall {
+            id: "call-1".into(),
+            name: "conversation.status".into(),
+            arguments: "{}".into(),
+        };
+        let req = LlmRequest::new(
+            Purpose::Converse,
+            vec![
+                Message::user("hello"),
+                Message::assistant_calls("", vec![call]),
+                Message::tool("call-1", "conversation.status", "ok"),
+            ],
+        )
+        .with_model("small");
+        let body = client.request_body(&req, "small").unwrap();
+        assert_eq!(
+            body["messages"][1]["tool_calls"][0]["function"]["name"],
+            "conversation_status"
+        );
+        assert_eq!(body["messages"][2]["name"], "conversation_status");
+
+        let answer = json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call-2",
+                        "type": "function",
+                        "function": { "name": "conversation_status", "arguments": "{}" }
+                    }]
+                }
+            }]
+        });
+        let response = client.parse_response(&answer, "small").unwrap();
+        assert_eq!(response.tool_calls[0].name, "conversation.status");
+
+        // The escaping keeps the mapping reversible for names that also carry
+        // underscores, and no catalog name can collide with another.
+        assert_eq!(tool_name_for_provider("fs.read_file"), "fs_read__file");
+        assert_eq!(tool_name_from_provider("fs_read__file"), "fs.read_file");
+        assert_eq!(
+            tool_name_from_provider(&tool_name_for_provider("a_.b")),
+            "a_.b"
+        );
+    }
+
     pub(super) fn tools_body() {
         let client = OpenAiClient::from_env(&config(), Some(env())).unwrap();
         let req = LlmRequest::new(Purpose::Converse, vec![Message::user("how do I use this?")])
@@ -1250,7 +1457,10 @@ complexity_ceiling = "medium"
             }]);
         let body = client.request_body(&req, "small").unwrap();
         assert_eq!(body["tools"][0]["type"], "function");
-        assert_eq!(body["tools"][0]["function"]["name"], "guide.read");
+        assert_eq!(
+            body["tools"][0]["function"]["name"], "guide_read",
+            "a `namespace.name` function name is rejected by the endpoint"
+        );
         assert_eq!(body["tool_choice"], "auto");
         assert!(body.get("response_format").is_none());
 
@@ -1266,7 +1476,7 @@ complexity_ceiling = "medium"
                     "tool_calls": [{
                         "id": "call-1",
                         "type": "function",
-                        "function": { "name": "guide.read", "arguments": "{\"id\":\"start\"}" }
+                        "function": { "name": "guide_read", "arguments": "{\"id\":\"start\"}" }
                     }]
                 }
             }]
@@ -1276,6 +1486,179 @@ complexity_ceiling = "medium"
         assert_eq!(response.tool_calls.len(), 1);
         assert_eq!(response.tool_calls[0].name, "guide.read");
         assert_eq!(response.tool_calls[0].arguments, "{\"id\":\"start\"}");
+    }
+
+    #[test]
+    fn reasoning_only_is_a_typed_error() {
+        let transport = Arc::new(StubTransport {
+            answer: json!({
+                "choices": [{
+                    "finish_reason": "length",
+                    "message": { "content": "", "reasoning_content": "abcde" }
+                }]
+            }),
+            calls: Default::default(),
+        });
+        let client = OpenAiClient::with_transport(&config(), env(), transport);
+        let error = client
+            .parse_response(
+                &json!({
+                    "choices": [{
+                        "finish_reason": "length",
+                        "message": { "content": "", "reasoning_content": "abcde" }
+                    }]
+                }),
+                "small",
+            )
+            .unwrap_err();
+        match &error {
+            LlmError::ReasoningOnly {
+                reasoning_chars,
+                finish_reason,
+            } => {
+                assert_eq!(*reasoning_chars, 5);
+                assert_eq!(finish_reason, "length");
+            }
+            other => panic!("expected a typed reasoning-only error, got {other:?}"),
+        }
+        assert_eq!(error.kind(), "reasoning_only");
+        assert_eq!(error.code(), "mm.llm.reasoning_only");
+    }
+
+    #[test]
+    fn a_successful_answer_carries_its_reasoning_count() {
+        let client = OpenAiClient::with_transport(
+            &config(),
+            env(),
+            Arc::new(StubTransport {
+                answer: Value::Null,
+                calls: Default::default(),
+            }),
+        );
+        let response = client
+            .parse_response(
+                &json!({
+                    "choices": [{
+                        "finish_reason": "stop",
+                        "message": { "content": "the answer", "reasoning_content": "abcd" }
+                    }]
+                }),
+                "small",
+            )
+            .expect("a visible answer is a success");
+        assert_eq!(response.text, "the answer");
+        assert_eq!(
+            response.reasoning_chars, 4,
+            "the terminal event can explain the reasoning cost"
+        );
+    }
+
+    #[test]
+    fn an_empty_answer_without_reasoning_stays_a_transport_error() {
+        let client = OpenAiClient::with_transport(
+            &config(),
+            env(),
+            Arc::new(StubTransport {
+                answer: Value::Null,
+                calls: Default::default(),
+            }),
+        );
+        let error = client
+            .parse_response(
+                &json!({"choices":[{"finish_reason":"stop","message":{"content":""}}]}),
+                "small",
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), "transport");
+    }
+
+    /// An SSE transport that counts how often the JSON fallback was used.
+    struct ReasoningStream {
+        json_calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Transport for ReasoningStream {
+        async fn post_json(&self, _url: &str, _body: &Value) -> Result<Value> {
+            self.json_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(json!({"choices":[{"message":{"content":"fallback"}}]}))
+        }
+
+        async fn post_sse(
+            &self,
+            _url: &str,
+            _body: &Value,
+            handler: &mut dyn SseHandler,
+        ) -> Result<bool> {
+            handler.data(
+                &json!({"choices":[{"delta":{"reasoning_content":"thinking hard"}}]}).to_string(),
+            );
+            handler.data(&json!({"choices":[{"finish_reason":"length","delta":{}}]}).to_string());
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_reasoning_only_stream_makes_one_provider_round() {
+        use crate::client::CollectSink;
+
+        let json_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let client = OpenAiClient::with_transport(
+            &config(),
+            env(),
+            Arc::new(ReasoningStream {
+                json_calls: Arc::clone(&json_calls),
+            }),
+        );
+        let req = LlmRequest::new(Purpose::Converse, vec![Message::user("hi")]).with_model("small");
+        let mut sink = CollectSink::default();
+        let error = client.complete_stream(&req, &mut sink).await.unwrap_err();
+
+        match error {
+            LlmError::ReasoningOnly {
+                reasoning_chars,
+                finish_reason,
+            } => {
+                assert_eq!(reasoning_chars, 13);
+                assert_eq!(finish_reason, "length");
+            }
+            other => panic!("expected a reasoning-only error, got {other:?}"),
+        }
+        assert_eq!(
+            json_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a stream that delivered frames is never replayed as a JSON call"
+        );
+        assert_eq!(sink.0, "", "reasoning is never forwarded as visible text");
+    }
+
+    #[test]
+    fn thinking_disabled_sends_the_provider_knob() {
+        let stub = || {
+            Arc::new(StubTransport {
+                answer: Value::Null,
+                calls: Default::default(),
+            })
+        };
+        let req = LlmRequest::new(Purpose::Interpret, vec![Message::user("hi")]);
+
+        let chat_template = OpenAiClient::with_transport(&config(), env(), stub())
+            .with_thinking(ThinkingPolicy::Disabled, ThinkingStyle::ChatTemplate);
+        let body = chat_template.request_body(&req, "small").unwrap();
+        assert_eq!(body["chat_template_kwargs"]["enable_thinking"], false);
+
+        let reasoning = OpenAiClient::with_transport(&config(), env(), stub())
+            .with_thinking(ThinkingPolicy::Disabled, ThinkingStyle::ReasoningEffort);
+        let body = reasoning.request_body(&req, "gpt-5-mini").unwrap();
+        assert_eq!(body["reasoning_effort"], "none");
+
+        // The default sends no thinking field at all: an unknown field is how a
+        // provider rejects a request.
+        let untouched = OpenAiClient::with_transport(&config(), env(), stub());
+        let body = untouched.request_body(&req, "small").unwrap();
+        assert!(body.get("chat_template_kwargs").is_none());
+        assert!(body.get("reasoning_effort").is_none());
     }
 
     struct SseTransport {
@@ -1338,7 +1721,7 @@ complexity_ceiling = "medium"
         let transport = Arc::new(SseTransport {
             streamed: true,
             events: vec![
-                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"data.","arguments":"{\"q\":"}}]}}]}).to_string(),
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"data_","arguments":"{\"q\":"}}]}}]}).to_string(),
                 json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search","arguments":"\"x\"}"}}]}}]}).to_string(),
             ],
         });

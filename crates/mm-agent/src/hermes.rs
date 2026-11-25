@@ -319,7 +319,12 @@ impl AgentBackend for HermesBackend {
             .with_provider("hermes")
             .with_cache(CacheMode::Bypass)
             .with_timeout(timeout);
-        let context = CallContext::new("agent").with_run(request.run_id.clone());
+        let context = CallContext::new("agent")
+            .with_run(request.run_id.clone())
+            .with_trigger("agent_step")
+            // The turn index is how many messages the run has replayed so far.
+            .with_step(format!("turn-{}", request.messages.len()))
+            .with_origin("agent.hermes");
 
         let result = tokio::time::timeout(
             Duration::from_millis(timeout),
@@ -415,10 +420,16 @@ fn map_llm_error(error: LlmError) -> AgentError {
         LlmError::CacheMiss(message)
         | LlmError::BudgetExhausted(message)
         | LlmError::Replay(message) => AgentError::Rejected(message),
+        LlmError::ReasoningOnly { .. } => AgentError::Rejected(error_text(&error)),
         LlmError::Io(message) | LlmError::Db(message) | LlmError::Journal(message) => {
             AgentError::Other(message)
         }
     }
+}
+
+/// The display form of an error, for the cases that have no field to forward.
+fn error_text(error: &LlmError) -> String {
+    error.to_string()
 }
 
 fn status_from(
@@ -498,6 +509,7 @@ mod tests {
                 &mm_llm::LlmResponse {
                     call_id: mm_llm::accounting::new_call_id(),
                     text: "Which project should I use?".into(),
+                    reasoning_chars: 0,
                     model: "fake".into(),
                     usage: mm_llm::Usage::default(),
                     cached: false,
@@ -520,6 +532,7 @@ mod tests {
         let response = mm_llm::LlmResponse {
             call_id: mm_llm::accounting::new_call_id(),
             text: String::new(),
+            reasoning_chars: 0,
             model: "fake".into(),
             usage: mm_llm::Usage::default(),
             cached: false,
@@ -554,6 +567,7 @@ mod tests {
         let response = mm_llm::LlmResponse {
             call_id: mm_llm::accounting::new_call_id(),
             text: "Still working.".into(),
+            reasoning_chars: 0,
             model: "fake".into(),
             usage: mm_llm::Usage::default(),
             cached: false,

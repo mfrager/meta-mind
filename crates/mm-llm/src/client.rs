@@ -414,6 +414,11 @@ pub struct LlmResponse {
     pub call_id: Ulid,
     /// The completion text.
     pub text: String,
+    /// Reasoning characters the provider reported before answering, when it
+    /// exposed them. Diagnostic only: never part of `text`, and zero for a
+    /// provider that keeps its reasoning private.
+    #[serde(default)]
+    pub reasoning_chars: u32,
     /// The model that actually answered.
     pub model: String,
     /// What it cost.
@@ -598,6 +603,7 @@ mod tests {
         let mut response = LlmResponse {
             call_id: Ulid::from_parts(1, 2),
             text: "ok".into(),
+            reasoning_chars: 0,
             model: "small".into(),
             usage: Usage::default(),
             cached: false,

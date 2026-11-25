@@ -261,7 +261,10 @@ impl ActionExecutor for PromptActionExecutor {
         if let Some(model) = &self.model {
             request = request.with_model(model.clone());
         }
-        let context = CallContext::new("automation").with_session(action.spec.session_id.clone());
+        let context = CallContext::new("automation")
+            .with_session(action.spec.session_id.clone())
+            .with_trigger("scheduler")
+            .with_origin("automation.action");
         let response = mm_llm::scope(context, client.complete(&request))
             .await
             .map_err(|error| error.to_string())?;
@@ -340,7 +343,10 @@ impl FrameExecutor for PromptFrameExecutor {
         if let Some(model) = &self.model {
             request = request.with_model(model.clone());
         }
-        let context = CallContext::new("automation").with_session(session_id);
+        let context = CallContext::new("automation")
+            .with_session(session_id)
+            .with_trigger("scheduler")
+            .with_origin("automation.frame");
         let response = mm_llm::scope(context, client.complete(&request))
             .await
             .map_err(|error| error.to_string())?;

@@ -14,7 +14,9 @@ use super::catalog::{self, Effect, GroupId};
 use super::confirm;
 use super::exec::{self, ToolResult};
 use super::intro;
-use super::limits::{MAX_MODEL_ROUNDS, MAX_TOOL_STEPS, MODEL_DATA_BYTES};
+use super::limits::{
+    HARD_MODEL_ROUNDS, HARD_TOOL_STEPS, MAX_MODEL_ROUNDS, MAX_TOOL_STEPS, MODEL_DATA_BYTES,
+};
 use super::persona;
 use super::prompt;
 use super::resolve_client;
@@ -49,7 +51,9 @@ pub async fn reply(
 ) -> TurnOutcome {
     let context = CallContext::new("chat")
         .with_session(session_id)
-        .with_run(request_id);
+        .with_run(request_id)
+        .with_trigger("user_turn")
+        .with_origin("controller.turn");
     mm_llm::scope(
         context,
         reply_inner(app, request_id, session_id, query, pane, propose),
@@ -195,6 +199,19 @@ async fn reply_inner(
         }
     }
 
+    // A turn with budgeting off still has a finite ceiling; otherwise a model
+    // that always asks for another tool keeps this loop alive forever.
+    let model_round_cap = if budgeted {
+        MAX_MODEL_ROUNDS
+    } else {
+        HARD_MODEL_ROUNDS
+    };
+    let tool_step_cap = if budgeted {
+        MAX_TOOL_STEPS
+    } else {
+        HARD_TOOL_STEPS
+    };
+
     let text = loop {
         if app.chat.is_cancelled(request_id).unwrap_or(false) {
             frames.push(ChatFrame::Failed {
@@ -204,7 +221,7 @@ async fn reply_inner(
             return done(frames);
         }
         rounds += 1;
-        let summarizing = budgeted && (rounds > MAX_MODEL_ROUNDS || tool_steps >= MAX_TOOL_STEPS);
+        let summarizing = rounds > model_round_cap || tool_steps >= tool_step_cap;
         let mut messages = vec![Message::system(standing_prompt(
             app,
             &facts,
@@ -278,7 +295,7 @@ async fn reply_inner(
             response.tool_calls.clone(),
         ));
         for call in &response.tool_calls {
-            if budgeted && tool_steps >= MAX_TOOL_STEPS {
+            if tool_steps >= tool_step_cap {
                 let result = denied_result("tool step cap");
                 log_denied(app, request_id, &call.name, "tool step cap").await;
                 tool_steps += 1;
@@ -801,7 +818,7 @@ mod tests {
     use mm_llm::{MockClient, ProviderToolCall, ScriptedResponse};
 
     use crate::controller::intro::{self, SELF_DESCRIPTION};
-    use crate::controller::limits::{MAX_MODEL_ROUNDS, MAX_TOOL_STEPS};
+    use crate::controller::limits::{HARD_MODEL_ROUNDS, MAX_MODEL_ROUNDS, MAX_TOOL_STEPS};
     use crate::controller::ControllerModel;
     use crate::dto::chat::ChatFrame;
     use crate::state::{AppState, ConsoleLock};
@@ -1158,6 +1175,28 @@ mod tests {
         let frames = frames_for(&state, "keep going").await;
         assert_eq!(tool_names(&frames).len(), 7);
         assert_eq!(final_text(&frames), "Done.");
+    }
+
+    #[tokio::test]
+    async fn turning_budget_off_still_stops_at_the_hard_ceiling() {
+        let (_dir, state) = booted_with_budget(false).await;
+        let mock = Arc::new(MockClient::constant(
+            ScriptedResponse::text("still going").with_tool_calls(vec![call("guide.list", "{}")]),
+        ));
+        let client: Arc<dyn mm_llm::LlmClient> = mock.clone();
+        *state.controller_model.lock().unwrap() = ControllerModel::Scripted(client);
+
+        let frames = frames_for(&state, "never stop").await;
+        let seen = mock.seen();
+
+        // Round cap and step cap are both hard, so a constant tool caller ends.
+        assert!(
+            seen.len() <= HARD_MODEL_ROUNDS as usize + 1,
+            "{} rounds",
+            seen.len()
+        );
+        assert_eq!(tool_names(&frames).len(), HARD_MODEL_ROUNDS as usize);
+        assert!(final_text(&frames).contains("still going"));
     }
 
     #[tokio::test]

@@ -220,13 +220,21 @@ pub async fn open(
             query: body.query.clone(),
         });
         let executor = executor.with_pass_observer(chat_stream.clone());
+        // Closing is part of the turn's exit, not of its frame count. The
+        // session runner keeps the observer alive after the request returns, so
+        // the receiver would otherwise never see the channel close.
+        let close_guard = CloseChatStream(Arc::clone(&chat_stream));
         let task_state = Arc::clone(&state);
         let query = body.query.clone();
         let turn_session = session_id.clone();
         let activity = CallContext::new("chat")
             .with_session(turn_session.clone())
-            .with_run(request_id.clone());
+            .with_run(request_id.clone())
+            .with_trigger("user_turn")
+            .with_origin("cme.turn");
         tokio::spawn(mm_llm::scope(activity, async move {
+            // Also closes the stream if the turn task panics.
+            let _close = close_guard;
             let result = task_state
                 .cme
                 .run_turn(&turn_session, query.clone(), executor)
@@ -239,6 +247,7 @@ pub async fn open(
                         reason: Some(error.to_string()),
                     });
                     let _ = task_state.chat.finish_stream(&request_id, "failed");
+                    chat_stream.close();
                     return;
                 }
             };
@@ -252,6 +261,7 @@ pub async fn open(
                 "failed"
             };
             let _ = task_state.chat.finish_stream(&request_id, state_name);
+            chat_stream.close();
             if let Ok(stored) = task_state.chat.frames_from(&request_id, 1) {
                 task_state
                     .cme
@@ -259,12 +269,23 @@ pub async fn open(
                     .await;
             }
         }));
-        let stream = futures::stream::unfold(receiver, |mut receiver| async move {
-            receiver
-                .recv()
-                .await
-                .map(|(seq, frame)| (Ok::<Event, Infallible>(frame_event(seq, frame)), receiver))
-        });
+        // The terminal frame is the stream's finish line. Ending here too means
+        // a sender that is retained by mistake cannot hold the body open.
+        let stream =
+            futures::stream::unfold((receiver, false), |(mut receiver, done)| async move {
+                if done {
+                    return None;
+                }
+                let (seq, frame) = receiver.recv().await?;
+                let terminal = matches!(
+                    frame,
+                    ChatFrame::Completed { .. } | ChatFrame::Failed { .. }
+                );
+                Some((
+                    Ok::<Event, Infallible>(frame_event(seq, frame)),
+                    (receiver, terminal),
+                ))
+            });
         return Ok(Sse::new(stream)
             .keep_alive(KeepAlive::default())
             .into_response());
@@ -272,7 +293,9 @@ pub async fn open(
 
     let activity = CallContext::new("chat")
         .with_session(session_id.clone())
-        .with_run(request_id.clone());
+        .with_run(request_id.clone())
+        .with_trigger("user_turn")
+        .with_origin("cme.turn");
     let outcome = match mm_llm::scope(activity, async {
         state
             .cme
@@ -304,6 +327,15 @@ pub async fn open(
         .log_turn_frames(&session_id, &request_id, &body.query, &outcome, &stored)
         .await;
     Ok(sse_response(&stored)?.into_response())
+}
+
+/// Closes the live response when the turn task ends, including on panic.
+struct CloseChatStream(Arc<ChatStream>);
+
+impl Drop for CloseChatStream {
+    fn drop(&mut self) {
+        self.0.close();
+    }
 }
 
 /// The post-turn refreshes every path performs, so a streamed and a buffered

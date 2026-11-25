@@ -26,6 +26,17 @@ pub struct CallContext {
     pub pass: Option<String>,
     /// The model round inside the phase.
     pub round: Option<u32>,
+    /// What caused this call: `user_turn`, `tool_result`, `repair`,
+    /// `budget_retry`, `agent_step`, `scheduler`, `boot`, `summary`.
+    pub trigger: Option<String>,
+    /// The call whose outcome caused this one (a retry or a repair).
+    pub parent_call_id: Option<String>,
+    /// The plan or process step being served.
+    pub step: Option<String>,
+    /// The tool whose result prompted this call.
+    pub tool: Option<String>,
+    /// Stable call-site label, e.g. `cme.think`, `controller.turn`.
+    pub origin: Option<String>,
 }
 
 impl CallContext {
@@ -37,6 +48,11 @@ impl CallContext {
             run_id: None,
             pass: None,
             round: None,
+            trigger: None,
+            parent_call_id: None,
+            step: None,
+            tool: None,
+            origin: None,
         }
     }
 
@@ -56,6 +72,36 @@ impl CallContext {
     pub fn with_pass(mut self, pass: impl Into<String>, round: Option<u32>) -> Self {
         self.pass = Some(pass.into());
         self.round = round;
+        self
+    }
+
+    /// What caused the call.
+    pub fn with_trigger(mut self, trigger: impl Into<String>) -> Self {
+        self.trigger = Some(trigger.into());
+        self
+    }
+
+    /// The call whose outcome caused this one.
+    pub fn with_parent(mut self, call_id: impl Into<String>) -> Self {
+        self.parent_call_id = Some(call_id.into());
+        self
+    }
+
+    /// The plan or process step being served.
+    pub fn with_step(mut self, step: impl Into<String>) -> Self {
+        self.step = Some(step.into());
+        self
+    }
+
+    /// The tool whose result prompted the call.
+    pub fn with_tool(mut self, tool: impl Into<String>) -> Self {
+        self.tool = Some(tool.into());
+        self
+    }
+
+    /// A stable call-site label.
+    pub fn with_origin(mut self, origin: impl Into<String>) -> Self {
+        self.origin = Some(origin.into());
         self
     }
 }

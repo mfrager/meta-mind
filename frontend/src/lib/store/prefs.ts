@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 export type ThemeName = "light" | "dark";
 export type Density = "comfortable" | "compact";
+export type LlmLogTab = "log" | "text";
 
 export const LLM_LOG_MIN_HEIGHT = 96;
 export const LLM_LOG_DEFAULT_HEIGHT = 168;
@@ -22,6 +23,7 @@ type PrefsState = {
   density: Density;
   llmLogCollapsed: boolean;
   llmLogHeight: number;
+  llmLogTab: LlmLogTab;
   setTheme: (theme: ThemeName) => void;
   toggleTheme: () => void;
   setDensity: (density: Density) => void;
@@ -29,6 +31,7 @@ type PrefsState = {
   setLlmLogCollapsed: (collapsed: boolean) => void;
   toggleLlmLogCollapsed: () => void;
   setLlmLogHeight: (height: number) => void;
+  setLlmLogTab: (tab: LlmLogTab) => void;
 };
 
 export const usePrefsStore = create<PrefsState>()(
@@ -38,6 +41,7 @@ export const usePrefsStore = create<PrefsState>()(
       density: "comfortable",
       llmLogCollapsed: false,
       llmLogHeight: LLM_LOG_DEFAULT_HEIGHT,
+      llmLogTab: "log",
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
       setDensity: (density) => set({ density }),
@@ -45,6 +49,7 @@ export const usePrefsStore = create<PrefsState>()(
       setLlmLogCollapsed: (llmLogCollapsed) => set({ llmLogCollapsed }),
       toggleLlmLogCollapsed: () => set((state) => ({ llmLogCollapsed: !state.llmLogCollapsed })),
       setLlmLogHeight: (height) => set({ llmLogHeight: clampLlmLogHeight(height) }),
+      setLlmLogTab: (llmLogTab) => set({ llmLogTab }),
     }),
     {
       name: "mm-prefs",
@@ -53,6 +58,7 @@ export const usePrefsStore = create<PrefsState>()(
         density: state.density,
         llmLogCollapsed: state.llmLogCollapsed,
         llmLogHeight: state.llmLogHeight,
+        llmLogTab: state.llmLogTab,
       }),
     },
   ),

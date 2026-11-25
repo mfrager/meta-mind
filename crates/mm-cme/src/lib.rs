@@ -87,7 +87,7 @@ pub use driver::{DriverMessage, SessionDriver};
 pub use error::{CmeError, Result};
 pub use executor::{
     CleanLogProvider, ConfirmationHandler, DenyUnconfirmed, PromptContextProvider, ToolHandler,
-    TurnExecutor, TurnLoopPolicy, UnavailableTools,
+    TurnExecutor, TurnLoopPolicy, TurnOverrides, UnavailableTools,
 };
 pub use frames::{FrameEngine, FrameError, FrameTimerView};
 pub use hill_climb::{climb, HillClimbConfig, HillClimbResult, HillClimbStep, Optimizable};
@@ -113,7 +113,7 @@ pub use preferences::{
     PlannerHooks, PreferenceConfig, PreferenceDimension, PreferenceLearner, PreferencePosterior,
     PreferenceUpdate,
 };
-pub use process::{ProcessPass, ProcessRequest, ProcessRun};
+pub use process::{ProcessPass, ProcessRequest, ProcessRun, MAX_TOOL_ROUNDS, MAX_TOOL_STEPS};
 pub use prompt::{CmePromptManager, PromptVariables, PromptingError, STANDARD_SLOTS};
 pub use regions::{
     improvement::{ImprovementEvent, ImprovementRegion, ImprovementState},
@@ -132,6 +132,7 @@ pub use routing::{ConversationRouter, ConversationRoutingRequest, RoutingTable};
 pub use runner::{
     InterpretResult, PassContext, PassFinish, PassKind, PassOutcome, RetryContext, RetryFailure,
     StepPassRequest, StepRun, ThinkPassRequest, ThinkRun, ThreePassRunner, VerifyOutcome,
+    MAX_PASS_ROUNDS,
 };
 pub use session::{
     AffectState, MemoryContext, PreferenceProfile, Session, SessionBudgets, SessionContext,

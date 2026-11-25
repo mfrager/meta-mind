@@ -40,6 +40,34 @@ pass?: string | null,
  */
 round?: number | null,
 /**
+ * What caused this call (`user_turn`, `tool_result`, `budget_retry`, …).
+ */
+trigger?: string | null,
+/**
+ * The call whose outcome caused this one.
+ */
+parentCallId?: string | null,
+/**
+ * The plan or process step being served.
+ */
+step?: string | null,
+/**
+ * The tool whose result prompted this call.
+ */
+tool?: string | null,
+/**
+ * Stable call-site label (`cme.think`, `controller.turn`, …).
+ */
+origin?: string | null,
+/**
+ * 1 for the first round, 2 for an escalation retry.
+ */
+attempt: number,
+/**
+ * The call ceiling actually applied, when one applied.
+ */
+timeoutMs?: number | null,
+/**
  * Why the call is being made (`Purpose::as_str`).
  */
 purpose: string,
@@ -133,13 +161,39 @@ tokensOut: number,
  */
 latencyMs: number,
 /**
- * Redacted, bounded reply excerpt.
+ * Redacted, bounded reply excerpt (the one-line row summary).
  */
 text: string,
 /**
  * How many tool calls the answer proposed.
  */
-toolCalls: number, } | { "kind": "error",
+toolCalls: number,
+/**
+ * Redacted, bounded one-line preview of the proposed calls (name and
+ * arguments). A fast-path reply or any answer carried by a tool call
+ * is only visible here, because `text` is the provider's content field.
+ */
+toolPreview: string,
+/**
+ * The full streamed body, capped by `MM_LLM_ACTIVITY_STREAM_CHARS`.
+ */
+streamText: string,
+/**
+ * Characters in the body before the cap.
+ */
+streamChars: number,
+/**
+ * True when `stream_text` was cut at the cap.
+ */
+streamTruncated: boolean,
+/**
+ * Reasoning the model did before answering, when the provider reported it.
+ */
+reasoningChars: number,
+/**
+ * 1 for the first round, 2 for an escalation retry.
+ */
+attempt: number, } | { "kind": "error",
 /**
  * Monotonic feed cursor.
  */
@@ -167,7 +221,25 @@ latencyMs: number,
 /**
  * Streaming characters reported before the failure.
  */
-partialChars: number, };
+partialChars: number,
+/**
+ * Visible characters the provider produced before the failure.
+ * Mirrors `partial_chars` for the wire contract, where an error and a
+ * response carry the same character-count field name.
+ */
+streamChars: number,
+/**
+ * Reasoning characters the model produced before it failed.
+ */
+reasoningChars: number,
+/**
+ * The provider's finish reason, when it reported one.
+ */
+finishReason?: string | null,
+/**
+ * 1 for the first round, 2 for an escalation retry.
+ */
+attempt: number, };
 
 export type LlmActivitySnapshot = {
 /**

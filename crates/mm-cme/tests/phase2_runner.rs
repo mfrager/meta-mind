@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use mm_cme::{
     BudgetLimits, InterpretResult, PassContext, PassFinish, PassKind, PassScope, PromptVariables,
-    ThreePassConfig, ThreePassRunner, ToolHandler, TurnEnvelope,
+    ThreePassConfig, ThreePassRunner, ToolHandler, TurnEnvelope, MAX_PASS_ROUNDS,
 };
 use mm_data::{CleanLog, CleanRole, CleanTurn};
 use mm_llm::{LlmClient, MockClient, ProviderToolCall, ScriptedResponse, ToolSchema};
@@ -152,6 +152,30 @@ fn the_default_runner_has_no_turn_budget() {
     );
     assert!(!runner.config().budget.enabled);
     assert_eq!(runner.envelope().limits(), BudgetLimits::UNLIMITED);
+}
+
+#[tokio::test]
+async fn interpret_stops_at_the_pass_round_ceiling_when_the_envelope_is_unlimited() {
+    let client = Arc::new(MockClient::constant(
+        ScriptedResponse::text("").with_tool_calls(vec![ProviderToolCall {
+            id: "call-topic".into(),
+            name: "conversation.topic".into(),
+            arguments: serde_json::json!({ "action": "get" }).to_string(),
+        }]),
+    ));
+    let tools = Arc::new(RecordingTools::default());
+    let mut ctx = context(CleanLog::default());
+    ctx.envelope = TurnEnvelope::unlimited(5);
+    let outcome = runner(
+        Arc::clone(&client),
+        Arc::clone(&tools) as Arc<dyn ToolHandler>,
+    )
+    .run_interpret(ctx, "s1")
+    .await
+    .unwrap();
+    assert_eq!(outcome.finished, PassFinish::Exhausted);
+    assert_eq!(client.calls(), u64::from(MAX_PASS_ROUNDS));
+    assert_eq!(tools.calls.load(Ordering::SeqCst), MAX_PASS_ROUNDS as usize);
 }
 
 #[tokio::test]

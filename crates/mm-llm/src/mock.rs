@@ -222,6 +222,7 @@ impl LlmClient for MockClient {
         Ok(LlmResponse {
             call_id: crate::accounting::new_call_id(),
             text: next.text,
+            reasoning_chars: 0,
             model: if next.model.is_empty() {
                 req.model.clone().unwrap_or_else(|| "mock-small".into())
             } else {

@@ -978,7 +978,7 @@ impl ToolHandler for CmTools {
                 DATA_WRITE_TIMEOUT
             }
             "data.query" | "data.search" => DATA_READ_TIMEOUT,
-            "metamind.plan" | "metamind.think" => Duration::from_secs(90),
+            "metamind.plan" | "metamind.think" => Duration::from_secs(300),
             "metamind.memory" => match action.as_deref() {
                 Some("remember") | Some("forget") => DATA_WRITE_TIMEOUT,
                 _ => DATA_READ_TIMEOUT,
@@ -997,7 +997,7 @@ impl ToolHandler for CmTools {
                 | Some("plan_complete")
                 | Some("plan_abandon")
                 | Some("cancel") => DATA_READ_TIMEOUT,
-                _ => Duration::from_secs(30),
+                _ => Duration::from_secs(120),
             },
             _ => STUB_TOOL_TIMEOUT,
         };

@@ -16,12 +16,31 @@ semantic_cache_purposes = ["summarize"]
 semantic_cache_threshold = 0.97
 # How many repair passes a rejected structured call gets before it is rejected.
 max_repair_attempts = 1
-timeout_ms = 30000
-max_tokens = 1024
+# No wall clock on a call: a thinking model is long by design. `idle_timeout_ms`
+# is the real bound — one connect/write/read window that makes no progress.
+timeout_ms = 0
+idle_timeout_ms = 300000
+# Fallback completion budget. A purpose with an entry below wins.
+max_tokens = 2048
 
 # NIM-backed endpoints return an empty completion for `json_schema`. Ask only
 # for valid JSON and let the substrate validate/repair against the real schema.
 structured_output = "json_object"
+
+# The completion budget is a property of the work: `classify` and `agent`
+# cannot share one number. Must stay the last table under `[defaults]`, because
+# every bare key that follows it belongs to it.
+[defaults.max_tokens_by_purpose]
+interpret = 4096
+plan = 4096
+extract = 2048
+critique = 2048
+summarize = 2048
+code_review = 4096
+classify = 512
+diagnose = 2048
+converse = 4096
+agent = 8192
 
 [[model]]
 name = "nvidia/nemotron-3.5-lightning-30b-a3b"
@@ -31,7 +50,7 @@ typical_latency_ms = 400
 complexity_ceiling = "medium"
 
 [[model]]
-name = "auto/remote"
+name = "nvidia/nemotron-3-ultra-550b-a55b"
 input_cost_micros_per_1k = 2500
 output_cost_micros_per_1k = 10000
 typical_latency_ms = 2500

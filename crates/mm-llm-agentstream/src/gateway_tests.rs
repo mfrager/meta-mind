@@ -1,6 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::normalize_request;
 use async_trait::async_trait;
 use mm_core::{Params, Tabular};
 use mm_data::agentstream::{AgentstreamEvent, EventType, SessionMetadata};
@@ -8,7 +9,7 @@ use mm_data::config::EngineConfig;
 use mm_data::{AgentstreamStore, RdfEngine};
 use mm_llm::{
     CacheMode, CallContext, CollectSink, LlmClient, LlmConfig, LlmRequest, Message, MockClient,
-    Purpose, SchemaId, ScriptedResponse,
+    Purpose, SchemaId, ScriptedResponse, ThinkingPolicy, ThinkingStyle,
 };
 use mm_log::{Level, Logger, RedactionPolicy};
 use mm_store_graph::GraphStore;
@@ -26,6 +27,9 @@ decoder = "none"
 max_repair_attempts = 1
 timeout_ms = 5000
 max_tokens = 128
+
+[defaults.max_tokens_by_purpose]
+converse = 4096
 
 [[model]]
 name = "small"
@@ -217,11 +221,232 @@ fn default_profile() -> ProviderProfile {
         model_env: None,
         model: None,
         timeout_ms: 20,
+        idle_timeout_ms: 300_000,
+        thinking: ThinkingPolicy::ProviderDefault,
+        thinking_style: ThinkingStyle::Auto,
         stream: false,
         temperature: None,
         omit_max_tokens: false,
         structured_output: StructuredOutput::JsonObject,
     }
+}
+
+/// Answers the first call with a reasoning-only failure, then a real answer.
+/// Records every request it saw so the retry's budget is checkable.
+struct ReasoningOnceClient {
+    calls: Mutex<Vec<LlmRequest>>,
+}
+
+#[async_trait]
+impl LlmClient for ReasoningOnceClient {
+    async fn complete(&self, req: &LlmRequest) -> mm_llm::Result<mm_llm::LlmResponse> {
+        let mut calls = self.calls.lock().unwrap_or_else(|error| error.into_inner());
+        calls.push(req.clone());
+        if calls.len() == 1 {
+            return Err(mm_llm::LlmError::ReasoningOnly {
+                reasoning_chars: 3_838,
+                finish_reason: "length".into(),
+            });
+        }
+        Ok(mm_llm::LlmResponse {
+            call_id: req.call_id.unwrap_or_default(),
+            text: "the answer".into(),
+            reasoning_chars: 0,
+            model: "small".into(),
+            usage: mm_llm::Usage::default(),
+            cached: false,
+            schema_valid: true,
+            decoder: mm_llm::DecoderKind::None,
+            tool_calls: Vec::new(),
+            finish_reason: Some("stop".into()),
+            provider_metadata: Default::default(),
+            streamed: false,
+        })
+    }
+
+    fn provider(&self) -> &str {
+        "reasoning-once"
+    }
+}
+
+/// Always fails with the given error.
+struct FailingClient {
+    calls: AtomicUsize,
+    error: fn() -> mm_llm::LlmError,
+}
+
+#[async_trait]
+impl LlmClient for FailingClient {
+    async fn complete(&self, _req: &LlmRequest) -> mm_llm::Result<mm_llm::LlmResponse> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Err((self.error)())
+    }
+
+    fn provider(&self) -> &str {
+        "failing"
+    }
+}
+
+#[tokio::test]
+async fn reasoning_only_is_retried_once_with_a_larger_budget() {
+    let client = Arc::new(ReasoningOnceClient {
+        calls: Mutex::new(Vec::new()),
+    });
+    let case = Harness::new()
+        .await
+        .case(Arc::clone(&client) as Arc<dyn LlmClient>);
+    let mut req = request("hello");
+    req.max_tokens = 1_024;
+    let response = case.gateway.call(req).await.expect("the retry answers");
+
+    assert_eq!(response.text, "the answer");
+    let calls = client
+        .calls
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    assert_eq!(calls.len(), 2, "exactly one retry");
+    assert!(
+        calls[1].max_tokens > calls[0].max_tokens,
+        "the retry escalates"
+    );
+    assert_ne!(
+        calls[0].call_id, calls[1].call_id,
+        "the retry is a new call"
+    );
+
+    // Both rounds are journaled, and the retry names its parent.
+    let events = case.journal.events();
+    let requests: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type == EventType::LlmRequest)
+        .collect();
+    assert_eq!(requests.len(), 2, "the failed round is not hidden");
+    assert_eq!(requests[1].payload["trigger"], "budget_retry");
+    assert_eq!(
+        requests[1].payload["parentCallId"].as_str(),
+        requests[0].payload["callId"].as_str()
+    );
+}
+
+#[tokio::test]
+async fn a_retry_publishes_the_failed_round_to_the_dock() {
+    let client = Arc::new(ReasoningOnceClient {
+        calls: Mutex::new(Vec::new()),
+    });
+    let case = Harness::new()
+        .await
+        .case(Arc::clone(&client) as Arc<dyn LlmClient>);
+    let mut live = case.gateway.live.subscribe();
+    case.gateway
+        .call(request("hello"))
+        .await
+        .expect("the retry answers");
+
+    let mut errors = Vec::new();
+    let mut requests = Vec::new();
+    while let Ok(event) = live.try_recv() {
+        match event {
+            crate::LiveLlmEvent::Request { call_id, .. } => requests.push(call_id),
+            crate::LiveLlmEvent::Error {
+                call_id,
+                reasoning_chars,
+                finish_reason,
+                attempt,
+                ..
+            } => errors.push((call_id, reasoning_chars, finish_reason, attempt)),
+            _ => {}
+        }
+    }
+
+    assert_eq!(requests.len(), 2, "both rounds reached the provider");
+    assert_eq!(
+        errors.len(),
+        1,
+        "the failed round was published, not hidden"
+    );
+    assert_eq!(
+        errors[0].0, requests[0],
+        "the error answers the first request, not the retry"
+    );
+    assert_eq!(errors[0].1, 3_838, "the dock gets the reasoning count");
+    assert_eq!(errors[0].2.as_deref(), Some("length"));
+    assert_eq!(errors[0].3, 1, "the failure belongs to attempt 1");
+}
+
+#[tokio::test]
+async fn the_retry_escalates_from_the_applied_purpose_budget() {
+    // The caller passes no budget, so the service applies the purpose budget
+    // (4096). Escalating from the sentinel (1024) would produce another 4096 and
+    // repeat the same failure.
+    let client = Arc::new(ReasoningOnceClient {
+        calls: Mutex::new(Vec::new()),
+    });
+    let case = Harness::new()
+        .await
+        .case(Arc::clone(&client) as Arc<dyn LlmClient>);
+    case.gateway
+        .call(request("hello"))
+        .await
+        .expect("the retry answers");
+
+    let calls = client
+        .calls
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].max_tokens, 4096, "the purpose budget was applied");
+    assert!(
+        calls[1].max_tokens > calls[0].max_tokens,
+        "the retry escalates past the budget that failed: {}",
+        calls[1].max_tokens
+    );
+}
+
+#[tokio::test]
+async fn a_timeout_is_never_retried() {
+    let client = Arc::new(FailingClient {
+        calls: AtomicUsize::new(0),
+        error: || mm_llm::LlmError::Timeout(30_000),
+    });
+    let case = Harness::new()
+        .await
+        .case(Arc::clone(&client) as Arc<dyn LlmClient>);
+    let error = case.gateway.call(request("hello")).await.unwrap_err();
+
+    assert_eq!(error.kind(), "timeout");
+    assert_eq!(
+        client.calls.load(Ordering::SeqCst),
+        1,
+        "a blind retry on a timeout would double a real outage"
+    );
+}
+
+#[test]
+fn an_unbounded_profile_has_no_total_timeout_but_keeps_the_idle_bound() {
+    let profiles = ProviderProfiles::standard();
+    let default = profiles.get("default").expect("default profile");
+    assert_eq!(default.timeout_ms, 0, "no wall clock on a model call");
+    assert_eq!(default.idle_timeout_ms, 300_000, "a stalled socket is cut");
+
+    // A ceiling of zero leaves an explicit caller budget alone…
+    let mut req = request("hello");
+    req.max_tokens = 10;
+    req.timeout_ms = Some(5_000);
+    normalize_request(&mut req, default).unwrap();
+    assert_eq!(req.timeout_ms, Some(5_000));
+
+    // …and leaves the call unbounded when the caller asked for nothing.
+    let mut req = request("hello");
+    normalize_request(&mut req, default).unwrap();
+    assert_eq!(req.timeout_ms, None);
+
+    // A profile that sets a ceiling still clamps, as before.
+    let mut bounded = default.clone();
+    bounded.timeout_ms = 2_000;
+    let mut req = request("hello");
+    req.timeout_ms = Some(9_000);
+    normalize_request(&mut req, &bounded).unwrap();
+    assert_eq!(req.timeout_ms, Some(2_000));
 }
 
 struct SlowClient;
@@ -233,6 +458,7 @@ impl LlmClient for SlowClient {
         Ok(mm_llm::LlmResponse {
             call_id: req.call_id.unwrap_or_default(),
             text: "late".into(),
+            reasoning_chars: 0,
             model: "small".into(),
             usage: mm_llm::Usage::default(),
             cached: false,
@@ -519,6 +745,9 @@ async fn a_hermes_profile_pins_its_model_and_provider_on_the_request() {
         model_env: None,
         model: Some("agent-model".into()),
         timeout_ms: 1000,
+        idle_timeout_ms: 300_000,
+        thinking: ThinkingPolicy::ProviderDefault,
+        thinking_style: ThinkingStyle::Auto,
         stream: true,
         temperature: Some(0.2),
         omit_max_tokens: true,

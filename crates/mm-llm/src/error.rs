@@ -20,6 +20,23 @@ pub enum LlmError {
     /// The provider did not answer inside the configured budget.
     #[error("llm call timed out after {0} ms")]
     Timeout(u32),
+    /// The endpoint spent its completion budget on reasoning and emitted no
+    /// visible answer.
+    ///
+    /// This is a budget outcome, not a transport failure: the endpoint answered,
+    /// the model just never got to the answer. Keeping it typed is what lets the
+    /// retry policy, the ledger's `error_kind`, and the activity dock tell it
+    /// apart from an outage.
+    #[error(
+        "llm reasoning-only answer: {reasoning_chars} reasoning chars, no visible text \
+         (finish_reason: {finish_reason})"
+    )]
+    ReasoningOnly {
+        /// How many reasoning characters the model produced.
+        reasoning_chars: u32,
+        /// The provider's finish reason (`length`, `stop`, …).
+        finish_reason: String,
+    },
     /// The output did not satisfy the registered schema and repair did not fix it.
     #[error("llm schema rejected for `{schema_id}`: {detail}")]
     SchemaRejected {
@@ -62,6 +79,7 @@ impl LlmError {
             LlmError::ProviderNotConfigured(_) => "provider_not_configured",
             LlmError::Transport(_) => "transport",
             LlmError::Timeout(_) => "timeout",
+            LlmError::ReasoningOnly { .. } => "reasoning_only",
             LlmError::SchemaRejected { .. } => "schema_rejected",
             LlmError::CacheMiss(_) => "cache_miss",
             LlmError::Io(_) => "io",
@@ -79,6 +97,7 @@ impl LlmError {
         use crate::accounting::CallStatus;
         match self {
             LlmError::Timeout(_) => CallStatus::Timeout,
+            LlmError::ReasoningOnly { .. } => CallStatus::ProviderError,
             LlmError::SchemaRejected { .. } => CallStatus::SchemaRejected,
             LlmError::ProviderNotConfigured(_)
             | LlmError::Transport(_)
@@ -95,6 +114,7 @@ impl LlmError {
             LlmError::ProviderNotConfigured(_) => "mm.llm.provider_unconfigured",
             LlmError::Transport(_) => "mm.llm.transport",
             LlmError::Timeout(_) => "mm.llm.timeout",
+            LlmError::ReasoningOnly { .. } => "mm.llm.reasoning_only",
             LlmError::SchemaRejected { .. } => "mm.llm.schema_rejected",
             LlmError::CacheMiss(_) => "mm.llm.cache_miss",
             LlmError::Io(_) => "mm.llm.io",
@@ -137,6 +157,10 @@ mod tests {
             LlmError::ProviderNotConfigured("x".into()),
             LlmError::Transport("x".into()),
             LlmError::Timeout(10),
+            LlmError::ReasoningOnly {
+                reasoning_chars: 3838,
+                finish_reason: "length".into(),
+            },
             LlmError::SchemaRejected {
                 schema_id: "s".into(),
                 detail: "d".into(),

@@ -177,10 +177,13 @@ function upsertPassTool(
   };
 }
 
-function settlePasses(parts: MessagePart[], failed = false): MessagePart[] {
+export function settlePasses(
+  parts: MessagePart[],
+  status: PassPart["status"] = "done"
+): MessagePart[] {
   return parts.map((part) =>
     part.type === "pass" && part.status === "running"
-      ? { ...part, status: failed ? "failed" : "done" }
+      ? { ...part, status }
       : part
   );
 }
@@ -431,7 +434,7 @@ export function applyEvent(message: ChatMessage, event: AgentEvent): ChatMessage
         ...message,
         status: "error",
         error: event.message,
-        parts: settlePasses(markThinkingDone(message.parts), true),
+        parts: settlePasses(markThinkingDone(message.parts), "failed"),
       };
     case "artifact":
       return message;
@@ -502,7 +505,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       patchMessage(sessionId, assistantId, (message) => ({
         ...message,
         status: "cancelled",
-        parts: markThinkingDone(message.parts),
+        parts: settlePasses(markThinkingDone(message.parts), "cancelled"),
       }));
     }
     set((state) => ({
@@ -618,7 +621,10 @@ async function runTurn(
         : error instanceof Error
           ? error.message
           : "The agent request failed",
-      parts: markThinkingDone(message.parts),
+      parts: settlePasses(
+        markThinkingDone(message.parts),
+        aborted ? "cancelled" : "failed"
+      ),
     }));
     if (!aborted) {
       useChatStore.setState((state) => ({

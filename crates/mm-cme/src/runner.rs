@@ -40,6 +40,11 @@ pub const MAX_TASK_CHARS: usize = 8_000;
 pub const MAX_CONSTRAINTS: usize = 8;
 /// Maximum constraint length accepted from `metamind.verify`.
 pub const MAX_CONSTRAINT_CHARS: usize = 300;
+/// Hard ceiling on model rounds inside one pass.
+///
+/// A budget stops a pass earlier when it is enabled; this ceiling is what stops
+/// it when budgeting is off, where the envelope's limits are `u32::MAX`.
+pub const MAX_PASS_ROUNDS: u32 = 12;
 
 /// The pass being run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -53,6 +58,29 @@ pub enum PassKind {
     Verify,
     /// A sub-agent think pass.
     Think,
+}
+
+/// Refine the turn's attribution with the pass and round this call serves.
+///
+/// `pass` used to be empty for every chat call because no scope ever entered it;
+/// the runner knows both values at the call site, so it sets them there.
+/// A follow-up round names what caused it: a tool result or a protocol repair.
+/// The first round of a pass has no such cause, so it keeps the turn's context.
+fn pass_context_with(
+    kind: PassKind,
+    round: u32,
+    follow_up: Option<(&str, Option<String>)>,
+) -> mm_llm::CallContext {
+    let mut context = mm_llm::current_context()
+        .unwrap_or_default()
+        .with_pass(kind.as_str(), Some(round));
+    if let Some((trigger, tool)) = follow_up {
+        context = context.with_trigger(trigger);
+        if let Some(tool) = tool {
+            context = context.with_tool(tool);
+        }
+    }
+    context
 }
 
 impl PassKind {
@@ -609,8 +637,9 @@ impl ThreePassRunner {
         let mut checks: Vec<VerifyCheck> = Vec::new();
         let mut process: Option<ProcessContext> = None;
         let mut repaired = false;
+        let mut follow_up: Option<(&str, Option<String>)> = None;
 
-        for _round in 0..ledger.limits().rounds {
+        for _round in 0..ledger.limits().rounds.min(MAX_PASS_ROUNDS) {
             ledger.reserve_round().map_err(CmeError::from)?;
             let (round_variables, round_state) = self.refresh_context(session_id, &ctx).await;
             let instance = match self.render_interpret(&ctx, &ledger, round_variables, round_state)
@@ -650,7 +679,12 @@ impl ThreePassRunner {
                 .round_started(PassKind::Interpret, 1, round, true, ctx.model.as_deref());
             let started = Instant::now();
             let mut sink = ObserverDeltaSink::new(&*self.observer, PassKind::Interpret, 1, round);
-            let response = match self.client.complete_stream(&request, &mut sink).await {
+            let response = match mm_llm::scope(
+                pass_context_with(PassKind::Interpret, round, follow_up.clone()),
+                self.client.complete_stream(&request, &mut sink),
+            )
+            .await
+            {
                 Ok(response) => response,
                 Err(error) => {
                     self.observer.round_finished(
@@ -714,6 +748,7 @@ impl ThreePassRunner {
                     history.push(Message::assistant(response.text));
                 }
                 history.push(Message::user(self.repair_text.clone()));
+                follow_up = Some(("repair", None));
                 continue;
             }
 
@@ -977,6 +1012,10 @@ impl ThreePassRunner {
                 };
                 round_results.push(Message::tool(call.id.clone(), call.name.clone(), result));
             }
+            follow_up = Some((
+                "tool_result",
+                response.tool_calls.first().map(|call| call.name.clone()),
+            ));
             history.push(Message::assistant_calls(
                 response.text.clone(),
                 response.tool_calls.clone(),
@@ -1144,8 +1183,9 @@ impl ThreePassRunner {
         let mut emissions = Vec::new();
         let mut history: Vec<Message> = Vec::new();
         let mut repaired = false;
+        let mut follow_up: Option<(&str, Option<String>)> = None;
 
-        for _round in 0..ledger.limits().rounds {
+        for _round in 0..ledger.limits().rounds.min(MAX_PASS_ROUNDS) {
             ledger.reserve_round().map_err(CmeError::from)?;
             let (round_variables, round_state) = self.refresh_context(session_id, &ctx).await;
             let instance = match self.render_verify(
@@ -1199,7 +1239,12 @@ impl ThreePassRunner {
             let started = Instant::now();
             let mut sink =
                 ObserverDeltaSink::new(&*self.observer, PassKind::Verify, attempt, round);
-            let response = match self.client.complete_stream(&request, &mut sink).await {
+            let response = match mm_llm::scope(
+                pass_context_with(PassKind::Verify, round, follow_up.clone()),
+                self.client.complete_stream(&request, &mut sink),
+            )
+            .await
+            {
                 Ok(response) => response,
                 Err(error) => {
                     self.observer.round_finished(
@@ -1265,6 +1310,7 @@ impl ThreePassRunner {
                     history.push(Message::assistant(response.text));
                 }
                 history.push(Message::user(self.verify_repair_text.clone()));
+                follow_up = Some(("repair", None));
                 continue;
             }
 
@@ -1396,6 +1442,10 @@ impl ThreePassRunner {
 
             let mut round_results = Vec::new();
             for call in &response.tool_calls {
+                // Verify can stage real work, not just approve. Report it with the
+                // same hooks as the other passes so the chat shows the call.
+                self.observer
+                    .tool_call(PassKind::Verify, attempt, round, call);
                 let action = action_of(&call.arguments);
                 if !ctx.scope.allows(&call.name, action.as_deref()) {
                     let message = format!(
@@ -1405,6 +1455,14 @@ impl ThreePassRunner {
                     );
                     let result = json_error_code("TOOL_NOT_AVAILABLE", &message);
                     emissions.push(emission(call, result.clone(), false));
+                    self.observer.tool_result(
+                        PassKind::Verify,
+                        attempt,
+                        round,
+                        call,
+                        &result,
+                        false,
+                    );
                     round_results.push(Message::tool(call.id.clone(), call.name.clone(), result));
                     continue;
                 }
@@ -1416,16 +1474,36 @@ impl ThreePassRunner {
                     Ok(result) => {
                         let ok = result_ok(&result);
                         emissions.push(emission(call, result.clone(), ok));
+                        self.observer.tool_result(
+                            PassKind::Verify,
+                            attempt,
+                            round,
+                            call,
+                            &result,
+                            ok,
+                        );
                         result
                     }
                     Err(error) => {
                         let result = format!("tool `{}` failed: {error}", call.name);
                         emissions.push(emission(call, result.clone(), false));
+                        self.observer.tool_result(
+                            PassKind::Verify,
+                            attempt,
+                            round,
+                            call,
+                            &result,
+                            false,
+                        );
                         result
                     }
                 };
                 round_results.push(Message::tool(call.id.clone(), call.name.clone(), result));
             }
+            follow_up = Some((
+                "tool_result",
+                response.tool_calls.first().map(|call| call.name.clone()),
+            ));
             history.push(Message::assistant_calls(
                 response.text.clone(),
                 response.tool_calls.clone(),
@@ -2288,5 +2366,24 @@ mod tests {
     fn finish_names_are_stable() {
         assert_eq!(PassFinish::FastPath.as_str(), "fast_path");
         assert_eq!(PassFinish::ProtocolError.as_str(), "protocol_error");
+    }
+
+    #[tokio::test]
+    async fn a_cme_pass_scope_sets_pass_and_round() {
+        // The turn's context is the outer scope; the pass refines it rather than
+        // replacing it, so `source`/`session` survive.
+        let turn = mm_llm::CallContext::new("chat").with_session("session-1");
+        let seen = mm_llm::scope(turn, async {
+            mm_llm::scope(pass_context_with(PassKind::Process, 2, None), async {
+                mm_llm::current_context().expect("a scope is active")
+            })
+            .await
+        })
+        .await;
+
+        assert_eq!(seen.pass.as_deref(), Some("process"));
+        assert_eq!(seen.round, Some(2));
+        assert_eq!(seen.source, "chat");
+        assert_eq!(seen.session_id.as_deref(), Some("session-1"));
     }
 }

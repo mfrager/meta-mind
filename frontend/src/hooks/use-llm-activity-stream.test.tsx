@@ -62,6 +62,7 @@ const retained: LlmActivityEvent = {
   messageCount: 2,
   toolCount: 0,
   preview: "hello",
+  attempt: 1,
 };
 
 const live: LlmActivityEvent = {
@@ -77,6 +78,12 @@ const live: LlmActivityEvent = {
   latencyMs: 30,
   text: "hi",
   toolCalls: 0,
+  toolPreview: "",
+  streamText: "hi",
+  streamChars: 2,
+  streamTruncated: false,
+  reasoningChars: 0,
+  attempt: 1,
 };
 
 describe("useLlmActivityStream", () => {

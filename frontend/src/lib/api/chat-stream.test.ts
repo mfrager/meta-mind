@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SseStreamParser, parseSse } from "@/lib/api/chat";
+import { SseStreamParser, openChatStream, parseSse } from "@/lib/api/chat";
 
 function block(seq: number, frame: unknown): string {
   return `id: ${seq}\nevent: ${(frame as { type: string }).type}\ndata: ${JSON.stringify(frame)}\n\n`;
@@ -34,5 +34,41 @@ describe("SseStreamParser", () => {
 
   it("ignores comments and malformed payloads instead of throwing", () => {
     expect(parseSse(": keep-alive\n\nid: 1\ndata: not-json\n\n")).toEqual([]);
+  });
+});
+
+describe("openChatStream", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("settles on the terminal frame even when the body stays open", async () => {
+    const encoder = new TextEncoder();
+    const reader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: encoder.encode(
+            block(1, { type: "final_response", text: "hi" }) +
+              block(2, { type: "completed", subsystems: [] })
+          ),
+        })
+        // A body that never closes: only the terminal frame can end the turn.
+        .mockImplementation(() => new Promise(() => {})),
+      cancel: vi.fn(async () => {}),
+      releaseLock: vi.fn(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }))
+    );
+
+    const seen: number[] = [];
+    await openChatStream({ query: "hello" }, (entry) => seen.push(entry.seq));
+
+    expect(seen).toEqual([1, 2]);
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(reader.read).toHaveBeenCalledOnce();
   });
 });

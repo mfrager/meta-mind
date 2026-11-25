@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::error::{CmeError, Result};
-use crate::executor::TurnExecutor;
+use crate::executor::{TurnExecutor, TurnOverrides};
 use crate::improvement::ImprovementEngine;
 use crate::memory::MemoryBridge;
 use crate::observability::{Observability, SmObserver};
@@ -31,6 +31,16 @@ pub enum DriverMessage {
     StartTurn {
         /// The user's request.
         query: String,
+    },
+    /// Start one turn with the configuration that belongs to it.
+    ///
+    /// The driver outlives a request, so the HTTP layer hands it each turn's
+    /// observer and prompt bundle here instead of rebuilding the whole session.
+    StartTurnWith {
+        /// The user's request.
+        query: String,
+        /// This turn's observer, prompt variables and prompt variant.
+        overrides: TurnOverrides,
     },
     /// Stop the loop.
     Shutdown,
@@ -207,19 +217,31 @@ impl SessionDriver {
                     self.barge_in()?;
                 }
             }
-            DriverMessage::StartTurn { query } => {
-                let outcome = self.run_turn(query).await?;
-                self.outcomes
-                    .send(outcome.clone())
-                    .map_err(|_| CmeError::ChannelClosed)?;
-                self.dispatch_session(SessionEvent::TurnCompleted(Box::new(outcome)))?;
-                if let Some(observability) = &self.observability {
-                    observability.observe_session(&self.session);
-                }
+            DriverMessage::StartTurn { query } => self.start_turn(query).await?,
+            DriverMessage::StartTurnWith { query, overrides } => {
+                self.executor.set_turn_overrides(overrides);
+                self.start_turn(query).await?;
             }
             DriverMessage::Shutdown => return Ok(true),
         }
         Ok(false)
+    }
+
+    /// Run one turn and publish its outcome to the request and the regions.
+    async fn start_turn(&mut self, query: String) -> Result<()> {
+        let outcome = self.run_turn(query).await;
+        // A finished turn must not leave its observer (and stream) on the
+        // long-lived executor, whether it succeeded or failed.
+        self.executor.clear_pass_observer();
+        let outcome = outcome?;
+        self.outcomes
+            .send(outcome.clone())
+            .map_err(|_| CmeError::ChannelClosed)?;
+        self.dispatch_session(SessionEvent::TurnCompleted(Box::new(outcome)))?;
+        if let Some(observability) = &self.observability {
+            observability.observe_session(&self.session);
+        }
+        Ok(())
     }
 
     /// Run one proactive cycle, or a bare region tick when no engine is attached.

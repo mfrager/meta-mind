@@ -1,136 +1,30 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown, ChevronDown, ChevronUp, Pause, Play, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowDown, ChevronDown, ChevronUp, Copy, Pause, Play, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button.tsx";
 import {
-  filterRows,
+  filterGroups,
+  groupRows,
   useLlmLogStore,
   type LlmLogConnection,
   type LlmLogFilter,
-  type LlmLogRow,
-  type RequestRow,
 } from "@/lib/store/llm-log.ts";
-import { clampLlmLogHeight, LLM_LOG_MAX_HEIGHT, LLM_LOG_MIN_HEIGHT, usePrefsStore } from "@/lib/store/prefs.ts";
+import {
+  clampLlmLogHeight,
+  LLM_LOG_MAX_HEIGHT,
+  LLM_LOG_MIN_HEIGHT,
+  usePrefsStore,
+  type LlmLogTab,
+} from "@/lib/store/prefs.ts";
 import { useViewportTier } from "@/lib/use-tier.ts";
+import { textLog } from "./llm-log-format.ts";
+import { CallGroupRow } from "./llm-log-row.tsx";
+import { LlmLogText } from "./llm-log-text.tsx";
 
-const KIND_LABEL: Record<LlmLogRow["kind"], string> = {
-  request: "REQ",
-  delta: "STR",
-  response: "RSP",
-  error: "ERR",
-};
-
-const KIND_CLASS: Record<LlmLogRow["kind"], string> = {
-  request: "text-azure-600",
-  delta: "text-muted-foreground",
-  response: "text-emerald-600",
-  error: "text-red-600",
-};
-
-function clock(at: number) {
-  return new Date(at).toLocaleTimeString("en-GB", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-function requestSummary(row: RequestRow) {
-  return row.streamText || row.preview || "(empty prompt)";
-}
-
-function rowSummary(row: LlmLogRow) {
-  switch (row.kind) {
-    case "request":
-      return requestSummary(row);
-    case "delta":
-      return row.text;
-    case "response":
-      return row.text || "(empty reply)";
-    case "error":
-      return row.error;
-  }
-}
-
-function rowMeta(row: LlmLogRow) {
-  switch (row.kind) {
-    case "request": {
-      const parts = [row.source, row.purpose, row.model, `${row.messageCount} msgs`, `${row.toolCount} tools`];
-      if (row.streamText) {
-        parts.push(`${row.streamChars} chars${row.streamTruncated ? " (truncated)" : ""}`);
-      }
-      return parts.filter(Boolean).join(" · ");
-    }
-    case "delta":
-      return `${row.chars} chars${row.truncated ? " (truncated)" : ""}`;
-    case "response":
-      return [
-        row.model,
-        row.status,
-        row.cached ? "cached" : null,
-        `${row.tokensIn}/${row.tokensOut} tok`,
-        `${row.latencyMs} ms`,
-        row.toolCalls ? `${row.toolCalls} tool calls` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    case "error":
-      return `${row.status} · ${row.latencyMs} ms` + (row.partialChars ? ` · ${row.partialChars} chars` : "");
-  }
-}
-
-function detailRows(row: LlmLogRow): Array<[string, string]> {
-  const rows: Array<[string, string]> = [
-    ["seq", String(row.seq)],
-    ["call", row.callId],
-  ];
-  const add = (label: string, value: string | number | boolean | null | undefined) => {
-    if (value === null || value === undefined || value === "") return;
-    rows.push([label, typeof value === "boolean" ? (value ? "yes" : "no") : String(value)]);
-  };
-
-  switch (row.kind) {
-    case "request":
-      add("trace", row.traceId);
-      add("session", row.sessionId);
-      add("run", row.runId);
-      add("pass", row.pass);
-      add("round", row.round);
-      add("source", row.source);
-      add("purpose", row.purpose);
-      add("provider", row.provider);
-      add("model", row.model);
-      add("requested", row.requested);
-      add("streamed", row.streamed);
-      add("messages", row.messageCount);
-      add("tools", row.toolCount);
-      add("prompt", row.preview);
-      break;
-    case "delta":
-      add("chars", row.chars);
-      add("truncated", row.truncated);
-      add("text", row.text);
-      break;
-    case "response":
-      add("model", row.model);
-      add("status", row.status);
-      add("cached", row.cached);
-      add("tokens in", row.tokensIn);
-      add("tokens out", row.tokensOut);
-      add("latency", `${row.latencyMs} ms`);
-      add("tool calls", row.toolCalls);
-      add("reply", row.text);
-      break;
-    case "error":
-      add("status", row.status);
-      add("latency", `${row.latencyMs} ms`);
-      add("partial chars", row.partialChars);
-      add("error", row.error);
-      break;
-  }
-  return rows;
-}
+const TABS: Array<{ value: LlmLogTab; label: string }> = [
+  { value: "log", label: "Log" },
+  { value: "text", label: "Text" },
+];
 
 function ConnectionLabel({ connection, error }: { connection: LlmLogConnection; error: string | null }) {
   if (connection === "error") {
@@ -177,13 +71,16 @@ export function LlmLogDock() {
 
   const collapsed = usePrefsStore((state) => state.llmLogCollapsed);
   const height = usePrefsStore((state) => state.llmLogHeight);
+  const tab = usePrefsStore((state) => state.llmLogTab);
   const setHeight = usePrefsStore((state) => state.setLlmLogHeight);
+  const setTab = usePrefsStore((state) => state.setLlmLogTab);
   const toggleCollapsed = usePrefsStore((state) => state.toggleLlmLogCollapsed);
   const tier = useViewportTier();
   const compact = tier === "narrow" || tier === "monitor";
 
-  const visibleRows = useMemo(() => filterRows(rows, filter), [rows, filter]);
-  const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
+  const groups = useMemo(() => groupRows(rows), [rows]);
+  const visibleGroups = useMemo(() => filterGroups(groups, filter), [groups, filter]);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [atBottom, setAtBottom] = useState(true);
   const [draftHeight, setDraftHeight] = useState<number | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -201,7 +98,7 @@ export function LlmLogDock() {
     if (!element || collapsed || !pinned.current) return;
     element.scrollTop = element.scrollHeight;
     setAtBottom(true);
-  }, [visibleRows, collapsed]);
+  }, [visibleGroups, collapsed, tab]);
 
   useEffect(() => {
     const clampToPane = () => {
@@ -223,13 +120,18 @@ export function LlmLogDock() {
     element.scrollTop = element.scrollHeight;
   };
 
-  const toggleRow = (seq: number) =>
+  const toggleRow = (key: string) =>
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(seq)) next.delete(seq);
-      else next.add(seq);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+
+  const copyTextLog = () => {
+    // The copy payload is the rows the browser already holds; nothing is fetched.
+    void navigator.clipboard?.writeText(textLog(visibleGroups));
+  };
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -275,7 +177,7 @@ export function LlmLogDock() {
 
   const shownHeight = draftHeight ?? height;
   const empty = rows.length === 0;
-  const filteredEmpty = !empty && visibleRows.length === 0;
+  const filteredEmpty = !empty && visibleGroups.length === 0;
 
   return (
     <section
@@ -283,6 +185,7 @@ export function LlmLogDock() {
       data-llm-log-dock
       data-connection={connection}
       data-filter={filter}
+      data-tab={tab}
       data-paused={paused ? "true" : "false"}
       data-collapsed={collapsed ? "true" : "false"}
       aria-label="LLM activity"
@@ -329,12 +232,38 @@ export function LlmLogDock() {
         <h2 className="text-small shrink-0 font-medium">LLM activity</h2>
         {!compact ? (
           <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
-            {visibleRows.length}/{rows.length}
+            {visibleGroups.length} calls / {rows.length} events
           </span>
         ) : null}
         <span role="status" aria-live="polite" className="ml-auto shrink-0 text-[11px]">
           <ConnectionLabel connection={connection} error={error} />
         </span>
+        <div
+          role="tablist"
+          aria-label="LLM activity view"
+          className={`shrink-0 items-center gap-2 ${collapsed ? "hidden" : "flex"}`}
+        >
+          {TABS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.value}
+              onClick={() => {
+                setTab(item.value);
+                pinned.current = true;
+                setAtBottom(true);
+              }}
+              className={`h-8 border-b-2 px-1 text-[11px] ${
+                tab === item.value
+                  ? "border-azure-500 text-foreground"
+                  : "text-muted-foreground border-transparent"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <select
           aria-label="Filter activity"
           value={filter}
@@ -353,6 +282,20 @@ export function LlmLogDock() {
           <option value="responses">Responses</option>
           <option value="errors">Errors</option>
         </select>
+        {tab === "text" ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            className={`shrink-0 ${collapsed ? "hidden" : ""}`}
+            aria-label="Copy text log"
+            title="Copy the text log"
+            disabled={visibleGroups.length === 0}
+            onClick={copyTextLog}
+          >
+            <Copy className="size-3" aria-hidden />
+            {!compact ? "Copy" : null}
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="xs"
@@ -418,6 +361,7 @@ export function LlmLogDock() {
                 ref={viewport}
                 role="log"
                 aria-live="off"
+                aria-label={tab === "text" ? "LLM activity text log" : "LLM activity log"}
                 className="h-full overflow-auto font-mono text-[11px]"
                 onScroll={(event) => {
                   const element = event.currentTarget;
@@ -426,58 +370,21 @@ export function LlmLogDock() {
                   setAtBottom(bottom);
                 }}
               >
-                <ul>
-                  {visibleRows.map((row) => {
-                    const open = expanded.has(row.seq);
-                    const details = open ? detailRows(row) : [];
-                    return (
-                      <li
-                        key={`${row.kind}-${row.seq}`}
-                        data-kind={row.kind}
-                        data-llm-log-row
-                        data-call-id={row.callId}
-                        className="border-border/60 border-b last:border-b-0"
-                      >
-                        <button
-                          type="button"
-                          aria-expanded={open}
-                          onClick={() => toggleRow(row.seq)}
-                          className="hover:bg-muted/50 flex w-full min-w-0 items-baseline gap-2 px-2 py-1 text-left"
-                        >
-                          <span className="text-muted-foreground shrink-0 tabular-nums">{clock(row.at)}</span>
-                          <span className={`w-7 shrink-0 font-semibold ${KIND_CLASS[row.kind]}`}>
-                            {KIND_LABEL[row.kind]}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate" title={rowSummary(row)}>
-                              {rowSummary(row)}
-                            </span>
-                            <span className="text-muted-foreground block truncate" title={rowMeta(row)}>
-                              {rowMeta(row)}
-                            </span>
-                          </span>
-                          <span className="text-muted-foreground shrink-0">
-                            {open ? (
-                              <ChevronUp className="size-3" aria-hidden />
-                            ) : (
-                              <ChevronDown className="size-3" aria-hidden />
-                            )}
-                          </span>
-                        </button>
-                        {open ? (
-                          <dl className="text-muted-foreground grid grid-cols-[5rem_1fr] gap-x-2 gap-y-0.5 px-2 pb-2 pl-11">
-                            {details.map(([label, value]) => (
-                              <Fragment key={label}>
-                                <dt className="shrink-0">{label}</dt>
-                                <dd className="text-foreground min-w-0 break-words whitespace-pre-wrap">{value}</dd>
-                              </Fragment>
-                            ))}
-                          </dl>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
+                {tab === "text" ? (
+                  <LlmLogText groups={visibleGroups} />
+                ) : (
+                  <ul role="tree" aria-label="LLM activity calls">
+                    {visibleGroups.map((group) => (
+                      <CallGroupRow
+                        key={group.callId}
+                        group={group}
+                        level={1}
+                        expanded={expanded}
+                        onToggle={toggleRow}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
               {!atBottom ? (
                 <Button

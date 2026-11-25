@@ -34,7 +34,7 @@ pub use mm_llm::{
 };
 
 use mm_llm::Complexity;
-use mm_llm::{DeltaSink, LlmService, ModelSpec, StructuredOutput};
+use mm_llm::{DeltaSink, LlmService, ModelSpec, StructuredOutput, ThinkingPolicy, ThinkingStyle};
 
 use journal::{CallJournal, CallScope, JournalSink};
 use live::{LiveBus, LiveDeltaSink};
@@ -102,8 +102,16 @@ pub struct ProviderProfile {
     pub model_env: Option<String>,
     /// Optional configured model, used when the environment is silent.
     pub model: Option<String>,
-    /// Per-call wall-clock ceiling.
+    /// Optional per-call ceiling. `0` means none: a thinking model is long by
+    /// design, and cutting it mid-answer is the failure this profile avoids.
     pub timeout_ms: u64,
+    /// How long one connect/write/read window may stall. This is the progress
+    /// bound that keeps an unbounded call from hanging on a silent socket.
+    pub idle_timeout_ms: u64,
+    /// Whether the provider should be asked to skip reasoning.
+    pub thinking: ThinkingPolicy,
+    /// Which provider knob that request writes.
+    pub thinking_style: ThinkingStyle,
     /// Whether the profile prefers SSE.
     pub stream: bool,
     /// Optional fixed sampling temperature.
@@ -112,6 +120,17 @@ pub struct ProviderProfile {
     pub omit_max_tokens: bool,
     /// How structured calls ask for JSON.
     pub structured_output: StructuredOutput,
+}
+
+/// `MM_LLM_THINKING=disabled` asks every profile to skip reasoning.
+///
+/// A global switch is deliberate: a structured call that cannot finish inside its
+/// budget is a deployment problem, not a per-call-site one.
+fn thinking_policy() -> ThinkingPolicy {
+    match std::env::var("MM_LLM_THINKING") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("disabled") => ThinkingPolicy::Disabled,
+        _ => ThinkingPolicy::ProviderDefault,
+    }
 }
 
 /// A validated collection of provider profiles.
@@ -134,7 +153,10 @@ impl ProviderProfiles {
                 api_key_env: "OPENAI_API_KEY".into(),
                 model_env: None,
                 model: None,
-                timeout_ms: 30_000,
+                timeout_ms: 0,
+                idle_timeout_ms: mm_llm::DEFAULT_IDLE_TIMEOUT_MS as u64,
+                thinking: thinking_policy(),
+                thinking_style: ThinkingStyle::Auto,
                 stream: false,
                 temperature: None,
                 omit_max_tokens: false,
@@ -147,7 +169,10 @@ impl ProviderProfiles {
                 api_key_env: "MM_AGENT_HERMES_API_KEY".into(),
                 model_env: Some("MM_AGENT_HERMES_MODEL".into()),
                 model: None,
-                timeout_ms: 120_000,
+                timeout_ms: 0,
+                idle_timeout_ms: mm_llm::DEFAULT_IDLE_TIMEOUT_MS as u64,
+                thinking: thinking_policy(),
+                thinking_style: ThinkingStyle::Auto,
                 stream: true,
                 temperature: Some(0.2),
                 omit_max_tokens: true,
@@ -453,20 +478,27 @@ impl AgentstreamLlm {
             return Err(disabled_error());
         }
         let call_id = req.call_id.unwrap_or_else(mm_llm::accounting::new_call_id);
-        let outcome = self.execute(req, None, call_id).await?;
+        let outcome = self.execute(req, &mut None, call_id).await?;
         match &outcome.result {
             Ok(response) => self.live.publish(LiveLlmEvent::Response {
-                call_id,
+                call_id: outcome.call_id,
                 latency_ms: outcome.latency_ms,
+                attempt: outcome.attempt,
                 response: response.clone(),
             }),
-            Err(error) => self.live.publish(LiveLlmEvent::Error {
-                call_id,
-                latency_ms: outcome.latency_ms,
-                partial_chars: 0,
-                kind: error.kind().to_owned(),
-                message: self.journal.redacted_error(error),
-            }),
+            Err(error) => {
+                let (reasoning_chars, finish_reason) = reasoning_parts(error);
+                self.live.publish(LiveLlmEvent::Error {
+                    call_id: outcome.call_id,
+                    latency_ms: outcome.latency_ms,
+                    attempt: outcome.attempt,
+                    partial_chars: 0,
+                    reasoning_chars,
+                    finish_reason,
+                    kind: error.kind().to_owned(),
+                    message: self.journal.redacted_error(error),
+                })
+            }
         }
         outcome.result
     }
@@ -482,34 +514,114 @@ impl AgentstreamLlm {
         }
         let call_id = req.call_id.unwrap_or_else(mm_llm::accounting::new_call_id);
         let mut live_sink = LiveDeltaSink::new(sink, Arc::clone(&self.live), call_id);
-        let outcome = self.execute(req, Some(&mut live_sink), call_id).await?;
+        let mut sink_slot: Option<&mut dyn DeltaSink> = Some(&mut live_sink);
+        let outcome = self.execute(req, &mut sink_slot, call_id).await?;
         live_sink.finish();
         let partial_chars = live_sink.total_chars();
         match &outcome.result {
             Ok(response) => self.live.publish(LiveLlmEvent::Response {
-                call_id,
+                call_id: outcome.call_id,
                 latency_ms: outcome.latency_ms,
+                attempt: outcome.attempt,
                 response: response.clone(),
             }),
-            Err(error) => self.live.publish(LiveLlmEvent::Error {
-                call_id,
-                latency_ms: outcome.latency_ms,
-                partial_chars,
-                kind: error.kind().to_owned(),
-                message: self.journal.redacted_error(error),
-            }),
+            Err(error) => {
+                let (reasoning_chars, finish_reason) = reasoning_parts(error);
+                self.live.publish(LiveLlmEvent::Error {
+                    call_id: outcome.call_id,
+                    latency_ms: outcome.latency_ms,
+                    attempt: outcome.attempt,
+                    partial_chars,
+                    reasoning_chars,
+                    finish_reason,
+                    kind: error.kind().to_owned(),
+                    message: self.journal.redacted_error(error),
+                })
+            }
         }
         outcome.result
     }
 
+    /// One logical call, with at most one escalation when the model spent its
+    /// whole budget on reasoning.
+    ///
+    /// The retry is a new call: its own id, its own journal rows, its own scope,
+    /// and `parent_call_id` pointing at the round that failed. Accounting and the
+    /// dock therefore show the extra spend instead of hiding it.
     async fn execute(
         &self,
-        mut req: LlmRequest,
-        sink: Option<&mut dyn DeltaSink>,
+        req: LlmRequest,
+        sink: &mut Option<&mut dyn DeltaSink>,
         call_id: Ulid,
     ) -> Result<CallOutcome> {
-        req.call_id = Some(call_id);
         let context = mm_llm::current_context().unwrap_or_default();
+        let first = self
+            .execute_once(req.clone(), sink, call_id, context.clone(), 1)
+            .await?;
+
+        let retry_reason = match &first.result {
+            Err(LlmError::ReasoningOnly {
+                reasoning_chars,
+                finish_reason,
+            }) if *reasoning_chars > 0 && finish_reason == "length" => reasoning_retry_enabled(),
+            _ => false,
+        };
+        if !retry_reason {
+            return Ok(first);
+        }
+
+        // The failed round is a first-class live event, not just a journal row:
+        // the dock has to show the ERR under the request before the retry's own
+        // request appears. No visible text can have been streamed here, because
+        // `ReasoningOnly` is only raised when the answer was empty.
+        if let Err(error) = &first.result {
+            let (reasoning_chars, finish_reason) = reasoning_parts(error);
+            self.live.publish(LiveLlmEvent::Error {
+                call_id: first.call_id,
+                latency_ms: first.latency_ms,
+                attempt: first.attempt,
+                partial_chars: 0,
+                reasoning_chars,
+                finish_reason,
+                kind: error.kind().to_owned(),
+                message: self.journal.redacted_error(error),
+            });
+        }
+
+        // Escalate from the budget the first round *actually* had. `req` still
+        // carries the sentinel when the caller set no budget, and the purpose
+        // budget is applied inside the service, so reading `req.max_tokens`
+        // here would double a number that was never used.
+        let applied_budget = if req.max_tokens == mm_llm::DEFAULT_MAX_TOKENS {
+            self.service
+                .read()
+                .await
+                .config()
+                .max_tokens_for(req.purpose)
+        } else {
+            req.max_tokens
+        };
+        let mut retry = req;
+        retry.max_tokens = escalated_budget(applied_budget);
+        let retry_id = mm_llm::accounting::new_call_id();
+        retry.call_id = Some(retry_id);
+        let retry_context = context
+            .with_trigger("budget_retry")
+            .with_parent(mm_core::ulid_string(&call_id));
+        self.execute_once(retry, sink, retry_id, retry_context, 2)
+            .await
+    }
+
+    /// One provider round, journaled and published under `call_id`.
+    async fn execute_once(
+        &self,
+        mut req: LlmRequest,
+        sink: &mut Option<&mut dyn DeltaSink>,
+        call_id: Ulid,
+        context: CallContext,
+        attempt: u32,
+    ) -> Result<CallOutcome> {
+        req.call_id = Some(call_id);
         let profile = self.pool.profile(&req)?;
         normalize_request(&mut req, &profile)?;
         let session_id = journal::session_id(&context);
@@ -541,18 +653,24 @@ impl AgentstreamLlm {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .insert(call_id, Arc::clone(&scope));
+        // Publish the bound that will actually cut this call. With no ceiling
+        // the idle bound is the only stop, and it is what explains a `timeout`
+        // row; leaving it `None` would make the row silent about its budget.
+        let mut published = req.clone();
+        published.timeout_ms = req.timeout_ms.or(Some(profile.idle_timeout_ms));
         self.live.publish(LiveLlmEvent::Request {
             call_id,
-            context,
+            context: context.clone(),
             provider: profile.name.clone(),
             streamed,
-            request: req.clone(),
+            attempt,
+            request: published,
         });
 
         let started = Instant::now();
         let service = self.service.read().await;
         let result = match sink {
-            Some(sink) => service.call_stream(req, sink).await,
+            Some(sink) => service.call_stream(req, *sink).await,
             None => service.call(req).await,
         };
         drop(service);
@@ -577,13 +695,52 @@ impl AgentstreamLlm {
             }
         };
 
-        Ok(CallOutcome { result, latency_ms })
+        Ok(CallOutcome {
+            result,
+            latency_ms,
+            call_id,
+            attempt,
+        })
     }
 }
 
 struct CallOutcome {
     result: Result<LlmResponse>,
     latency_ms: u64,
+    /// The call id this round actually ran under: the retry's id after an
+    /// escalation, so the terminal event lands on the request it answers.
+    call_id: Ulid,
+    /// 1 for the first round, 2 for an escalation retry.
+    attempt: u32,
+}
+
+/// The reasoning count and finish reason an error carries, when it has them.
+fn reasoning_parts(error: &LlmError) -> (u32, Option<String>) {
+    match error {
+        LlmError::ReasoningOnly {
+            reasoning_chars,
+            finish_reason,
+        } => (*reasoning_chars, Some(finish_reason.clone())),
+        _ => (0, None),
+    }
+}
+
+/// `MM_LLM_REASONING_RETRY=off` makes a reasoning-only answer terminal.
+fn reasoning_retry_enabled() -> bool {
+    match std::env::var("MM_LLM_REASONING_RETRY") {
+        Ok(value) => !value.trim().eq_ignore_ascii_case("off"),
+        Err(_) => true,
+    }
+}
+
+/// The budget an escalation retry gets: at least 4096, at most
+/// `MM_LLM_REASONING_RETRY_MAX_TOKENS` (default 8192).
+fn escalated_budget(current: u32) -> u32 {
+    let cap = std::env::var("MM_LLM_REASONING_RETRY_MAX_TOKENS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .unwrap_or(8192);
+    current.saturating_mul(2).max(4096).min(cap)
 }
 
 #[async_trait]
@@ -624,8 +781,14 @@ fn normalize_request(req: &mut LlmRequest, profile: &ProviderProfile) -> Result<
         ));
     }
 
-    let ceiling = profile.timeout_ms.max(1);
-    req.timeout_ms = Some(req.timeout_ms.unwrap_or(ceiling).max(1).min(ceiling));
+    // A ceiling of zero means unbounded, so an explicit caller budget survives
+    // untouched instead of being silently capped by the profile.
+    if profile.timeout_ms > 0 {
+        let ceiling = profile.timeout_ms.max(1);
+        req.timeout_ms = Some(req.timeout_ms.unwrap_or(ceiling).max(1).min(ceiling));
+    } else {
+        req.timeout_ms = req.timeout_ms.filter(|ms| *ms > 0);
+    }
     if let Some(temperature) = profile.temperature {
         if req.temperature == 0.0 {
             req.temperature = temperature;
@@ -696,6 +859,8 @@ pub enum LiveLlmEvent {
         provider: String,
         /// Whether the caller asked for deltas.
         streamed: bool,
+        /// 1 for the first round, 2 for an escalation retry.
+        attempt: u32,
         /// The neutral request.
         request: LlmRequest,
     },
@@ -716,6 +881,8 @@ pub enum LiveLlmEvent {
         call_id: Ulid,
         /// Wall-clock latency.
         latency_ms: u64,
+        /// 1 for the first round, 2 for an escalation retry.
+        attempt: u32,
         /// The neutral response.
         response: LlmResponse,
     },
@@ -725,8 +892,14 @@ pub enum LiveLlmEvent {
         call_id: Ulid,
         /// Wall-clock latency.
         latency_ms: u64,
+        /// 1 for the first round, 2 for an escalation retry.
+        attempt: u32,
         /// Characters reported before the failure.
         partial_chars: u32,
+        /// Reasoning characters the model produced before the failure.
+        reasoning_chars: u32,
+        /// The provider's finish reason, when the error carries one.
+        finish_reason: Option<String>,
         /// Stable error kind.
         kind: String,
         /// Redacted, bounded error.
@@ -750,6 +923,9 @@ mod tests {
             model_env: None,
             model: None,
             timeout_ms: 1_000,
+            idle_timeout_ms: 300_000,
+            thinking: ThinkingPolicy::ProviderDefault,
+            thinking_style: ThinkingStyle::Auto,
             stream: false,
             temperature: None,
             omit_max_tokens: false,
@@ -819,7 +995,10 @@ mod tests {
         let event = LiveLlmEvent::Error {
             call_id: Ulid::from_parts(1, 2),
             latency_ms: 3,
+            attempt: 1,
             partial_chars: 0,
+            reasoning_chars: 0,
+            finish_reason: None,
             kind: "transport".into(),
             message: "boom".into(),
         };

@@ -32,7 +32,9 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             tick_ms: 200,
-            lease_ms: 30_000,
+            // A step may hold a long model call and the lease is not renewed
+            // while it runs, so it must outlast `step_timeout_ms`.
+            lease_ms: 300_000,
             batch_size: 4,
             max_live_instances: 64,
             step_timeout_ms: 180_000,

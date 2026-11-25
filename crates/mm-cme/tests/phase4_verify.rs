@@ -10,10 +10,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use mm_cme::{
-    AffectState, CommittedMutation, ConversationRouter, MutationJournal, PassContext, PassKind,
-    PassScope, PreferenceProfile, ProcessResult, PromptVariables, SessionBudgets, SessionContext,
-    ThinkPassRequest, ThreePassConfig, ThreePassRunner, ToolHandler, Turn, TurnExecutor, TurnPlan,
-    VerificationBackend, VerificationError, VerificationResult, VerifyCheck, VerifyContext,
+    AffectState, CommittedMutation, ConversationRouter, InterpretResult, MutationJournal,
+    PassContext, PassFinish, PassKind, PassScope, PreferenceProfile, ProcessResult,
+    PromptVariables, SessionBudgets, SessionContext, ThinkPassRequest, ThreePassConfig,
+    ThreePassRunner, ToolHandler, Turn, TurnEnvelope, TurnExecutor, TurnPlan, VerificationBackend,
+    VerificationError, VerificationResult, VerifyCheck, VerifyContext, MAX_PASS_ROUNDS,
 };
 use mm_data::{CleanLog, SessionId, TurnId};
 use mm_llm::{
@@ -656,4 +657,41 @@ async fn pass_contexts_are_not_interchangeable() {
     );
     assert!(runner.run_verify(ctx, "s1").await.is_err());
     assert_eq!(PassScope::Think.visible_tools().len(), 8);
+}
+
+#[tokio::test]
+async fn verify_stops_at_the_pass_round_ceiling_when_the_envelope_is_unlimited() {
+    let client = Arc::new(MockClient::constant(
+        ScriptedResponse::text("").with_tool_calls(vec![tool(
+            "call-data",
+            "data.query",
+            serde_json::json!({ "action": "get", "class": "Note" }),
+        )]),
+    ));
+    let runner = runner(
+        Arc::clone(&client),
+        Arc::new(JournalTools::default()),
+        ThreePassConfig::default(),
+    );
+    let plan = TurnPlan::simple(SessionId::new("s1"), TurnId::new("t1"), "q");
+    let ctx = PassContext::verify(
+        CleanLog::default(),
+        "[STATE]",
+        "q",
+        PromptVariables::for_turn(&plan, &session()),
+        Some("fast".into()),
+        InterpretResult::default(),
+        ProcessResult {
+            reply_text: "done".into(),
+            tool_emissions: Vec::new(),
+        },
+        Vec::new(),
+        None,
+        Vec::new(),
+        0,
+        TurnEnvelope::unlimited(5),
+    );
+    let outcome = runner.run_verify(ctx, "s1").await.unwrap();
+    assert_eq!(outcome.finished, PassFinish::Exhausted);
+    assert_eq!(client.calls(), u64::from(MAX_PASS_ROUNDS));
 }

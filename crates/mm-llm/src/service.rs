@@ -257,7 +257,9 @@ impl LlmService {
         let mut resolved = req;
         resolved.model = Some(decision.model.clone());
         if resolved.max_tokens == DEFAULT_MAX_TOKENS {
-            resolved.max_tokens = self.cfg.defaults.max_tokens;
+            // A budget belongs to the work, not to the deployment: `classify`
+            // needs a fraction of what `agent` or `converse` needs.
+            resolved.max_tokens = self.cfg.max_tokens_for(resolved.purpose);
         }
 
         // A schema that is named but not registered can never be enforced, so the
@@ -782,6 +784,7 @@ impl LlmService {
         Ok(LlmResponse {
             call_id,
             text: hit.text.clone(),
+            reasoning_chars: 0,
             model: hit.model.clone(),
             usage: Usage {
                 tokens_in: hit.tokens_in,
@@ -957,6 +960,9 @@ mod tests {
 decoder = "llguidance"
 max_repair_attempts = {max_repair_attempts}
 max_tokens = 128
+
+[defaults.max_tokens_by_purpose]
+converse = 4096
 
 [[model]]
 name = "mock-small"
@@ -1321,6 +1327,34 @@ complexity_ceiling = "very_high"
             .unwrap();
 
         assert_eq!(client.last().unwrap().max_tokens, 128);
+        h.graph.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_purpose_budget_replaces_the_default() {
+        let client = Arc::new(MockClient::constant(ScriptedResponse::text("ok")));
+        let h = harness(client.clone(), 0).await;
+        h.service
+            .call(LlmRequest::new(
+                Purpose::Converse,
+                vec![Message::user("hello")],
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            client.last().unwrap().max_tokens,
+            4096,
+            "a Converse call takes its purpose budget, not the 128 fallback"
+        );
+
+        let mut explicit = LlmRequest::new(Purpose::Converse, vec![Message::user("hello")]);
+        explicit.max_tokens = 77;
+        h.service.call(explicit).await.unwrap();
+        assert_eq!(
+            client.last().unwrap().max_tokens,
+            77,
+            "an explicit caller budget still wins"
+        );
         h.graph.shutdown().await.unwrap();
     }
 

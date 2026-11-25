@@ -190,6 +190,7 @@ impl LlmClient for ReplayLlmClient {
         Ok(LlmResponse {
             call_id: crate::accounting::new_call_id(),
             text: recorded.text.clone(),
+            reasoning_chars: 0,
             model: recorded.model.clone(),
             usage: Usage {
                 tokens_in: recorded.tokens_in,

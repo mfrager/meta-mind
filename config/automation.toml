@@ -28,5 +28,5 @@ goodbye_hold_ms = 3000
 enabled = true
 max_scheduled_per_session = 64
 tick_jitter_ms = 1500
-immediate_timeout_ms = 30000
+immediate_timeout_ms = 120000
 schedule_timeout_ms = 5000

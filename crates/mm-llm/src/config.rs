@@ -5,6 +5,7 @@
 //! committed config can never pin a provider host, and an unconfigured provider is
 //! reported rather than defaulted.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -141,10 +142,17 @@ pub struct LlmDefaults {
     pub semantic_cache_threshold: f64,
     /// How many repair passes a rejected structured call gets.
     pub max_repair_attempts: u32,
-    /// Per-call timeout.
+    /// Optional hard ceiling for one call. `0` means unbounded: a thinking model
+    /// is long by design, and a wall clock would cut it mid-answer.
     pub timeout_ms: u32,
-    /// Default completion ceiling when a request does not set one.
+    /// How long one connect/write/read window may stall before the call is cut.
+    /// This is the progress bound that replaces the wall clock.
+    pub idle_timeout_ms: u32,
+    /// Fallback completion ceiling when a purpose has no entry below.
     pub max_tokens: u32,
+    /// Completion ceiling per purpose, keyed by `Purpose::as_str()`. The budget is
+    /// a property of the work: `classify` and `agent` cannot share one number.
+    pub max_tokens_by_purpose: BTreeMap<String, u32>,
     /// Default model when routing is unavailable.
     pub default_model: Option<String>,
     /// How structured requests ask the provider for JSON.
@@ -158,8 +166,10 @@ impl Default for LlmDefaults {
             semantic_cache_purposes: Vec::new(),
             semantic_cache_threshold: 0.97,
             max_repair_attempts: 1,
-            timeout_ms: 30_000,
-            max_tokens: 1024,
+            timeout_ms: 0,
+            idle_timeout_ms: 300_000,
+            max_tokens: 2048,
+            max_tokens_by_purpose: BTreeMap::new(),
             default_model: None,
             structured_output: StructuredOutput::JsonSchema,
         }
@@ -182,6 +192,11 @@ pub struct LlmConfig {
 
 fn default_cache_dir() -> PathBuf {
     PathBuf::from("data/llm_cache")
+}
+
+/// A numeric environment override, ignored when absent or unparseable.
+fn env_u32(name: &str) -> Option<u32> {
+    std::env::var(name).ok()?.trim().parse().ok()
 }
 
 impl Default for LlmConfig {
@@ -207,7 +222,25 @@ impl LlmConfig {
     pub fn load(path: &Path) -> Result<Self, LlmError> {
         let raw = std::fs::read_to_string(path)
             .map_err(|e| LlmError::Config(format!("cannot read {}: {e}", path.display())))?;
-        Self::from_toml_str(&raw)
+        let mut cfg = Self::from_toml_str(&raw)?;
+        cfg.apply_env_overrides();
+        Ok(cfg)
+    }
+
+    /// Operator overrides for the two knobs that differ per deployment.
+    ///
+    /// The per-purpose table stays file-only: it is a policy about the work, not
+    /// about the machine, and a second override surface would let them drift.
+    fn apply_env_overrides(&mut self) {
+        if let Some(max_tokens) = env_u32("MM_LLM_MAX_TOKENS") {
+            self.defaults.max_tokens = max_tokens;
+        }
+        if let Some(timeout_ms) = env_u32("MM_LLM_TIMEOUT_MS") {
+            self.defaults.timeout_ms = timeout_ms;
+        }
+        if let Some(idle) = env_u32("MM_LLM_IDLE_TIMEOUT_MS") {
+            self.defaults.idle_timeout_ms = idle;
+        }
     }
 
     /// Read `config/llm.toml`, or the built-in defaults when it is absent.
@@ -232,6 +265,18 @@ impl LlmConfig {
         self.defaults.semantic_cache_purposes.contains(&purpose)
     }
 
+    /// The completion ceiling for `purpose`.
+    ///
+    /// A purpose entry wins over the fallback. Callers that set their own budget
+    /// never reach this: the sentinel check in the service keeps explicit budgets.
+    pub fn max_tokens_for(&self, purpose: Purpose) -> u32 {
+        self.defaults
+            .max_tokens_by_purpose
+            .get(purpose.as_str())
+            .copied()
+            .unwrap_or(self.defaults.max_tokens)
+    }
+
     fn validate(&self) -> Result<(), LlmError> {
         if !(0.0..=1.0).contains(&self.defaults.semantic_cache_threshold) {
             return Err(LlmError::Config(format!(
@@ -252,6 +297,18 @@ impl LlmConfig {
         for model in &self.models {
             if model.name.trim().is_empty() {
                 return Err(LlmError::Config("a model name must not be empty".into()));
+            }
+        }
+        for key in self.defaults.max_tokens_by_purpose.keys() {
+            if Purpose::parse(key).is_none() {
+                return Err(LlmError::Config(format!(
+                    "max_tokens_by_purpose has an unknown purpose `{key}`; known: {}",
+                    Purpose::ALL
+                        .iter()
+                        .map(|p| p.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
             }
         }
         Ok(())
@@ -335,6 +392,70 @@ output_cost_micros_per_1k = 10000
 typical_latency_ms = 2500
 complexity_ceiling = "very_high"
 "#;
+
+    #[test]
+    fn the_repository_config_parses() {
+        // `mm-serve` degrades to `LlmConfig::default()` when this file does not
+        // parse, which silently empties the model catalog, so the real file is
+        // checked here rather than only the sample above.
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/llm.toml");
+        let cfg = LlmConfig::load(&path).expect("config/llm.toml must parse");
+        assert!(!cfg.models.is_empty(), "the catalog must not be empty");
+        assert_eq!(cfg.max_tokens_for(Purpose::Converse), 4096);
+        assert_eq!(cfg.defaults.timeout_ms, 0);
+        assert_eq!(cfg.defaults.idle_timeout_ms, 300_000);
+    }
+
+    #[test]
+    fn a_purpose_budget_replaces_the_default() {
+        let cfg = LlmConfig::from_toml_str(
+            r#"
+[defaults]
+max_tokens = 2048
+
+[defaults.max_tokens_by_purpose]
+converse = 4096
+classify = 512
+
+[[model]]
+name = "small"
+input_cost_micros_per_1k = 150
+output_cost_micros_per_1k = 600
+typical_latency_ms = 400
+complexity_ceiling = "medium"
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.max_tokens_for(Purpose::Converse), 4096);
+        assert_eq!(cfg.max_tokens_for(Purpose::Classify), 512);
+        assert_eq!(
+            cfg.max_tokens_for(Purpose::Summarize),
+            2048,
+            "a purpose without an entry falls back to max_tokens"
+        );
+    }
+
+    #[test]
+    fn an_unknown_purpose_budget_is_rejected_at_load() {
+        let error = LlmConfig::from_toml_str(
+            r#"
+[defaults.max_tokens_by_purpose]
+converes = 4096
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("converes"),
+            "the message names the offending key: {error}"
+        );
+    }
+
+    #[test]
+    fn an_absent_ceiling_means_unbounded_with_an_idle_bound() {
+        let defaults = LlmDefaults::default();
+        assert_eq!(defaults.timeout_ms, 0, "no wall clock by default");
+        assert_eq!(defaults.idle_timeout_ms, 300_000);
+    }
 
     #[test]
     fn the_sample_config_parses_and_orders_models_by_cost() {

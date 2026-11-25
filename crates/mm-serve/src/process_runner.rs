@@ -100,7 +100,14 @@ impl mm_process::StepRunner for ProcessStepRunner {
         .map_err(|error| {
             ProcessError::Unavailable(format!("three-pass runner unavailable: {error}"))
         })?;
-        let activity = CallContext::new("process").with_session(request.session_id.clone());
+        let mut activity = CallContext::new("process")
+            .with_session(request.session_id.clone())
+            .with_trigger("process_step")
+            .with_step(request.step_id.clone())
+            .with_origin("process.step");
+        if let Some(tool) = request.tool_scope.first() {
+            activity = activity.with_tool(tool.clone());
+        }
         let run = mm_llm::scope(
             activity,
             runner.run_step(StepPassRequest {

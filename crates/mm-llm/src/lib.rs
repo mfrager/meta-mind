@@ -39,7 +39,7 @@ pub use cached::{CacheKey, CachedResponse, ExactCache, FileExactCache};
 pub use call::{current_context, scope, CallContext};
 pub use client::{
     CacheMode, CollectSink, DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, Message,
-    ProviderToolCall, Purpose, Role, SchemaId, ToolSchema, Usage,
+    ProviderToolCall, Purpose, Role, SchemaId, ToolSchema, Usage, DEFAULT_MAX_TOKENS,
 };
 pub use config::{
     Complexity, LlmConfig, LlmDefaults, ModelSpec, Precision, ProviderEnv, Stakes, StructuredOutput,
@@ -47,7 +47,7 @@ pub use config::{
 pub use error::{LlmError, Result};
 pub use grammar::{DecoderBackend, GrammarSpec};
 pub use mock::{MockClient, ScriptedResponse};
-pub use openai::OpenAiClient;
+pub use openai::{OpenAiClient, ThinkingPolicy, ThinkingStyle, DEFAULT_IDLE_TIMEOUT_MS};
 pub use replay::{NetworkGuard, RecordedResponse, ReplayLlmClient, Session};
 pub use routing::{Router, RoutingDecision, RoutingReason, RoutingRequest, ThresholdRouter};
 pub use schema::{SchemaError, SchemaErrorKind, SchemaRegistry, StructuredOut};

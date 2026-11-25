@@ -118,11 +118,16 @@ impl CmeRuntime {
         query: String,
         executor: TurnExecutor,
     ) -> Result<TurnOutcome, AppError> {
+        // The driver is created once per session, so its executor is only the
+        // first turn's. Take this turn's observer and prompt bundle here and
+        // hand them to the driver, or turn 2 would stream into turn 1's run
+        // and run on turn 1's prompts.
+        let overrides = executor.turn_overrides();
         let session = self.ensure_session(session_id, executor).await?;
         let mut outcomes = session.outcomes.lock().await;
         session
             .messages
-            .send(DriverMessage::StartTurn { query })
+            .send(DriverMessage::StartTurnWith { query, overrides })
             .map_err(|_| AppError::Internal("the CME driver stopped".into()))?;
         outcomes
             .recv()

@@ -1284,10 +1284,11 @@ pub async fn agent_stream(
         .await
         .map_err(|error| AppError::NotFound(error.to_string()))?;
     let store = Arc::clone(&state.agentstream);
+    let agent = Arc::clone(&state.agent);
     let start = query.from.unwrap_or(1).saturating_sub(1) as usize;
     let stream = stream::unfold(
-        (store, run.agentstream_id, start),
-        |(store, agentstream_id, next)| async move {
+        (store, agent, run.run_id, run.agentstream_id, start),
+        |(store, agent, run_id, agentstream_id, next)| async move {
             loop {
                 match store.events(&agentstream_id).await {
                     Ok(events) if events.len() > next => {
@@ -1297,15 +1298,41 @@ pub async fn agent_stream(
                             .event(event.event_type.as_str())
                             .id((next + 1).to_string())
                             .data(data);
-                        return Some((Ok(frame), (store, agentstream_id, next + 1)));
+                        return Some((Ok(frame), (store, agent, run_id, agentstream_id, next + 1)));
                     }
-                    Ok(_) => tokio::time::sleep(std::time::Duration::from_millis(500)).await,
-                    Err(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+                    Ok(_) => {
+                        // A run stream has a finish line: once the run is
+                        // terminal and its events are drained it must close,
+                        // not poll a finished run forever. A missing record is
+                        // terminal too.
+                        if run_is_terminal(&agent, &run_id).await {
+                            return None;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                    Err(_) => {
+                        // A terminal run has nothing left to append, so a log
+                        // error must not keep its stream open either.
+                        if run_is_terminal(&agent, &run_id).await {
+                            return None;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
                 }
             }
         },
     );
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+/// Whether a run stream's work is finished. A run that no longer exists can
+/// never append another event, so it counts as terminal.
+async fn run_is_terminal(agent: &mm_agent::AgentRuntime, run_id: &str) -> bool {
+    agent
+        .status(run_id)
+        .await
+        .map(|run| run.status.is_terminal())
+        .unwrap_or(true)
 }
 
 /// `POST /api/agents/{run_id}/cancel`.
