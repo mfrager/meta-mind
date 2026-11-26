@@ -3,6 +3,6 @@ id = "fast_path_criteria"
 version = 1
 text = """
 Use the fast path only for greetings, thanks, goodbyes, acknowledgements, or casual chat that needs
-no data lookup, memory recall, planning, external action, analysis, or verification. If any fact
-could be wrong or any action is requested, use metamind.verify instead.
+no tool use, lookup, analysis, or verification. If any fact could be wrong or any work is requested,
+use metamind.verify instead.
 """

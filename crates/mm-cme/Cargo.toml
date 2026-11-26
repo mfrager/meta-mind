@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 mm-core = { workspace = true }
-mm-sm = { workspace = true }
-mm-data = { workspace = true }
+mm-agentstream = { workspace = true }
 mm-prompt = { workspace = true }
 mm-llm = { workspace = true }
-mm-being = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -21,8 +22,4 @@ toml = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
-
-[package.metadata.metamind]
-owned_by_phase = 3
-capability = "mm:ConversationEngine"
+tempfile = { workspace = true }

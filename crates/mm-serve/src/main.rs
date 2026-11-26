@@ -1,7 +1,4 @@
-//! `mm-serve` — local HTTP surface for the MetaMind Web Console.
-//!
-//! Binds loopback only (plan `01` §9), acquires `data/console.lock`, boots the
-//! kernel the same way `mm-cli` does, and serves `GET /api/health`.
+//! `mm-serve` — local HTTP surface for the three-pass turn pipeline.
 #![forbid(unsafe_code)]
 
 use std::net::{IpAddr, SocketAddr};
@@ -10,19 +7,19 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use mm_serve::controller::{load_controller_script, ControllerModel};
-use mm_serve::routes::router;
-use mm_serve::state::{AppState, ConsoleLock};
+use mm_core::Config;
+use mm_serve::router;
+use mm_serve::state::AppState;
 
 #[derive(Parser, Debug)]
 #[command(
     name = "mm-serve",
     version,
-    about = "Metamind Web Console server",
-    long_about = "Local HTTP + SSE surface over the Metamind kernel. Binds loopback only."
+    about = "Metamind turn server",
+    long_about = "Local HTTP + SSE surface over the three-pass turn pipeline. Binds loopback only."
 )]
 struct Cli {
-    /// Configuration file (defaults to `config/metamind.toml`, or `$MM_CONFIG`).
+    /// Configuration file (defaults to `config/server.toml`).
     #[arg(long, value_name = "PATH")]
     config: Option<PathBuf>,
 
@@ -31,91 +28,71 @@ struct Cli {
     data_dir: Option<PathBuf>,
 
     /// Bind address. Only loopback is accepted.
-    #[arg(long, default_value = "127.0.0.1")]
-    bind: IpAddr,
+    #[arg(long)]
+    bind: Option<IpAddr>,
 
-    /// Listen port (`MM_UI_PORT` when the flag is omitted).
-    #[arg(long, env = "MM_UI_PORT", default_value_t = 8899)]
-    port: u16,
-
-    /// Path to a MockClient script. Refuses to start when `OPENAI_API_KEY` is set.
-    /// Playwright is the caller. `MM_CONTROLLER_SCRIPT` is the same path.
-    #[arg(long, value_name = "PATH")]
-    controller_script: Option<PathBuf>,
+    /// Listen port.
+    #[arg(long, env = "MM_UI_PORT")]
+    port: Option<u16>,
 }
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if let Err(err) = mm_core::load_project_env() {
-        eprintln!("mm-serve: {err} ({})", err.code());
+    if let Err(error) = mm_core::load_project_env() {
+        eprintln!("mm-serve: {error} ({})", error.code());
         return ExitCode::from(1);
     }
     let cli = Cli::parse();
-    if let Err(err) = serve(cli).await {
-        eprintln!("mm-serve: {err}");
+    if let Err(error) = serve(cli).await {
+        eprintln!("mm-serve: {error}");
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS
 }
 
 async fn serve(cli: Cli) -> Result<(), String> {
-    require_loopback(cli.bind)?;
-    let cfg = AppState::resolve_config(cli.config, cli.data_dir).map_err(|e| e.to_string())?;
-    let lock = ConsoleLock::acquire(&cfg.store.data_dir).map_err(|e| e.to_string())?;
-    let state = Arc::new(AppState::boot(cfg, lock).await.map_err(|e| e.to_string())?);
-    install_controller_script(&state, cli.controller_script)?;
-    if state.features.process_v1 {
-        state
-            .process_engine()
-            .map_err(|error| format!("process pipeline: {error}"))?;
-        eprintln!("mm-serve: process pipeline enabled");
+    let mut cfg = Config::load(
+        cli.config
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(mm_core::config::DEFAULT_CONFIG_PATH)),
+    )
+    .map_err(|error| error.to_string())?;
+    if let Some(data_dir) = cli.data_dir {
+        cfg.data_dir = data_dir;
     }
-    let addr = SocketAddr::from((cli.bind, cli.port));
+    if let Some(bind) = cli.bind {
+        cfg.bind = bind.to_string();
+    }
+    if let Some(port) = cli.port {
+        cfg.port = port;
+    }
+    let bind: IpAddr = cfg
+        .bind
+        .parse()
+        .map_err(|error| format!("invalid bind address {:?}: {error}", cfg.bind))?;
+    require_loopback(bind)?;
+    let state = Arc::new(AppState::boot(cfg).map_err(|error| error.to_string())?);
+    let addr = SocketAddr::from((bind, state.cfg.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| format!("cannot bind {addr}: {e}"))?;
-    let actual = listener.local_addr().map_err(|e| e.to_string())?;
+        .map_err(|error| format!("cannot bind {addr}: {error}"))?;
+    let actual = listener.local_addr().map_err(|error| error.to_string())?;
     eprintln!(
         "mm-serve listening on http://{actual} (data {})",
-        state.cfg.store.data_dir.display()
+        state.cfg.data_dir.display()
     );
     axum::serve(listener, router(state))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())
 }
 
-fn install_controller_script(state: &AppState, flag: Option<PathBuf>) -> Result<(), String> {
-    let path = flag.or_else(|| {
-        std::env::var("MM_CONTROLLER_SCRIPT")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(PathBuf::from)
-    });
-    let Some(path) = path else {
-        return Ok(());
-    };
-    let key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    if !key.trim().is_empty() {
-        return Err(
-            "refusing to start: OPENAI_API_KEY is set, so a controller script cannot replace the live provider"
-                .into(),
-        );
-    }
-    let client = load_controller_script(&path)?;
-    *state
-        .controller_model
-        .lock()
-        .map_err(|err| err.to_string())? = ControllerModel::Scripted(client);
-    Ok(())
-}
-
-/// The console is a local operator surface. Remote binding is a non-goal.
+/// The server is a local operator surface. Remote binding is a non-goal.
 fn require_loopback(bind: IpAddr) -> Result<(), String> {
     if bind.is_loopback() {
         Ok(())
     } else {
         Err(format!(
-            "refusing to bind {bind}: the console listens on loopback only"
+            "refusing to bind {bind}: the server listens on loopback only"
         ))
     }
 }
@@ -130,7 +107,7 @@ mod tests {
     fn only_loopback_binds_are_accepted() {
         assert!(require_loopback("127.0.0.1".parse::<IpAddr>().unwrap()).is_ok());
         assert!(require_loopback("::1".parse::<IpAddr>().unwrap()).is_ok());
-        let err = require_loopback("0.0.0.0".parse::<IpAddr>().unwrap()).unwrap_err();
-        assert!(err.contains("loopback"), "{err}");
+        let error = require_loopback("0.0.0.0".parse::<IpAddr>().unwrap()).unwrap_err();
+        assert!(error.contains("loopback"), "{error}");
     }
 }

@@ -7,7 +7,7 @@ text = """
 {{process_constraints}}
 [TOOLS] {{process_suggested_tools}}
 [BUDGET] {{budget_class}} — {{budget_rounds}} rounds, {{budget_tokens}} tokens, {{budget_wall_ms}} ms remaining
-Complete the task with real tool calls and produce the final user-facing reply. Do not ask for
-permission to do reversible internal work. If verification has rejected an earlier attempt, address
-the stated failure directly and do not repeat an effect that already landed.
+Complete the task and produce the final user-facing reply. Use the conversation tools only to keep
+the state true; there is no external or durable side effect to perform. If verification rejected an
+earlier attempt, address the stated failure directly.
 """

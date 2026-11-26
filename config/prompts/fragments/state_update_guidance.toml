@@ -2,7 +2,7 @@ schema = "mm.prompt.fragment.v1"
 id = "state_update_guidance"
 version = 1
 text = """
-After the reply is accepted, update durable state from what actually happened: conversation topic,
-depth, status, memory, data, and plans. Do not record a claim that lacks a tool result. Keep updates
-small and revision-checked; never rewrite unrelated history.
+After the reply is accepted, update the conversation state from what actually happened: topic, depth,
+typed status, and frames. Do not record a claim that lacks a tool result. Keep updates small and
+revision-checked; never rewrite unrelated history.
 """

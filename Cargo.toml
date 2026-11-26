@@ -1,54 +1,13 @@
 [workspace]
 resolver = "2"
+exclude = ["archive/**"]
 members = [
     "crates/mm-core",
-    "crates/mm-log",
-    "crates/mm-sm",
-    "crates/mm-data",
-    "crates/mm-cme",
-    "crates/mm-process",
     "crates/mm-prompt",
-    "crates/mm-agent",
-    "crates/mm-store-sqlite",
-    "crates/mm-store-graph",
-    "crates/mm-search",
-    "crates/mm-eventlog",
-    "crates/mm-codex",
     "crates/mm-llm",
-    "crates/mm-llm-agentstream",
-    "crates/mm-being",
-    "crates/mm-memory",
-    "crates/mm-epistemic",
-    "crates/mm-library",
-    "crates/mm-metacog",
-    "crates/mm-decision",
-    "crates/mm-firewall",
-    "crates/mm-tools",
-    "crates/mm-metaanalysis",
-    "crates/mm-mistakes",
-    "crates/mm-selfeng",
-    "crates/mm-pi",
-    "crates/mm-runtime",
-    "crates/mm-cli",
+    "crates/mm-agentstream",
+    "crates/mm-cme",
     "crates/mm-serve",
-    "modules/system/kernel-bootstrap",
-    "modules/cognition/being",
-    "modules/cognition/memory-recall",
-    "modules/cognition/library-query",
-    "modules/cognition/frame-activate",
-    "modules/cognition/metacog",
-    "modules/cognition/comparison-integrity",
-    "modules/cognition/calibration",
-    "modules/cognition/closed-loop",
-    "modules/epistemic/epistemic-ops",
-    "tests/e2e",
-    "vendor/rust_symbolic/decision-ir",
-    "vendor/rust_symbolic/logic-ir",
-    "vendor/rust_symbolic/logic-types",
-    "vendor/rust_symbolic/math-types",
-    "vendor/rust_symbolic/math-core",
-    "vendor/rust_symbolic/rdf-codec",
-    "vendor/rust_symbolic/rdf-shacl",
 ]
 
 [workspace.package]
@@ -62,19 +21,10 @@ publish = false
 # --- shared async/runtime ---
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "net", "io-util", "io-std"] }
 futures = "0.3"
-# Span-based instrumentation for the state-machine engine (`mm-sm`) and the
-# data layer below the conversation engine.
 tracing = "0.1"
 
 # --- serialization / errors ---
 serde = { version = "1", features = ["derive"] }
-# `float_roundtrip` is load-bearing, not a nicety. serde_json's default float
-# parser is fast but not correctly rounded, so a value written by the exact
-# shortest-round-trip formatter can read back one unit in the last place off.
-# Every JSON artifact in the kernel is written and re-read — episode fixtures,
-# episode artifacts, gold tables — and Phase 8's replay gate is "byte-identical",
-# which a one-ULP round-trip loss makes impossible in principle rather than by
-# accident. With the feature on, `from_str(to_string(v)) == v` for every `f64`.
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 async-trait = "0.1"
@@ -83,72 +33,24 @@ async-trait = "0.1"
 ulid = { version = "2", features = ["serde"] }
 sha2 = "0.10"
 
-# --- tabular store ---
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
-
-# --- RDF store ---
-oxigraph = { version = "0.5", default-features = false, features = ["rocksdb", "rocksdb-pkg-config"] }
-oxrdf = "0.3"
-
 # --- config + CLI ---
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
-# Typed Pi RPC/JSON models and argv builder. The agent adapter supplies the
-# process transport so the configured binary remains injectable.
-pi-codes = { version = "1.6.0", default-features = false, features = ["types"] }
-
-# --- source analysis ---
-syn = { version = "2", features = ["full", "parsing", "printing", "extra-traits"] }
-tree-sitter = "0.27"
-tree-sitter-rust = "0.24"
-walkdir = "2"
-sha1 = "0.10"
+dotenvy = "0.15"
+ts-rs = { version = "12", features = ["serde-json-impl"] }
 
 # --- Metamind crates ---
 mm-core = { path = "crates/mm-core" }
-mm-log = { path = "crates/mm-log" }
-mm-sm = { path = "crates/mm-sm" }
-mm-data = { path = "crates/mm-data" }
-mm-cme = { path = "crates/mm-cme" }
-mm-process = { path = "crates/mm-process" }
 mm-prompt = { path = "crates/mm-prompt" }
-mm-agent = { path = "crates/mm-agent" }
-mm-store-sqlite = { path = "crates/mm-store-sqlite" }
-mm-store-graph = { path = "crates/mm-store-graph" }
-mm-search = { path = "crates/mm-search" }
-mm-eventlog = { path = "crates/mm-eventlog" }
-mm-codex = { path = "crates/mm-codex" }
 mm-llm = { path = "crates/mm-llm" }
-mm-llm-agentstream = { path = "crates/mm-llm-agentstream" }
-mm-being = { path = "crates/mm-being" }
-mm-memory = { path = "crates/mm-memory" }
-mm-epistemic = { path = "crates/mm-epistemic" }
-mm-library = { path = "crates/mm-library" }
-mm-metacog = { path = "crates/mm-metacog" }
-mm-decision = { path = "crates/mm-decision" }
-mm-firewall = { path = "crates/mm-firewall" }
-mm-tools = { path = "crates/mm-tools" }
-mm-metaanalysis = { path = "crates/mm-metaanalysis" }
-mm-mistakes = { path = "crates/mm-mistakes" }
-mm-selfeng = { path = "crates/mm-selfeng" }
-mm-pi = { path = "crates/mm-pi" }
-mm-runtime = { path = "crates/mm-runtime" }
-
-# --- vendored reference code ---
-rdf-codec = { path = "vendor/rust_symbolic/rdf-codec" }
-rdf-shacl = { path = "vendor/rust_symbolic/rdf-shacl" }
-decision-ir = { path = "vendor/rust_symbolic/decision-ir" }
-
-# --- process environment ---
-dotenvy = "0.15"
+mm-agentstream = { path = "crates/mm-agentstream" }
+mm-cme = { path = "crates/mm-cme" }
 
 # --- dev ---
 proptest = "1"
 insta = { version = "1", features = ["json"] }
 tempfile = "3"
 
-# Metamind crates opt into these with `[lints] workspace = true`. Vendored reference
-# code sets its own, looser policy (it is not held to the zero-warning bar).
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

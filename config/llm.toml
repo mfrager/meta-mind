@@ -20,6 +20,8 @@ max_repair_attempts = 1
 # is the real bound — one connect/write/read window that makes no progress.
 timeout_ms = 0
 idle_timeout_ms = 300000
+# The retained core pins one model for every turn.
+default_model = "nvidia/nemotron-3.5-lightning-30b-a3b"
 # Fallback completion budget. A purpose with an entry below wins.
 max_tokens = 2048
 

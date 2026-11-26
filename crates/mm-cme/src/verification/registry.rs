@@ -1,4 +1,4 @@
-//! The backend registry and the check validator.
+//! The verification backend registry and check validation.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::backend::VerificationBackend;
 use super::types::{Result, VerificationError, VerifyCheck};
 
-/// Maximum checks one turn or step may register.
+/// Maximum checks one turn may register.
 pub const MAX_CHECKS: usize = 8;
 /// Maximum label length.
 pub const MAX_LABEL_CHARS: usize = 64;
@@ -14,19 +14,20 @@ pub const MAX_LABEL_CHARS: usize = 64;
 pub const MAX_DESCRIPTION_CHARS: usize = 2_000;
 /// Maximum details length.
 pub const MAX_DETAILS_CHARS: usize = 2_000;
-/// Maximum serialized backend parameters.
+/// Maximum serialized backend parameter size.
 pub const MAX_BACKEND_PARAMS_BYTES: usize = 8 * 1024;
 
-/// The backends available to this process.
-#[derive(Clone, Default)]
+/// The backends available to a turn.
+#[derive(Default)]
 pub struct BackendRegistry {
     backends: BTreeMap<String, Arc<dyn VerificationBackend>>,
 }
 
 impl std::fmt::Debug for BackendRegistry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BackendRegistry")
-            .field("backends", &self.backends.keys().collect::<Vec<_>>())
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BackendRegistry")
+            .field("ids", &self.ids())
             .finish()
     }
 }
@@ -37,7 +38,7 @@ impl BackendRegistry {
         Self::default()
     }
 
-    /// Register one backend. Duplicate ids are refused.
+    /// Register a backend.
     pub fn register(&mut self, backend: Arc<dyn VerificationBackend>) -> Result<()> {
         let id = backend.id().to_owned();
         if self.backends.contains_key(&id) {
@@ -52,53 +53,52 @@ impl BackendRegistry {
         self.backends.get(id).cloned()
     }
 
-    /// Registered ids in stable order.
+    /// Registered backend ids.
     pub fn ids(&self) -> Vec<&str> {
         self.backends.keys().map(String::as_str).collect()
     }
 
-    /// Validate one check against the registry's limits and its backend.
+    /// Whether a backend is registered.
+    pub fn is_empty(&self) -> bool {
+        self.backends.is_empty()
+    }
+
+    /// Validate one check against its backend.
     pub fn validate_check(&self, check: &VerifyCheck) -> Result<()> {
         let label = check.label.trim();
         if label.is_empty() {
             return Err(VerificationError::InvalidConfig(
-                "a check label is required".into(),
+                "a check label must not be empty".into(),
             ));
         }
         if label.chars().count() > MAX_LABEL_CHARS {
             return Err(VerificationError::InvalidConfig(format!(
-                "check label `{label}` is longer than {MAX_LABEL_CHARS} characters"
+                "check label `{label}` exceeds {MAX_LABEL_CHARS} characters"
             )));
         }
-        if check.backend.trim().is_empty() {
+        if check
+            .description
+            .as_deref()
+            .is_some_and(|text| text.chars().count() > MAX_DESCRIPTION_CHARS)
+        {
             return Err(VerificationError::InvalidConfig(format!(
-                "check `{label}` has no backend"
+                "check `{label}` description is too long"
             )));
         }
-        if let Some(description) = &check.description {
-            if description.chars().count() > MAX_DESCRIPTION_CHARS {
-                return Err(VerificationError::InvalidConfig(format!(
-                    "check `{label}` description is longer than {MAX_DESCRIPTION_CHARS} characters"
-                )));
-            }
-        }
-        if let Some(details) = &check.details {
-            if details.chars().count() > MAX_DETAILS_CHARS {
-                return Err(VerificationError::InvalidConfig(format!(
-                    "check `{label}` details are longer than {MAX_DETAILS_CHARS} characters"
-                )));
-            }
+        if check
+            .details
+            .as_deref()
+            .is_some_and(|text| text.chars().count() > MAX_DETAILS_CHARS)
+        {
+            return Err(VerificationError::InvalidConfig(format!(
+                "check `{label}` details are too long"
+            )));
         }
         if !check.confidence_threshold.is_finite()
             || !(0.0..=1.0).contains(&check.confidence_threshold)
         {
             return Err(VerificationError::InvalidConfig(format!(
-                "check `{label}` threshold must be within [0, 1]"
-            )));
-        }
-        if !check.backend_params.is_object() {
-            return Err(VerificationError::InvalidConfig(format!(
-                "check `{label}` backend_params must be an object"
+                "check `{label}` confidence_threshold must be in [0, 1]"
             )));
         }
         let serialized = serde_json::to_string(&check.backend_params)
@@ -111,27 +111,25 @@ impl BackendRegistry {
         let backend = self
             .get(&check.backend)
             .ok_or_else(|| VerificationError::UnknownBackend(check.backend.clone()))?;
-        backend.validate_config(&check.backend_params)?;
-        Ok(())
+        backend.validate_config(&check.backend_params)
     }
 
-    /// Validate a whole set: count, duplicate labels, and every check.
+    /// Validate a set of checks.
     pub fn validate_checks(&self, checks: &[VerifyCheck]) -> Result<()> {
         if checks.len() > MAX_CHECKS {
             return Err(VerificationError::InvalidConfig(format!(
-                "{} checks registered; the maximum is {MAX_CHECKS}",
-                checks.len()
+                "a turn may register at most {MAX_CHECKS} checks"
             )));
         }
         let mut labels = BTreeSet::new();
         for check in checks {
-            let label = check.label.trim().to_owned();
-            if !labels.insert(label.clone()) {
+            self.validate_check(check)?;
+            if !labels.insert(check.label.trim().to_owned()) {
                 return Err(VerificationError::InvalidConfig(format!(
-                    "duplicate check label `{label}`"
+                    "duplicate check label `{}`",
+                    check.label
                 )));
             }
-            self.validate_check(check)?;
         }
         Ok(())
     }
@@ -140,54 +138,33 @@ impl BackendRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::verification::types::{ProcessResult, VerificationResult, VerifyContext};
-    use async_trait::async_trait;
-
-    struct FixedBackend;
-
-    #[async_trait]
-    impl VerificationBackend for FixedBackend {
-        fn id(&self) -> &'static str {
-            "fixed"
-        }
-
-        fn validate_config(&self, params: &serde_json::Value) -> Result<()> {
-            if params.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
-                Ok(())
-            } else {
-                Err(VerificationError::InvalidConfig("ok=true required".into()))
-            }
-        }
-
-        async fn verify(
-            &self,
-            check: &VerifyCheck,
-            _process_output: &ProcessResult,
-            _context: &VerifyContext,
-        ) -> Result<VerificationResult> {
-            Ok(VerificationResult {
-                check_label: check.label.clone(),
-                pass: true,
-                reasoning: "fixed".into(),
-                confidence: 1.0,
-                backend: "fixed".into(),
-                elapsed_ms: 0,
-                error: None,
-            })
-        }
-    }
+    use crate::verification::llm_judge::LlmJudgeBackend;
+    use serde_json::json;
 
     fn registry() -> BackendRegistry {
         let mut registry = BackendRegistry::new();
-        registry.register(Arc::new(FixedBackend)).unwrap();
+        registry
+            .register(Arc::new(LlmJudgeBackend::new(None, None)))
+            .unwrap();
         registry
     }
 
     fn check(label: &str) -> VerifyCheck {
         VerifyCheck {
             label: label.into(),
-            backend: "fixed".into(),
-            backend_params: serde_json::json!({"ok": true}),
+            backend: "llm_judge".into(),
+            backend_params: json!({
+                "evaluation_prompt": "check {{process_reply}}",
+                "expected_output_schema": {
+                    "type": "object",
+                    "properties": {
+                        "pass": {"type": "boolean"},
+                        "reasoning": {"type": "string"},
+                        "confidence": {"type": "number"}
+                    },
+                    "required": ["pass", "reasoning", "confidence"]
+                }
+            }),
             ..VerifyCheck::default()
         }
     }
@@ -195,65 +172,43 @@ mod tests {
     #[test]
     fn duplicate_backends_are_refused() {
         let mut registry = registry();
-        let error = registry.register(Arc::new(FixedBackend)).unwrap_err();
-        assert!(matches!(error, VerificationError::DuplicateBackend(_)));
-        assert_eq!(registry.ids(), vec!["fixed"]);
+        assert!(registry
+            .register(Arc::new(LlmJudgeBackend::new(None, None)))
+            .is_err());
     }
 
     #[test]
-    fn checks_validate_backend_specific_config() {
+    fn checks_validate_their_backend_config() {
         let registry = registry();
-        let mut bad = check("x");
-        bad.backend_params = serde_json::json!({"ok": false});
-        assert!(matches!(
-            registry.validate_check(&bad),
-            Err(VerificationError::InvalidConfig(_))
-        ));
-        registry.validate_check(&check("x")).unwrap();
-    }
-
-    #[test]
-    fn unknown_backends_fail_at_registration_time() {
-        let registry = registry();
-        let mut bad = check("x");
+        registry.validate_check(&check("a")).unwrap();
+        let mut bad = check("a");
         bad.backend = "missing".into();
-        assert!(matches!(
-            registry.validate_check(&bad),
-            Err(VerificationError::UnknownBackend(_))
-        ));
+        assert!(registry.validate_check(&bad).is_err());
     }
 
     #[test]
     fn duplicate_labels_and_too_many_checks_are_refused() {
         let registry = registry();
-        let checks = vec![check("same"), check("same")];
-        assert!(registry.validate_checks(&checks).is_err());
-        let too_many: Vec<_> = (0..=MAX_CHECKS)
+        assert!(registry.validate_checks(&[check("a"), check("a")]).is_err());
+        let many = (0..MAX_CHECKS + 1)
             .map(|index| check(&format!("c{index}")))
-            .collect();
-        assert!(registry.validate_checks(&too_many).is_err());
+            .collect::<Vec<_>>();
+        assert!(registry.validate_checks(&many).is_err());
     }
 
     #[test]
     fn thresholds_must_be_finite_and_bounded() {
         let registry = registry();
-        for threshold in [-0.1, 1.1, f64::NAN] {
-            let mut bad = check("x");
-            bad.confidence_threshold = threshold;
-            assert!(registry.validate_check(&bad).is_err());
-        }
-        let mut good = check("x");
-        good.confidence_threshold = 1.0;
-        registry.validate_check(&good).unwrap();
+        let mut bad = check("a");
+        bad.confidence_threshold = 1.5;
+        assert!(registry.validate_check(&bad).is_err());
+        bad.confidence_threshold = f64::NAN;
+        assert!(registry.validate_check(&bad).is_err());
     }
 
     #[test]
-    fn empty_labels_and_non_object_params_are_refused() {
+    fn empty_labels_are_refused() {
         let registry = registry();
-        let empty = check("   ");
-        assert!(registry.validate_check(&empty).is_err());
-        let mut params = check("x");
-        params.backend_params = serde_json::json!("nope");
-        assert!(registry.validate_check(&params).is_err());
+        assert!(registry.validate_check(&check("  ")).is_err());
     }
 }

@@ -10,6 +10,5 @@ Registered checks:
 {{checks_registered}}
 
 Tools in this pass: {{tools_summary}}
-Writes are staged: they commit only if you approve. Do not call agent.run, metamind.think, or
-metamind.verify.
+Conversation-state changes are staged: they commit only if you approve. Do not call metamind.verify.
 """

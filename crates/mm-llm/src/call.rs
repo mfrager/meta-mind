@@ -37,6 +37,10 @@ pub struct CallContext {
     pub tool: Option<String>,
     /// Stable call-site label, e.g. `cme.think`, `controller.turn`.
     pub origin: Option<String>,
+    /// The rendered prompt instance that produced this request, when there is one.
+    pub prompt_instance_id: Option<String>,
+    /// The rendered prompt hash that produced this request, when there is one.
+    pub prompt_hash: Option<String>,
 }
 
 impl CallContext {
@@ -53,6 +57,8 @@ impl CallContext {
             step: None,
             tool: None,
             origin: None,
+            prompt_instance_id: None,
+            prompt_hash: None,
         }
     }
 
@@ -102,6 +108,13 @@ impl CallContext {
     /// A stable call-site label.
     pub fn with_origin(mut self, origin: impl Into<String>) -> Self {
         self.origin = Some(origin.into());
+        self
+    }
+
+    /// The rendered prompt instance and hash behind this call.
+    pub fn with_prompt(mut self, instance_id: impl Into<String>, hash: impl Into<String>) -> Self {
+        self.prompt_instance_id = Some(instance_id.into());
+        self.prompt_hash = Some(hash.into());
         self
     }
 }

@@ -24,7 +24,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::client::{DecoderKind, DeltaSink, LlmClient, LlmRequest, LlmResponse, SchemaId, Usage};
 use crate::config::{LlmConfig, ProviderEnv, StructuredOutput};
 use crate::error::{LlmError, Result};
-use crate::replay::NetworkGuard;
 use crate::schema::SchemaRegistry;
 
 /// The progress bound used when a profile asks for no idle ceiling.
@@ -181,7 +180,6 @@ impl TcpTransport {
                  terminate TLS in front of the kernel and point OPENAI_BASE_URL at it"
             )));
         }
-        NetworkGuard::attempt(&host)?;
 
         let payload = serde_json::to_vec(body)
             .map_err(|e| LlmError::Config(format!("cannot encode the request body: {e}")))?;
@@ -233,7 +231,6 @@ impl TcpTransport {
                  terminate TLS in front of the kernel and point OPENAI_BASE_URL at it"
             )));
         }
-        NetworkGuard::attempt(&host)?;
 
         let auth = match &self.api_key {
             Some(key) if key.contains(['\r', '\n']) => {
@@ -762,7 +759,6 @@ impl OpenAiClient {
     /// The response shape is OpenAI-compatible: `{"data": [{"id": ...}]}`.
     /// A missing `data` array is an empty catalog, matching the old Hermes probe.
     pub async fn models(&self) -> Result<Vec<String>> {
-        NetworkGuard::attempt(&self.env.base_url)?;
         let value = self.transport.get_json(&self.models_endpoint()).await?;
         Ok(value
             .get("data")
@@ -1076,7 +1072,6 @@ impl LlmClient for OpenAiClient {
             })?;
         // The guard sits in front of the transport here *and* inside it, so a
         // replayed run cannot open a socket even if an adapter forgot.
-        NetworkGuard::attempt(&self.env.base_url)?;
         let body = self.request_body(req, &model)?;
         let answer = self.transport.post_json(&self.endpoint(), &body).await?;
         self.parse_response(&answer, &model)
@@ -1099,7 +1094,6 @@ impl LlmClient for OpenAiClient {
             .ok_or_else(|| {
                 LlmError::Config("no model was requested and no default_model is configured".into())
             })?;
-        NetworkGuard::attempt(&self.env.base_url)?;
         let mut body = self.request_body(req, &model)?;
         body["stream"] = json!(true);
         body["stream_options"] = json!({ "include_usage": true });
@@ -1768,28 +1762,6 @@ complexity_ceiling = "medium"
         assert!(collected.0.is_empty());
         parser.feed(b"1}\n\ndata: [DONE]\n\n", &mut collected);
         assert_eq!(collected.0, vec!["{\"a\":1}", "[DONE]"]);
-    }
-
-    #[tokio::test]
-    async fn an_armed_network_guard_stops_the_adapter_before_the_transport() {
-        let transport = Arc::new(StubTransport {
-            answer: json!({"choices":[{"message":{"content":"x"}}]}),
-            calls: std::sync::atomic::AtomicU64::new(0),
-        });
-        let client = OpenAiClient::with_transport(&config(), env(), transport.clone());
-        let req = LlmRequest::new(Purpose::Plan, vec![Message::user("hi")]).with_model("small");
-
-        {
-            let _permit = NetworkGuard::arm();
-            let err = client.complete(&req).await.unwrap_err();
-            assert_eq!(err.kind(), "network_forbidden");
-        }
-        assert_eq!(
-            transport.calls.load(std::sync::atomic::Ordering::SeqCst),
-            0,
-            "the transport must not be reached while the guard is armed"
-        );
-        assert!(client.complete(&req).await.is_ok());
     }
 
     #[tokio::test]

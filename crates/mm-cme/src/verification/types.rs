@@ -1,14 +1,15 @@
-//! The data contracts shared by Interpret, Process, Verify, and the backends.
+//! The data contracts shared by Interpret, Process, Verify, and the judge.
 
-use mm_data::CleanLog;
+use mm_agentstream::CleanLog;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::budget::BudgetClass;
-use crate::turn::ToolCallEmission;
 
 /// One verification check registered by the Interpret pass.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyCheck {
     /// Unique label within the turn.
     pub label: String,
@@ -22,7 +23,7 @@ pub struct VerifyCheck {
     pub backend: String,
     /// Backend-specific configuration.
     #[serde(default = "empty_object")]
-    pub backend_params: serde_json::Value,
+    pub backend_params: Value,
     /// Acceptance threshold in `[0, 1]`.
     #[serde(default = "default_threshold")]
     pub confidence_threshold: f64,
@@ -32,8 +33,8 @@ fn default_threshold() -> f64 {
     0.5
 }
 
-fn empty_object() -> serde_json::Value {
-    serde_json::Value::Object(serde_json::Map::new())
+fn empty_object() -> Value {
+    Value::Object(serde_json::Map::new())
 }
 
 impl Default for VerifyCheck {
@@ -43,7 +44,7 @@ impl Default for VerifyCheck {
             description: None,
             details: None,
             backend: String::new(),
-            backend_params: serde_json::Value::Null,
+            backend_params: Value::Null,
             confidence_threshold: default_threshold(),
         }
     }
@@ -51,19 +52,18 @@ impl Default for VerifyCheck {
 
 /// The Process pass output a check may inspect.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ProcessResult {
     /// The user-facing reply.
     pub reply_text: String,
-    /// Tools the Process pass called.
+    /// Tool calls the Process pass made, as recorded events.
     #[serde(default)]
-    pub tool_emissions: Vec<ToolCallEmission>,
+    pub tool_calls: Vec<Value>,
 }
 
 /// The per-turn context supplied to backends.
-///
-/// The rendered state block is passed as a string rather than as a live view so
-/// a backend cannot mutate state and so the context is serializable for tests.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct VerifyContext {
     /// User messages and approved final replies only.
     pub clean_log: CleanLog,
@@ -78,6 +78,7 @@ pub struct VerifyContext {
 
 /// One backend's verdict.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerificationResult {
     /// The check label this answers.
     pub check_label: String,
@@ -113,6 +114,7 @@ impl VerificationResult {
 
 /// The judge's structured output before it is mapped to a check result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckVerdict {
     /// The model's pass/fail answer.
     pub pass: bool,
@@ -124,6 +126,7 @@ pub struct CheckVerdict {
 
 /// High-level instructions passed from Interpret to Process.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProcessContext {
     /// One-sentence task restatement.
     pub task: String,
@@ -134,6 +137,7 @@ pub struct ProcessContext {
     #[serde(default)]
     pub suggested_tools: Option<Vec<String>>,
     /// Advisory budget class.
+    #[serde(default)]
     pub budget_hint: BudgetClass,
 }
 
@@ -191,5 +195,16 @@ mod tests {
         assert_eq!(result.check_label, "tests");
         assert_eq!(result.error.as_deref(), Some("timeout"));
         assert_eq!(result.elapsed_ms, 12);
+    }
+
+    #[test]
+    fn a_check_rejects_unknown_fields() {
+        assert!(serde_json::from_value::<VerifyCheck>(serde_json::json!({
+            "label": "x",
+            "backend": "llm_judge",
+            "backend_params": {},
+            "bogus": true
+        }))
+        .is_err());
     }
 }

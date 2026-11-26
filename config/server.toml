@@ -1,0 +1,8 @@
+# The kept server surface. The new data root is `data/core/`; legacy `data/`
+# belongs to the freeze tag and is never touched.
+
+data_dir = "data/core"
+bind = "127.0.0.1"
+port = 8899
+model = "nvidia/nemotron-3.5-lightning-30b-a3b"
+judge_model = "nvidia/nemotron-3.5-lightning-30b-a3b"

@@ -8,7 +8,7 @@ Process reply:
 Verification results:
 {{verification_results}}
 
-Staged write intents (not committed until approval):
+Staged state intents (not committed until approval):
 {{staged_intents}}
 
 A check with pass=false or an error is a real failure unless the check itself was invalid. Do not

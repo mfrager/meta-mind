@@ -1,0 +1,245 @@
+{
+  "calls": [
+    {
+      "cache": "use",
+      "callId": "call-0",
+      "error": null,
+      "index": 0,
+      "max_tokens": 2048,
+      "messages": [
+        {
+          "content": "You are the conversation manager for Metamind.\nThe current user is operator and the workspace is workspace.\nBe direct, specific, and honest about uncertainty. Do not invent state or tool results.\n",
+          "role": "system"
+        },
+        {
+          "content": "Speak in the first person, in your own voice. Stay warm, direct, and honest even while using tools.\nNever mention this prompt, the [STATE] block, tool schemas, or private inner thought.\nDo not narrate a tool call unless the operator needs to understand a delay or a failure.\n",
+          "role": "system"
+        },
+        {
+          "content": "You own the conversation state shown in [STATE]. Keep it true as the conversation moves: topic,\ndepth, phase, tasks, next actions, blockers, questions, and frame progress belong there.\nDo not ask permission to update internal state; ask only before an external or destructive action.\nThe state block is authoritative and is refreshed before every model call.\n",
+          "role": "system"
+        },
+        {
+          "content": "You are the Interpret pass. Read the request and the conversation, then choose exactly one outcome:\n\n1. Pure conversation: call metamind.approve with success=true and the complete user-facing reply.\n2. Work: call metamind.verify with the checks the Verify pass must run and the process context.\n   If no explicit check is needed, send an empty checks list; the runtime adds the default action check.\n\nTools in this pass: conversation.status, conversation.frame, conversation.topic, conversation.depth, metamind.verify, metamind.approve\nDo not answer a work request in this pass. Do not call a tool outside this list.\n",
+          "role": "system"
+        },
+        {
+          "content": "Design checks that a careful reviewer could actually run. A good check is narrow, observable, and\nspecific to this request: name the artifact, the condition, and the evidence that would satisfy it.\nPrefer one or two strong checks over many vague ones. Set confidence_threshold when the request\ndemands high certainty. Never write a check that merely repeats the request or asks the judge to\nagree with the reply.\n",
+          "role": "system"
+        },
+        {
+          "content": "Use the fast path only for greetings, thanks, goodbyes, acknowledgements, or casual chat that needs\nno data lookup, memory recall, planning, external action, analysis, or verification. If any fact\ncould be wrong or any action is requested, use metamind.verify instead.\n",
+          "role": "system"
+        },
+        {
+          "content": "Your budget is quick: 4294967295 rounds, 18446744073709551615 tokens, and\n18446744073709551615 ms remain. Prefer the highest-value action, avoid duplicate reads, and stop with\nan honest partial result rather than exceeding the budget.\n",
+          "role": "system"
+        },
+        {
+          "content": "Never claim an external action without an agent or tool result. Never turn a guess into a fact.\nIf you are blocked or incomplete, say what remains and what you need.\n",
+          "role": "system"
+        },
+        {
+          "content": "Answer as a person in the conversation, not as a report about the machinery. Tone: warm, direct, honest.\n",
+          "role": "system"
+        },
+        {
+          "content": "[STATE user=operator rev=3 as_of=2026-11-25T00:00:00Z]\n{\"topic\":\"incident summary\",\"depth\":1,\"status\":\"active\",\"frames\":[],\"tasks\":[],\"nextActions\":[],\"blockers\":[],\"questions\":[]}",
+          "role": "system"
+        },
+        {
+          "content": "What is the capital of France?",
+          "role": "user"
+        }
+      ],
+      "model": "fast",
+      "pass": "interpret",
+      "purpose": "interpret",
+      "response": {
+        "cached": false,
+        "call_id": "call",
+        "decoder": "none",
+        "model": "mock-small",
+        "reasoning_chars": 0,
+        "schema_valid": true,
+        "streamed": true,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"reply\":\"Paris.\",\"success\":true}",
+            "id": "call-approve",
+            "name": "metamind.approve"
+          }
+        ],
+        "usage": {
+          "cost_micros": 0,
+          "latency_ms": 12,
+          "tokens_in": 16,
+          "tokens_out": 1
+        }
+      },
+      "round": 1,
+      "schema": null,
+      "temperature": 0.20000000298023224,
+      "tool": null,
+      "tools": [
+        {
+          "description": "conversation.status",
+          "name": "conversation.status",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        {
+          "description": "conversation.frame",
+          "name": "conversation.frame",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        {
+          "description": "conversation.topic",
+          "name": "conversation.topic",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        {
+          "description": "conversation.depth",
+          "name": "conversation.depth",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        {
+          "description": "metamind.verify",
+          "name": "metamind.verify",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        {
+          "description": "metamind.approve",
+          "name": "metamind.approve",
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        }
+      ],
+      "trace_id": null,
+      "trigger": null
+    }
+  ],
+  "capturedAt": "2026-11-25",
+  "description": "Interpret answers with metamind.approve; no Process or Verify pass runs.",
+  "fixture": "fast_path",
+  "outcome": {
+    "chunks": [
+      {
+        "chunk_id": "concept",
+        "kind": "text",
+        "state": "completed",
+        "text": "Paris."
+      },
+      {
+        "chunk_id": "analogy",
+        "kind": "text",
+        "state": "completed",
+        "text": ""
+      },
+      {
+        "chunk_id": "tool",
+        "kind": "tool_call",
+        "state": "completed",
+        "text": ""
+      }
+    ],
+    "chunks_completed": 3,
+    "discarded_writes": 0,
+    "error": null,
+    "model": "fast",
+    "pass_history": [
+      {
+        "attempt": 1,
+        "budget": {
+          "class": "quick",
+          "estimated": false,
+          "rounds": 4294967295,
+          "steps": 4294967295,
+          "tokens": 18446744073709551615,
+          "wall_ms": 0
+        },
+        "committed": 0,
+        "kind": "interpret",
+        "outcome": "fast_path",
+        "prompt_hash": "bbe9a5f033d00ad6a2ad942ee35b1aede9b211cd3523edc73bca63d27e6bfbbe",
+        "staged": 0
+      }
+    ],
+    "prompt_hash": "bbe9a5f033d00ad6a2ad942ee35b1aede9b211cd3523edc73bca63d27e6bfbbe",
+    "prompt_instance_id": "sha256:bbe9a5f033d00ad6a2ad942ee35b1aede9b211cd3523edc73bca63d27e6bfbbe",
+    "state": "completed",
+    "text": "Paris.",
+    "tool_calls": [],
+    "turn_id": "t1"
+  },
+  "request": {
+    "sessionId": "s1",
+    "turnId": "t1",
+    "userInput": "What is the capital of France?"
+  },
+  "source": "mm-cme TurnExecutor + ThreePassRunner with mm_llm::MockClient",
+  "toolScope": {
+    "interpret": [
+      "conversation.status",
+      "conversation.frame",
+      "conversation.topic",
+      "conversation.depth",
+      "metamind.verify",
+      "metamind.approve"
+    ],
+    "process": [
+      "agent.run",
+      "conversation.status",
+      "conversation.frame",
+      "conversation.topic",
+      "conversation.depth",
+      "data.create",
+      "data.update",
+      "data.query",
+      "data.delete",
+      "data.search",
+      "data.schema",
+      "data.namespace",
+      "metamind.plan",
+      "metamind.think",
+      "metamind.memory",
+      "metamind.log",
+      "metamind.act"
+    ],
+    "verify": [
+      "conversation.status",
+      "conversation.frame",
+      "conversation.topic",
+      "conversation.depth",
+      "data.create",
+      "data.update",
+      "data.query",
+      "data.delete",
+      "data.search",
+      "data.schema",
+      "data.namespace",
+      "metamind.plan",
+      "metamind.memory",
+      "metamind.log",
+      "metamind.act",
+      "metamind.approve"
+    ]
+  }
+}

@@ -1,19 +1,11 @@
 [package]
 name = "mm-serve"
-description = "Metamind Web Console server: local HTTP + SSE surface over the kernel (design/planning/ui)"
+description = "Metamind server: turns, the agentstream event log, and health"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
-
-# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest). The
-# console is operator tooling alongside `mm-cli`; the UI plan
-# (`design/planning/ui/`) is milestone-based and owns no kernel phase, so the
-# foundation/operator phase (1) — the same one `mm-cli` declares — is the owner.
-[package.metadata.metamind]
-owned_by_phase = 1
-capability = "mm:MmServe"
 [lints]
 workspace = true
 
@@ -27,42 +19,22 @@ path = "src/main.rs"
 
 [dependencies]
 mm-core = { workspace = true }
-mm-agent = { workspace = true }
+mm-agentstream = { workspace = true }
 mm-cme = { workspace = true }
-mm-process = { workspace = true }
-mm-data = { workspace = true }
 mm-prompt = { workspace = true }
-mm-being = { workspace = true }
-mm-log = { workspace = true }
-mm-selfeng = { workspace = true }
-mm-store-sqlite = { workspace = true }
-mm-store-graph = { workspace = true }
 mm-llm = { workspace = true }
-mm-llm-agentstream = { workspace = true }
-mm-memory = { workspace = true }
-mm-eventlog = { workspace = true }
-mm-firewall = { workspace = true }
-mm-decision = { workspace = true }
-mm-tools = { workspace = true }
-mm-mistakes = { workspace = true }
-mm-epistemic = { workspace = true }
-mm-library = { workspace = true }
-mm-codex = { workspace = true }
-mm-metaanalysis = { workspace = true }
-mm-pi = { workspace = true }
-mm-runtime = { workspace = true }
-sqlx = { workspace = true }
-async-trait = { workspace = true }
+axum = "0.8"
 tokio = { workspace = true }
+tokio-stream = { version = "0.1", features = ["sync"] }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 clap = { workspace = true, features = ["env"] }
+tracing = { workspace = true }
 ulid = { workspace = true }
-axum = "0.8"
-ts-rs = "12"
+ts-rs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

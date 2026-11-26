@@ -231,6 +231,105 @@ pub mod serde_ulid {
     }
 }
 
+/// A conversation session identifier.
+///
+/// The core keeps this as a plain newtype: it is an opaque string on the wire,
+/// and the JSONL event store is the only component that assigns it.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct SessionId(String);
+
+impl SessionId {
+    /// Wrap an existing identifier.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// A fresh lowercase ULID session id.
+    pub fn generate() -> Self {
+        Self(crate::ulid_string(&Ulid::from_datetime(SystemTime::now())))
+    }
+
+    /// The string form.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for SessionId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+/// A turn identifier. Unique within a session.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct TurnId(String);
+
+impl TurnId {
+    /// Wrap an existing identifier.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// A fresh lowercase ULID turn id.
+    pub fn generate() -> Self {
+        Self(crate::ulid_string(&Ulid::from_datetime(SystemTime::now())))
+    }
+
+    /// The string form.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for TurnId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for TurnId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for TurnId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for TurnId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 /// Parse a lowercase or uppercase Crockford ULID.
 pub fn parse_ulid(s: &str) -> Result<Ulid, MmError> {
     let normalized = s.trim().to_ascii_lowercase();

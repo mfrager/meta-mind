@@ -1,23 +1,20 @@
-//! The verification backend seam.
+//! The verification backend contract.
 
 use async_trait::async_trait;
+use serde_json::Value;
 
 use super::types::{ProcessResult, Result, VerificationResult, VerifyCheck, VerifyContext};
 
-/// Executes one verification check.
-///
-/// A backend must be deterministic with respect to its inputs for tests to be
-/// meaningful. `validate_config` runs when a check is registered, so malformed
-/// configuration fails the cheap pass rather than a completed turn.
+/// One check executor.
 #[async_trait]
 pub trait VerificationBackend: Send + Sync {
-    /// Stable backend identifier (`llm_judge`).
+    /// The backend identifier written into checks and results.
     fn id(&self) -> &'static str;
 
-    /// Validate backend-specific check parameters.
-    fn validate_config(&self, params: &serde_json::Value) -> Result<()>;
+    /// Validate one check's backend-specific configuration.
+    fn validate_config(&self, params: &Value) -> Result<()>;
 
-    /// Run one check against the Process output and turn context.
+    /// Run one check.
     async fn verify(
         &self,
         check: &VerifyCheck,

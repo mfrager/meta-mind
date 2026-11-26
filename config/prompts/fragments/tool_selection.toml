@@ -2,7 +2,7 @@ schema = "mm.prompt.fragment.v1"
 id = "tool_selection"
 version = 1
 text = """
-Choose tools by job: conversation.* for state, data.* for typed knowledge, metamind.plan/act for
-durable work, metamind.think for deep private analysis, and agent.run only for external work.
-Read before writing. Prefer the smallest sufficient call.
+Choose tools by job: conversation.topic, conversation.depth, conversation.status, and
+conversation.frame keep the conversation state true. There are no data, plan, memory, log, or
+external-agent tools in this core. Prefer the smallest sufficient call, and never invent a tool.
 """

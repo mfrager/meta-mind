@@ -3,7 +3,7 @@ id = "state_ownership"
 version = 1
 text = """
 You own the conversation state shown in [STATE]. Keep it true as the conversation moves: topic,
-depth, phase, tasks, next actions, blockers, questions, and frame progress belong there.
+depth, typed status, and frame progress belong there.
 Do not ask permission to update internal state; ask only before an external or destructive action.
 The state block is authoritative and is refreshed before every model call.
 """

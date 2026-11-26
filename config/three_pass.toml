@@ -5,10 +5,14 @@
 budget_class = "quick"
 strategy = "cm.interpret.v1"
 max_checks = 8
+max_tokens = 2048
+temperature = 0.0
 
 [process]
 budget_class = "standard"
 strategy = "cm.process.v1"
+max_tokens = 4096
+temperature = 0.2
 
 [verify]
 budget_class = "quick"
@@ -16,16 +20,12 @@ strategy = "cm.verify.v1"
 max_retries = 5
 check_timeout_ms = 20000
 max_parallel_checks = 4
-allow_think = false
 allow_override = false
-
-[step]
-budget_class = "standard"
-strategy = "cm.step.v1"
+max_tokens = 2048
+temperature = 0.0
 
 [budget]
-# Turn budgeting is off by default: no round, tool-step, token, or wall-clock cap.
-# Set enabled = true to enforce the per-pass budget classes and the envelope.
+# Token and wall limits are off by default; rounds are always capped.
 enabled = false
 
 [envelope]
@@ -35,13 +35,3 @@ max_tokens = 184000
 enabled = true
 temperature = 0.0
 max_output_tokens = 512
-
-[think]
-budget_class = "think"
-strategy = "cm.think.v1"
-three_pass = false
-
-[turn]
-# Stream each pass's rounds into the chat transport as they happen. When false,
-# a turn is replayed as post-hoc frames after it completes.
-stream = true

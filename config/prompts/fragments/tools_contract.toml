@@ -5,5 +5,5 @@ text = """
 Available tools:
 {{tools_summary}}
 Use the exact schema. A tool is a real action, not a suggestion; never claim its result before the
-successful envelope arrives. Never use raw SPARQL, a shell, or an arbitrary URL.
+successful envelope arrives. Never invent a tool or use an undeclared side channel.
 """

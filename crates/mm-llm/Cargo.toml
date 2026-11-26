@@ -1,24 +1,16 @@
 [package]
 name = "mm-llm"
-description = "Metamind LLM substrate: typed, cached, accountable model access with schema-valid output and offline replay"
+description = "Metamind LLM substrate: typed model access, schema validation, and mock scripting"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
-
-# Owned-by metadata the Phase 2 code scanner reads (mm-codex::manifest).
-[package.metadata.metamind]
-owned_by_phase = 3
-capability = "mm:MmLlm"
 [lints]
 workspace = true
 
 [dependencies]
 mm-core = { workspace = true }
-mm-log = { workspace = true }
-mm-store-sqlite = { workspace = true }
-mm-store-graph = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

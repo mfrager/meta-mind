@@ -297,16 +297,29 @@ impl PromptStore {
             }
         }
 
+        // Frames were retired with the frame engine. A tree without
+        // `frames/manifest.toml` is valid; when the directory exists it is still
+        // validated exactly as before.
         let frame_manifest_path = root.join("frames/manifest.toml");
-        let frame_manifest: FrameManifest =
-            toml::from_str(&std::fs::read_to_string(&frame_manifest_path)?)?;
-        if frame_manifest.schema != FRAME_MANIFEST_SCHEMA {
-            return Err(PromptError::Schema {
-                path: frame_manifest_path,
-                expected: FRAME_MANIFEST_SCHEMA,
-                found: frame_manifest.schema,
-            });
-        }
+        let frame_manifest = if frame_manifest_path.exists() {
+            let manifest: FrameManifest =
+                toml::from_str(&std::fs::read_to_string(&frame_manifest_path)?)?;
+            if manifest.schema != FRAME_MANIFEST_SCHEMA {
+                return Err(PromptError::Schema {
+                    path: frame_manifest_path,
+                    expected: FRAME_MANIFEST_SCHEMA,
+                    found: manifest.schema,
+                });
+            }
+            manifest
+        } else {
+            FrameManifest {
+                schema: FRAME_MANIFEST_SCHEMA.into(),
+                version: 1,
+                root: String::new(),
+                templates: Vec::new(),
+            }
+        };
 
         let mut frames = BTreeMap::new();
         for path in files_under(&root.join("frames"))? {
@@ -496,7 +509,7 @@ impl PromptStore {
                 "frame manifest lists {declared:?} but tree contains {actual:?}"
             )));
         }
-        if !self.frames.contains_key(&self.frame_manifest.root) {
+        if !declared.is_empty() && !self.frames.contains_key(&self.frame_manifest.root) {
             return Err(PromptError::MissingFrame(self.frame_manifest.root.clone()));
         }
         Ok(())
@@ -852,11 +865,10 @@ mod tests {
     }
 
     #[test]
-    fn frame_manifest_matches_the_tree() {
+    fn a_tree_without_frames_loads() {
         let store = tree();
         let manifest = store.frame_manifest();
         assert_eq!(manifest.templates.len(), store.frames().count());
-        assert!(store.frame(&manifest.root).is_some());
         for frame in store.frames() {
             assert!(
                 store.strategy(&frame.strategy).is_some(),
@@ -870,7 +882,7 @@ mod tests {
     fn missing_variable_is_an_error() {
         let store = tree();
         let error = store
-            .render("cm.turn.v1", &BTreeMap::new())
+            .render("cm.process.v1", &BTreeMap::new())
             .expect_err("slots are required");
         assert!(matches!(error, PromptError::MissingVariable(_)));
     }

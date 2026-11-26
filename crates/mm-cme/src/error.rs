@@ -1,63 +1,55 @@
-//! Errors raised by the conversation engine.
+//! Errors raised by the turn pipeline.
 
-/// A conversation-engine failure.
+/// A turn-pipeline failure.
 #[derive(Debug, thiserror::Error)]
 pub enum CmeError {
-    /// A state-machine definition or dispatch failed.
-    #[error("state machine: {0}")]
-    Sm(#[from] mm_sm::SmError),
-    /// A driver invariant was violated.
-    #[error("driver: {0}")]
-    Driver(String),
-    /// A turn was started while another turn is active.
-    #[error("session {session} already has an active turn")]
-    TurnInProgress {
-        /// Session identifier.
-        session: String,
-    },
-    /// The session is not accepting turns.
-    #[error("session {session} is in state {state} and cannot start a turn")]
-    NotActive {
-        /// Session identifier.
-        session: String,
-        /// Current state.
-        state: String,
-    },
-    /// A chunk or plan referenced an unknown identifier.
-    #[error("{kind} not found: {id}")]
-    NotFound {
-        /// Record kind.
-        kind: &'static str,
-        /// Identifier.
-        id: String,
-    },
-    /// A driver channel closed.
-    #[error("driver channel closed")]
-    ChannelClosed,
-    /// The LLM substrate failed.
+    /// Configuration could not be loaded or is invalid.
+    #[error("config: {0}")]
+    Config(String),
+    /// A prompt strategy or fragment is missing or cannot render.
+    #[error("prompt: {0}")]
+    Prompt(#[from] mm_prompt::PromptError),
+    /// The model substrate failed.
     #[error("llm: {0}")]
     Llm(#[from] mm_llm::LlmError),
-    /// A voice pipeline failed.
-    #[error("voice: {0}")]
-    Voice(String),
-    /// A tool call failed.
+    /// A tool call was rejected or failed to parse.
     #[error("tool: {0}")]
     Tool(String),
-    /// A plugin failed to load, evaluate or execute.
-    #[error("plugin: {0}")]
-    Plugin(String),
-    /// The data layer (memory, continuity, sync) failed.
-    #[error("data: {0}")]
-    Data(#[from] mm_data::DataError),
-    /// A routing table could not be loaded or was invalid.
-    #[error("routing table: {0}")]
-    RoutingTable(String),
-    /// A pass exhausted its budget.
-    #[error(transparent)]
-    Budget(#[from] crate::budget::BudgetError),
-    /// A verification backend or check failed.
+    /// Verification failed to run or its configuration was invalid.
     #[error("verification: {0}")]
     Verification(String),
+    /// The model did not follow the pass protocol.
+    #[error("protocol: {0}")]
+    Protocol(String),
+    /// Verify rejected every attempt.
+    #[error("VERIFY_EXHAUSTED: the reply could not be verified")]
+    VerifyExhausted {
+        /// The reasons collected from the final attempt.
+        reasons: Vec<String>,
+    },
+    /// The event store failed.
+    #[error("event store: {0}")]
+    Store(#[from] mm_agentstream::StoreError),
+    /// A JSON payload could not be encoded.
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+impl CmeError {
+    /// A stable machine-readable code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            CmeError::Config(_) => "CONFIG",
+            CmeError::Prompt(_) => "PROMPT_UNAVAILABLE",
+            CmeError::Llm(_) => "LLM",
+            CmeError::Tool(_) => "TOOL",
+            CmeError::Verification(_) => "VERIFICATION",
+            CmeError::Protocol(_) => "PROTOCOL",
+            CmeError::VerifyExhausted { .. } => "VERIFY_EXHAUSTED",
+            CmeError::Store(_) => "EVENT_STORE",
+            CmeError::Json(_) => "JSON",
+        }
+    }
 }
 
 impl From<crate::verification::VerificationError> for CmeError {
@@ -66,5 +58,5 @@ impl From<crate::verification::VerificationError> for CmeError {
     }
 }
 
-/// A result carrying [`CmeError`].
-pub type Result<T> = std::result::Result<T, CmeError>;
+/// Result alias.
+pub type Result<T, E = CmeError> = std::result::Result<T, E>;

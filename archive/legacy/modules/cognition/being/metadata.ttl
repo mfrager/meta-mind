@@ -1,0 +1,295 @@
+@prefix mmc: <https://metamind.dev/code#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+<https://metamind.dev/code/module/cognition/being> a mmc:Module, mmc:NexusPlugin ;
+    mmc:path "modules/cognition/being" ;
+    mmc:uri "https://metamind.dev/code/module/cognition/being" ;
+    mmc:version "0.1.0" ;
+    mmc:ownedByPhase <https://metamind.dev/phase/4> ;
+    mmc:implementsCapability <https://metamind.dev/code/capability/BeingState> ;
+    mmc:dependsOn <https://metamind.dev/code/module/crates/mm-core> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/being/Cargo.toml@fddfa42f601e8ab64a8a0eac9dc39f9873acfb92fa44f477d6c8ea1de85299f0> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/being/manual/module.md@747e17c01e45040663bee26b26b9b7896e3c8991dd93cd51c4e64e475956f0ee> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/being/plugin.toml@508e3610f6b430e8198a2cd255efe359c390a54eb4bbc326eeef3ec2b683c73a> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> .
+<https://metamind.dev/code/file/modules/cognition/being/Cargo.toml@fddfa42f601e8ab64a8a0eac9dc39f9873acfb92fa44f477d6c8ea1de85299f0> a mmc:SourceFile ;
+    mmc:path "modules/cognition/being/Cargo.toml" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/being> ;
+    mmc:contentHash "fddfa42f601e8ab64a8a0eac9dc39f9873acfb92fa44f477d6c8ea1de85299f0" ;
+    mmc:language "toml" ;
+    mmc:swhid "swh:1:cnt:42dc1b0c04232d533086a9be71d4baac737fd118" .
+<https://metamind.dev/code/file/modules/cognition/being/manual/module.md@747e17c01e45040663bee26b26b9b7896e3c8991dd93cd51c4e64e475956f0ee> a mmc:SourceFile ;
+    mmc:path "modules/cognition/being/manual/module.md" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/being> ;
+    mmc:contentHash "747e17c01e45040663bee26b26b9b7896e3c8991dd93cd51c4e64e475956f0ee" ;
+    mmc:language "markdown" ;
+    mmc:swhid "swh:1:cnt:6745f44772e94899a3e66508fb71e2d1302fdcd5" .
+<https://metamind.dev/code/file/modules/cognition/being/plugin.toml@508e3610f6b430e8198a2cd255efe359c390a54eb4bbc326eeef3ec2b683c73a> a mmc:SourceFile ;
+    mmc:path "modules/cognition/being/plugin.toml" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/being> ;
+    mmc:contentHash "508e3610f6b430e8198a2cd255efe359c390a54eb4bbc326eeef3ec2b683c73a" ;
+    mmc:language "toml" ;
+    mmc:swhid "swh:1:cnt:2dffe497cb070e123610a09dbee8f178ba318f7b" .
+<https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> a mmc:SourceFile ;
+    mmc:path "modules/cognition/being/src/lib.rs" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/being> ;
+    mmc:contentHash "e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286" ;
+    mmc:language "rust" ;
+    mmc:swhid "swh:1:cnt:9b0bad612a6527a3749d80ba784005acb93dda67" .
+<https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> a mmc:SourceFile ;
+    mmc:path "modules/cognition/being/tests/behavior.rs" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/being> ;
+    mmc:contentHash "67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf" ;
+    mmc:language "rust" ;
+    mmc:swhid "swh:1:cnt:791fb745c2b124ef710f8aea29924defd3cc506c" .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#MANIFEST_TOML.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MANIFEST_TOML." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1025 ;
+    mmc:byteEnd 1088 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#IDENTITY.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "IDENTITY." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1135 ;
+    mmc:byteEnd 1179 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#PERSONALITY.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PERSONALITY." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1245 ;
+    mmc:byteEnd 1295 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#AFFECT.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "AFFECT." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1341 ;
+    mmc:byteEnd 1381 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#BELIEFS.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "BELIEFS." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1437 ;
+    mmc:byteEnd 1479 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#RELATIONSHIPS.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "RELATIONSHIPS." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1554 ;
+    mmc:byteEnd 1608 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#GOALS.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "GOALS." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1654 ;
+    mmc:byteEnd 1692 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#RESOURCES.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "RESOURCES." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1751 ;
+    mmc:byteEnd 1797 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#SURFACE_FUNCTIONS.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "SURFACE_FUNCTIONS." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 1864 ;
+    mmc:byteEnd 2010 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#PluginManifest%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PluginManifest#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 2098 ;
+    mmc:byteEnd 2544 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#PluginSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PluginSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 2635 ;
+    mmc:byteEnd 2842 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#Metadata%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "Metadata#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 2953 ;
+    mmc:byteEnd 3203 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#TboxSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "TboxSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 3319 ;
+    mmc:byteEnd 3477 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#TboxFunction%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "TboxFunction#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 3566 ;
+    mmc:byteEnd 3655 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#MonadSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MonadSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 3770 ;
+    mmc:byteEnd 3880 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#MonadOperation%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MonadOperation#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 3970 ;
+    mmc:byteEnd 4090 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#BuildSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "BuildSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 4175 ;
+    mmc:byteEnd 4283 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#Surface%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "Surface#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 4522 ;
+    mmc:byteEnd 4939 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#surfaces().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "surfaces()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 5004 ;
+    mmc:byteEnd 8113 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#manifest().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 8148 ;
+    mmc:byteEnd 8322 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#manifest_at().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest_at()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 8368 ;
+    mmc:byteEnd 8682 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#module_dir().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "module_dir()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 8726 ;
+    mmc:byteEnd 8828 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#manifest_path().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest_path()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 8876 ;
+    mmc:byteEnd 8961 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#identity().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "identity()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9088 ;
+    mmc:byteEnd 9146 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#personality().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "personality()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9192 ;
+    mmc:byteEnd 9253 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#affect().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "affect()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9294 ;
+    mmc:byteEnd 9350 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#beliefs().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "beliefs()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9392 ;
+    mmc:byteEnd 9449 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#relationships().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "relationships()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9497 ;
+    mmc:byteEnd 9560 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#goals().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "goals()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9600 ;
+    mmc:byteEnd 9655 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#resources().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "resources()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9699 ;
+    mmc:byteEnd 9758 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23> a mmc:Symbol ;
+    mmc:descriptor "tests#" ;
+    mmc:kind "module" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9773 ;
+    mmc:byteEnd 12007 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_embedded_manifest_parses_and_is_well_formed().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_embedded_manifest_parses_and_is_well_formed()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 9820 ;
+    mmc:byteEnd 10577 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_manifest_on_disk_matches_the_one_compiled_in().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_manifest_on_disk_matches_the_one_compiled_in()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 10595 ;
+    mmc:byteEnd 10864 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_uri_is_the_path_derived_form_for_this_directory().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_uri_is_the_path_derived_form_for_this_directory()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 10882 ;
+    mmc:byteEnd 11221 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23each_handler_answers_its_own_surface().> a mmc:Symbol ;
+    mmc:descriptor "tests#each_handler_answers_its_own_surface()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 11239 ;
+    mmc:byteEnd 11651 .
+<https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23a_malformed_manifest_is_a_config_error().> a mmc:Symbol ;
+    mmc:descriptor "tests#a_malformed_manifest_is_a_config_error()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/src/lib.rs@e00275e61580aac574c290b20a09adde9990d5f219b108830e3831e190ba5286> ;
+    mmc:byteStart 11669 ;
+    mmc:byteEnd 12005 .
+<https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23the_module_loads_and_answers_every_tbox_function().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#the_module_loads_and_answers_every_tbox_function()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> ;
+    mmc:byteStart 382 ;
+    mmc:byteEnd 1038 .
+<https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23affect_writes_no_fact_bearing_surface().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#affect_writes_no_fact_bearing_surface()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> ;
+    mmc:byteStart 1048 ;
+    mmc:byteEnd 1541 .
+<https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23the_invariant_bearing_surfaces_name_their_invariant().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#the_invariant_bearing_surfaces_name_their_invariant()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> ;
+    mmc:byteStart 1551 ;
+    mmc:byteEnd 2346 .
+<https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23every_surface_declares_at_least_one_table_it_reads().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#every_surface_declares_at_least_one_table_it_reads()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/being/tests/behavior.rs@67b661c3e7aac08e7deb046d3655a6bf682dff0ab34171af297edfd160bcfcdf> ;
+    mmc:byteStart 2356 ;
+    mmc:byteEnd 2730 .
+<https://metamind.dev/code/capability/BeingState> a mmc:Capability ;
+    mmc:name "BeingState" ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_embedded_manifest_parses_and_is_well_formed().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_manifest_on_disk_matches_the_one_compiled_in().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23the_uri_is_the_path_derived_form_for_this_directory().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23each_handler_answers_its_own_surface().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/src/lib.rs#tests%23a_malformed_manifest_is_a_config_error().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23the_module_loads_and_answers_every_tbox_function().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23affect_writes_no_fact_bearing_surface().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23the_invariant_bearing_surfaces_name_their_invariant().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/being/tests/behavior.rs#tests%23behavior%23every_surface_declares_at_least_one_table_it_reads().> .

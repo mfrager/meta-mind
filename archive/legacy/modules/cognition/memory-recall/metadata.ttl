@@ -1,0 +1,295 @@
+@prefix mmc: <https://metamind.dev/code#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+<https://metamind.dev/code/module/cognition/memory-recall> a mmc:Module, mmc:NexusPlugin ;
+    mmc:path "modules/cognition/memory-recall" ;
+    mmc:uri "https://metamind.dev/code/module/cognition/memory-recall" ;
+    mmc:version "0.1.0" ;
+    mmc:ownedByPhase <https://metamind.dev/phase/5> ;
+    mmc:implementsCapability <https://metamind.dev/code/capability/MemoryStore> ;
+    mmc:dependsOn <https://metamind.dev/code/module/crates/mm-core> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/memory-recall/Cargo.toml@e5f417c66d27289f90c2e89aa0f2b5afacd4ddf0a4315a316873fc4e98e7a16c> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/memory-recall/manual/module.md@cde2587eb89d85e6668fb085806dfc9e55da74af94e93418ae4cf3a8c35f5ef1> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/memory-recall/plugin.toml@dcbe4e79cec040a49cae74137f50d0753a874a43e62f81882b4eab477f9c6134> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:sourceFile <https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> .
+<https://metamind.dev/code/file/modules/cognition/memory-recall/Cargo.toml@e5f417c66d27289f90c2e89aa0f2b5afacd4ddf0a4315a316873fc4e98e7a16c> a mmc:SourceFile ;
+    mmc:path "modules/cognition/memory-recall/Cargo.toml" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/memory-recall> ;
+    mmc:contentHash "e5f417c66d27289f90c2e89aa0f2b5afacd4ddf0a4315a316873fc4e98e7a16c" ;
+    mmc:language "toml" ;
+    mmc:swhid "swh:1:cnt:81eff5dc5804adf1d04c87c86c928de173b6f3f8" .
+<https://metamind.dev/code/file/modules/cognition/memory-recall/manual/module.md@cde2587eb89d85e6668fb085806dfc9e55da74af94e93418ae4cf3a8c35f5ef1> a mmc:SourceFile ;
+    mmc:path "modules/cognition/memory-recall/manual/module.md" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/memory-recall> ;
+    mmc:contentHash "cde2587eb89d85e6668fb085806dfc9e55da74af94e93418ae4cf3a8c35f5ef1" ;
+    mmc:language "markdown" ;
+    mmc:swhid "swh:1:cnt:56a8321462528e409389691ab0624e71bb4ec060" .
+<https://metamind.dev/code/file/modules/cognition/memory-recall/plugin.toml@dcbe4e79cec040a49cae74137f50d0753a874a43e62f81882b4eab477f9c6134> a mmc:SourceFile ;
+    mmc:path "modules/cognition/memory-recall/plugin.toml" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/memory-recall> ;
+    mmc:contentHash "dcbe4e79cec040a49cae74137f50d0753a874a43e62f81882b4eab477f9c6134" ;
+    mmc:language "toml" ;
+    mmc:swhid "swh:1:cnt:e012a34fded1867b1895d1253b8bc3b162b30f11" .
+<https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> a mmc:SourceFile ;
+    mmc:path "modules/cognition/memory-recall/src/lib.rs" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/memory-recall> ;
+    mmc:contentHash "0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172" ;
+    mmc:language "rust" ;
+    mmc:swhid "swh:1:cnt:b80e1ec7633ff2004fc8085b7f7cc8786b453517" .
+<https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> a mmc:SourceFile ;
+    mmc:path "modules/cognition/memory-recall/tests/behavior.rs" ;
+    mmc:inModule <https://metamind.dev/code/module/cognition/memory-recall> ;
+    mmc:contentHash "b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca" ;
+    mmc:language "rust" ;
+    mmc:swhid "swh:1:cnt:c433cb26b6888b216ee3c76f170f5c9c7fec2e36" .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#MANIFEST_TOML.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MANIFEST_TOML." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 922 ;
+    mmc:byteEnd 985 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#REMEMBER.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "REMEMBER." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1029 ;
+    mmc:byteEnd 1074 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#RECALL.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "RECALL." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1117 ;
+    mmc:byteEnd 1158 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#CONSOLIDATE.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "CONSOLIDATE." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1232 ;
+    mmc:byteEnd 1283 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#FORGET.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "FORGET." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1340 ;
+    mmc:byteEnd 1381 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#MISTAKES.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MISTAKES." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1463 ;
+    mmc:byteEnd 1508 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#PROCEDURES.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PROCEDURES." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1572 ;
+    mmc:byteEnd 1621 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#SUMMARIES.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "SUMMARIES." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1687 ;
+    mmc:byteEnd 1734 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#SURFACE_FUNCTIONS.> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "SURFACE_FUNCTIONS." ;
+    mmc:kind "const" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 1801 ;
+    mmc:byteEnd 1946 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#PluginManifest%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PluginManifest#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 2034 ;
+    mmc:byteEnd 2480 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#PluginSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "PluginSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 2571 ;
+    mmc:byteEnd 2778 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#Metadata%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "Metadata#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 2889 ;
+    mmc:byteEnd 3139 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#TboxSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "TboxSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 3255 ;
+    mmc:byteEnd 3413 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#TboxFunction%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "TboxFunction#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 3502 ;
+    mmc:byteEnd 3591 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#MonadSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MonadSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 3706 ;
+    mmc:byteEnd 3816 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#MonadOperation%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "MonadOperation#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 3906 ;
+    mmc:byteEnd 4026 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#BuildSection%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "BuildSection#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 4111 ;
+    mmc:byteEnd 4219 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#Surface%23> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "Surface#" ;
+    mmc:kind "type" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 4458 ;
+    mmc:byteEnd 4875 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#surfaces().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "surfaces()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 4940 ;
+    mmc:byteEnd 8619 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#manifest().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 8654 ;
+    mmc:byteEnd 8836 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#manifest_at().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest_at()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 8882 ;
+    mmc:byteEnd 9196 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#module_dir().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "module_dir()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9240 ;
+    mmc:byteEnd 9342 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#manifest_path().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "manifest_path()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9390 ;
+    mmc:byteEnd 9475 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#remember().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "remember()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9603 ;
+    mmc:byteEnd 9661 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#recall().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "recall()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9703 ;
+    mmc:byteEnd 9759 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#consolidate().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "consolidate()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9806 ;
+    mmc:byteEnd 9867 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#forget().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "forget()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 9909 ;
+    mmc:byteEnd 9965 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#mistakes().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "mistakes()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 10009 ;
+    mmc:byteEnd 10067 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#procedures().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "procedures()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 10113 ;
+    mmc:byteEnd 10173 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#summaries().> a mmc:Symbol, mmc:Interface ;
+    mmc:descriptor "summaries()." ;
+    mmc:kind "interface" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 10218 ;
+    mmc:byteEnd 10277 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23> a mmc:Symbol ;
+    mmc:descriptor "tests#" ;
+    mmc:kind "module" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 10292 ;
+    mmc:byteEnd 12386 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_embedded_manifest_parses_and_is_well_formed().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_embedded_manifest_parses_and_is_well_formed()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 10339 ;
+    mmc:byteEnd 11105 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_manifest_on_disk_matches_the_one_compiled_in().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_manifest_on_disk_matches_the_one_compiled_in()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 11123 ;
+    mmc:byteEnd 11361 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_uri_is_the_path_derived_form_for_this_directory().> a mmc:Symbol ;
+    mmc:descriptor "tests#the_uri_is_the_path_derived_form_for_this_directory()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 11379 ;
+    mmc:byteEnd 11606 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23each_handler_answers_its_own_surface().> a mmc:Symbol ;
+    mmc:descriptor "tests#each_handler_answers_its_own_surface()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 11624 ;
+    mmc:byteEnd 12034 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23a_malformed_manifest_is_a_config_error().> a mmc:Symbol ;
+    mmc:descriptor "tests#a_malformed_manifest_is_a_config_error()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/src/lib.rs@0d32a0758f2b053cb4ba7de424c6a403647d38d6344c91c41c61b43ca87b2172> ;
+    mmc:byteStart 12052 ;
+    mmc:byteEnd 12384 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23the_module_loads_and_answers_every_tbox_function().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#the_module_loads_and_answers_every_tbox_function()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> ;
+    mmc:byteStart 383 ;
+    mmc:byteEnd 1072 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23forgetting_is_declared_as_archive_never_delete().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#forgetting_is_declared_as_archive_never_delete()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> ;
+    mmc:byteStart 1082 ;
+    mmc:byteEnd 1663 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23the_provenance_bearing_surfaces_name_their_invariant().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#the_provenance_bearing_surfaces_name_their_invariant()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> ;
+    mmc:byteStart 1673 ;
+    mmc:byteEnd 2656 .
+<https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23every_memory_kind_has_a_surface_that_can_reach_it().> a mmc:Symbol ;
+    mmc:descriptor "tests#behavior#every_memory_kind_has_a_surface_that_can_reach_it()." ;
+    mmc:kind "fn" ;
+    mmc:definedIn <https://metamind.dev/code/file/modules/cognition/memory-recall/tests/behavior.rs@b1d60b2bbe3d91d5a5ddf4d92ae372d1433abaeabb6c04739f664804d9c3b2ca> ;
+    mmc:byteStart 2666 ;
+    mmc:byteEnd 3815 .
+<https://metamind.dev/code/capability/MemoryStore> a mmc:Capability ;
+    mmc:name "MemoryStore" ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_embedded_manifest_parses_and_is_well_formed().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_manifest_on_disk_matches_the_one_compiled_in().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23the_uri_is_the_path_derived_form_for_this_directory().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23each_handler_answers_its_own_surface().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/src/lib.rs#tests%23a_malformed_manifest_is_a_config_error().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23the_module_loads_and_answers_every_tbox_function().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23forgetting_is_declared_as_archive_never_delete().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23the_provenance_bearing_surfaces_name_their_invariant().> ;
+    mmc:hasTest <https://metamind.dev/code/symbol/modules/cognition/memory-recall/tests/behavior.rs#tests%23behavior%23every_memory_kind_has_a_surface_that_can_reach_it().> .
