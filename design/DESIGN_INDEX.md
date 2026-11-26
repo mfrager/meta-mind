@@ -806,4 +806,16 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 
 ---
 
+#### W.8 Streamlined Core: Four-Phase Simplification (`streamlined_core_four_phase_plan.md`)
+- **Goal** — Keep only the three-pass turn processor, its six tools, one JSONL event log, and the minimal server/frontend that runs and observes it
+- **Keep** — Six crates (`mm-core`, `mm-prompt`, `mm-llm`, `mm-agentstream`, `mm-cme`, `mm-serve`); Interpret/Process/Verify pipeline with retries, staged state, and LLM judge; four `conversation.*` tools plus `metamind.verify`/`metamind.approve`
+- **Remove** — Legacy controller, CME driver/regions/voice/memory/plugins/improvement, process pipeline, agent runtime, RDF/SQLite data layer, search, audit logger, feature flags, and every `data.*`, `agent.run`, `metamind.plan/think/memory/log/act` tool
+- **Archive** — `archive/legacy/` holds retired crates, `mm-serve` modules, frontend directories, config, and tests; not a workspace member, excluded from CI, built via the `legacy-freeze-2026-11-25` tag
+- **Log** — `data/core/agentstream/<session>.jsonl`: one v2 envelope per line (`v`, `seq`, `id`, `sessionId`, `turnId`, `at`, `type`, `source`, `model`, `data`); `llm.request` carries the complete messages and tool schemas; `prompt.rendered`, `tool.call/result`, `state.updated`, `verification.*`, and `internal.action/error` cover internal actions and function calls
+- **Frontend** — The transcript and the Agentstream dock are projections of the same records; the dock renders every JSON line grouped Turn → Pass → Call, with full prompt, available tools, response, and internals tabs; `/api/llm-activity` and the old LLM dock are retired
+- **Phases** — (1) freeze, inventory, golden fixtures, event-schema test; (2) backend cutover to six crates and mechanical `git mv` of everything else; (3) JSONL store, full prompt capture, SSE snapshot/tail, old LLM feed removal; (4) frontend prune and wiring, full prompt viewer, core-only tests and CI
+- **Testing** — Only the six kept crates and kept frontend are tested; archived tests move with their code; CI asserts the workspace member set and guards against imports of archived crates
+
+---
+
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*

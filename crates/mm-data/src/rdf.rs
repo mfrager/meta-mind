@@ -302,21 +302,17 @@ pub async fn upsert(
     engine.insert_all(quads).await
 }
 
-/// Load the payload of the highest revision of `subject`.
-pub async fn load(engine: &RdfEngine, graph: &str, subject: &str) -> Result<Option<Value>> {
-    let triples = engine.triples(graph).await?;
+/// The graph IRI a name resolves to, so a query names the same graph the
+/// store's scoping rule checks for.
+fn graph_iri(graph: &str) -> String {
+    mm_store_graph::graph_iri(graph)
+}
+
+/// The payload with the highest `_rev`.
+fn newest_payload(payloads: impl IntoIterator<Item = String>) -> Option<Value> {
     let mut best: Option<(u64, Value)> = None;
-    for row in &triples {
-        if row.get("s").and_then(term_value) != Some(subject) {
-            continue;
-        }
-        if row.get("p").and_then(term_value) != Some(PAYLOAD) {
-            continue;
-        }
-        let Some(text) = row.get("o").and_then(term_value) else {
-            continue;
-        };
-        let Ok(mut value) = serde_json::from_str::<Value>(text) else {
+    for text in payloads {
+        let Ok(mut value) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
         let revision = value
@@ -333,7 +329,26 @@ pub async fn load(engine: &RdfEngine, graph: &str, subject: &str) -> Result<Opti
             best = Some((revision, value));
         }
     }
-    Ok(best.map(|(_, value)| value))
+    best.map(|(_, value)| value)
+}
+
+/// Load the payload of the highest revision of `subject`.
+///
+/// The read names the subject and predicate in the query. Reading the whole
+/// graph here and filtering in Rust made every lookup a full-graph scan, and
+/// [`list_as`] calls this once per subject, so a status snapshot cost
+/// `O(subjects)` full scans of the graph.
+pub async fn load(engine: &RdfEngine, graph: &str, subject: &str) -> Result<Option<Value>> {
+    let query = format!(
+        "SELECT ?o WHERE {{ GRAPH <{}> {{ <{subject}> <{PAYLOAD}> ?o }} }}",
+        graph_iri(graph)
+    );
+    let rows = engine.sparql(graph, &query).await?;
+    Ok(newest_payload(
+        rows.iter()
+            .filter_map(|row| row.get("o").and_then(term_value))
+            .map(str::to_owned),
+    ))
 }
 
 /// Load and decode the highest-revision payload of `subject`.
@@ -356,19 +371,16 @@ pub async fn subjects_of_class(
     graph: &str,
     class: &str,
 ) -> Result<Vec<String>> {
-    let triples = engine.triples(graph).await?;
-    let mut out = Vec::new();
-    for row in triples {
-        if row.get("p").and_then(term_value) != Some(RDF_TYPE) {
-            continue;
-        }
-        if row.get("o").and_then(term_value) != Some(class) {
-            continue;
-        }
-        if let Some(subject) = row.get("s").and_then(term_value) {
-            out.push(subject.to_string());
-        }
-    }
+    let query = format!(
+        "SELECT DISTINCT ?s WHERE {{ GRAPH <{}> {{ ?s <{RDF_TYPE}> <{class}> }} }}",
+        graph_iri(graph)
+    );
+    let rows = engine.sparql(graph, &query).await?;
+    let mut out: Vec<String> = rows
+        .iter()
+        .filter_map(|row| row.get("s").and_then(term_value))
+        .map(str::to_owned)
+        .collect();
     out.sort();
     out.dedup();
     Ok(out)
@@ -380,12 +392,38 @@ pub async fn list_as<T: DeserializeOwned>(
     graph: &str,
     class: &str,
 ) -> Result<Vec<T>> {
-    let subjects = subjects_of_class(engine, graph, class).await?;
-    let mut out = Vec::with_capacity(subjects.len());
-    for subject in subjects {
-        if let Some(value) = load_as(engine, graph, &subject).await? {
-            out.push(value);
-        }
+    // One query for the whole class: its subjects and every revision of their
+    // payloads. The subject-at-a-time shape this replaces cost one full-graph
+    // read per row, which is quadratic on the session and index graphs.
+    let query = format!(
+        "SELECT ?s ?o WHERE {{ GRAPH <{}> {{ ?s <{RDF_TYPE}> <{class}> . ?s <{PAYLOAD}> ?o }} }}",
+        graph_iri(graph)
+    );
+    let rows = engine.sparql(graph, &query).await?;
+    let mut payloads: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        let (Some(subject), Some(text)) = (
+            row.get("s").and_then(term_value),
+            row.get("o").and_then(term_value),
+        ) else {
+            continue;
+        };
+        payloads
+            .entry(subject.to_owned())
+            .or_default()
+            .push(text.to_owned());
+    }
+    // `BTreeMap` iterates subjects in sorted order, which is the order the
+    // previous sorted-subject walk produced.
+    let mut out = Vec::with_capacity(payloads.len());
+    for (subject, revisions) in payloads {
+        let Some(value) = newest_payload(revisions) else {
+            continue;
+        };
+        out.push(serde_json::from_value(value).map_err(|error| {
+            DataError::Rdf(format!("decode {subject}: {error}"))
+        })?);
     }
     Ok(out)
 }

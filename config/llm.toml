@@ -50,7 +50,7 @@ typical_latency_ms = 400
 complexity_ceiling = "medium"
 
 [[model]]
-name = "nvidia/nemotron-3-ultra-550b-a55b"
+name = "auto/remote"
 input_cost_micros_per_1k = 2500
 output_cost_micros_per_1k = 10000
 typical_latency_ms = 2500

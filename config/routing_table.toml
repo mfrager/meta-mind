@@ -4,19 +4,19 @@
 # not a bypass: the substrate still validates the name and records the decision.
 # Without a matching pin the router falls back to the cheapest sufficient model.
 
-default_model = "nvidia/nemotron-3-ultra-550b-a55b"
-proactive_model = "nvidia/nemotron-3-ultra-550b-a55b"
+default_model = "auto/remote"
+proactive_model = "auto/remote"
 
 [modality]
-drill_down = "nvidia/nemotron-3-ultra-550b-a55b"
-explain = "nvidia/nemotron-3-ultra-550b-a55b"
-zoom_out = "nvidia/nemotron-3-ultra-550b-a55b"
-summarize = "nvidia/nemotron-3-ultra-550b-a55b"
-bullets = "nvidia/nemotron-3-ultra-550b-a55b"
+drill_down = "auto/remote"
+explain = "auto/remote"
+zoom_out = "auto/remote"
+summarize = "auto/remote"
+bullets = "auto/remote"
 
 [voice]
 # Tier 1 is sequential and can afford a small model; streaming tiers need the
 # higher-capability model to keep quality up under the latency budget.
-tier1 = "nvidia/nemotron-3-ultra-550b-a55b"
-tier2 = "nvidia/nemotron-3-ultra-550b-a55b"
-tier3 = "nvidia/nemotron-3-ultra-550b-a55b"
+tier1 = "auto/remote"
+tier2 = "auto/remote"
+tier3 = "auto/remote"
