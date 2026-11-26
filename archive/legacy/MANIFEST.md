@@ -3,7 +3,8 @@
 > Phase 1 recorded the freeze point and the source/destination table. Phase 2
 > performed the `git mv` and wrote the six-crate cutover. Phase 4 moved the
 > retired frontend surfaces and replaced the console with the single
-> event-driven workspace.
+> event-driven workspace. A 2026-11-26 sweep moved three more unreferenced
+> frontend modules before Phase 1 of the single-call plan.
 
 ## Freeze record
 
@@ -15,7 +16,7 @@
 | Freeze tag | `legacy-freeze-2026-11-25` (annotated, points at the freeze commit) |
 | Freeze date | 2026-11-25 |
 | Archive owner | core maintainers |
-| Replacement design | `design/streamlined_core_four_phase_plan.md` |
+| Replacement design | `design/simple_core_five_phase_plan.md` (current; supersedes turn processing in `design/streamlined_core_four_phase_plan.md`) |
 | Last commit where legacy built | `29614dc` — `cargo build --workspace` passed |
 | Last commit where legacy tests passed | not established: `29614dc` fails four tests (listed below); the tag does not certify a green suite |
 | Data root decision | new server uses `data/core/`; legacy `data/` is untouched and stays with the tagged worktree |
@@ -238,17 +239,20 @@ archived.
 | `src/routes/` | moved | single workspace route |
 | `src/catalog/`, `src/components/**` tests | moved | moved with their components |
 | `src/components/ui/*` except `actions`, `controls`, `navigation`, `display`, `types` | moved | only the primitives the kept UI imports remain |
+| `src/components/ui/controls.tsx` | moved | unreferenced after the single-workspace cutover |
+| `src/components/ui/display.tsx` | moved | unreferenced after the single-workspace cutover |
+| `src/lib/store/session.ts` | moved | session selection lives in the workspace; the store was never imported |
 | `src/components/shell/` | moved | replaced by the single workspace shell |
 | `src/lib/{commands,contrast,nav,shortcuts,tone,use-tier}.ts` and their tests | moved | single-workspace shell has no palette, tree, or tier machinery |
 | `e2e/` legacy specs and baselines | moved | replaced by the mock-server agentstream smoke test |
 
-Kept frontend: `App.tsx`, `main.tsx`, `index.css`, `test-setup.ts`,
-`vite-env.d.ts`, `styles/recipes.ts`, the chat pane/composer, the agentstream
-dock and prompt viewer, the minimal shell, `lib/commands.ts`, `shortcuts.ts`,
-`nav.ts`, `tone.ts`, `contrast.ts`, `utils.ts`, `use-tier.ts`, `hooks/use-now.ts`,
-`lib/store/{prefs,session,chat-pending,chat-refs}.ts`,
-`lib/api/{agentstream,chat,client,health,sessions}.ts`, `lib/wire/{chat,index}.ts`,
-and only the UI primitives they import.
+Kept frontend after the 2026-11-26 sweep: `App.tsx`, `main.tsx`, `index.css`,
+`test-setup.ts`, `vite-env.d.ts`, `styles/recipes.ts`, the chat
+pane/composer/transcript, the agentstream dock and prompt viewer,
+`components/workspace/workspace-page.tsx`, `components/ui/{actions,navigation,types}.tsx`,
+`hooks/use-agentstream.ts`, `lib/api/{agentstream,client,turns}.ts`,
+`lib/store/{agentstream,prefs}.ts`, `lib/transcript/{model,reducer}.ts`,
+`lib/wire/agentstream.ts`, and `lib/utils.ts`.
 
 ## Retired config → `archive/legacy/config/`
 
@@ -287,3 +291,4 @@ excluded from `cargo test`, `vitest`, Playwright, and CI.
 |---|---|---|---|
 | 2026-11-25 | working tree (uncommitted) | 25 crates, `modules/`, `vendor/`, `tests/e2e`, `bench/`, `pi/`, `ontology/`, legacy `scripts/`, 7 config files, 23 prompt applications, 30 prompt fragments, `config/prompts/frames/`, the legacy `mm-serve` modules, and their tests | `git mv` only; the new code was written after the move. Kept workspace is `mm-core`, `mm-prompt`, `mm-llm`, `mm-agentstream`, `mm-cme`, `mm-serve`. |
 | 2026-11-25 | working tree (uncommitted) | `frontend/src/agentgui`, `catalog`, retired component trees, retired hooks/api/store/wire/transcript modules, unused UI primitives, and the legacy `e2e` specs, all under `archive/legacy/frontend/` | Phase 4 `git mv`; the single workspace, agentstream store/hook/dock, prompt viewer, and mock-server smoke test were written after the move. |
+| 2026-11-26 | working tree (uncommitted) | `frontend/src/components/ui/{controls,display}.tsx` and `frontend/src/lib/store/session.ts` | unused-code sweep before Phase 1 of `design/simple_core_five_phase_plan.md`; no kept source imported them. |

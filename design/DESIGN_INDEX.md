@@ -818,4 +818,17 @@ No giant commonsense DB; no hand-coded personality matrix; no premature giant on
 
 ---
 
+#### W.9 Simple Core: Five-Phase Single-Call Plan (`simple_core_five_phase_plan.md`)
+- **Goal** — One user turn is one model call, one prompt, one small RDF context, and one stream that carries both MM app events and raw LLM records; the console renders the stream as text or as a collapsible GUI log
+- **Turn** — Load Cubecast context → render `mm.turn.v1` → one `AgentStream::complete` call → execute `data.read` / `data.write` from the response → deterministic topic/name fill → emit `agent.message` and `turn.finished`; no passes, retries, verification, or staged state
+- **Wrapper** — `AgentStream` is the only LLM door: it appends `llm.request` before the provider call, broadcasts `llm.delta`, appends one `llm.response` or `llm.error`, and returns the logged response unchanged
+- **Context** — Cubecast RDF store with `urn:mm:self` (`name`, `env`, `state`), `urn:mm:user` (`name`), `urn:mm:session` (`id`, `name`), `urn:mm:conversation` (`topic`); fixed `urn:mm:unknown` value/instance; compact OWL embedded per used class; `self.env` probed once at startup; topic and first session name set automatically; user name learned once
+- **Tools** — Only `data.read(uri, key)` and `data.write(uri, key, value)` with an `[a-z_]+` key and a fixed entity/key allow-list; writes apply after the reply and are visible next turn
+- **Log** — v3 envelope adds `actor` and `context{app,view,fn}`; MM events bracket LLM events (`turn.submitted`, `context.loaded`, `prompt.rendered` before; `tool.*`, `context.written`, `turn.finished` after); `llm.request` / `llm.response` hold the complete provider payload; deltas stay live-only
+- **Console** — Text view (one line per event) and GUI view (one collapsible row per user/MM/LLM message, prompt itemized as sub-rows, newest sub-row preview when collapsed, tool calls on their own line); both stream and coalesce visible updates at ≤ 500 ms
+- **Phases** — (1) v3 contract, fixtures, archive already-unused frontend files; (2) single-call runner, one prompt, `AgentStream`, archive `mm-cme`; (3) new `mm-context` crate with Cubecast, OWL, defaults, tools; (4) MM events and dynamic situation block; (5) two console views, archive the dock/viewer, update tests and CI
+- **Testing** — Mock provider asserts exactly one request per turn; fixtures assert one `llm.request`, complete prompt/tools, MM ordering, unknown/empty normalisation, topic and name rules, restart persistence, streaming coalescing, and both log views
+
+---
+
 *This index now includes both the original source designs and the new conversation/voice architecture designs. Together they form a complete blueprint for a proactive, voice-capable, continuously-learning conversation engine.*

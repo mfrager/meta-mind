@@ -1,7 +1,9 @@
 # Streamlined Core: Four-Phase Simplification Plan
 
-> **Status:** proposed · **Date:** 2026-11-25 · **Scope:** whole workspace,
-> server surface, agentstream logging, and frontend log
+> **Status:** superseded for turn processing by
+> `design/simple_core_five_phase_plan.md` (2026-11-26); archival, JSONL, and
+> frontend decisions below still apply · **Date:** 2026-11-25 · **Scope:** whole
+> workspace, server surface, agentstream logging, and frontend log
 >
 > **Goal:** reduce MetaMind to one thing — the three-pass turn processor —
 > with one append-only event log that the frontend renders directly. Everything
