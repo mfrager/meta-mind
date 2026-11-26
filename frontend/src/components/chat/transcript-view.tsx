@@ -1,169 +1,95 @@
-import { useEffect, useRef, type RefObject } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useRef } from "react";
 
-import { InputRequest } from "@/components/chat/input-request.tsx";
-import { Turn } from "@/components/chat/turn.tsx";
-import { StatusChip } from "@/components/kit/data.tsx";
-import type { TranscriptItem } from "@/lib/transcript/reducer.ts";
-
-export function TranscriptView({
-  items,
-  onAnswer,
-}: {
-  items: TranscriptItem[];
-  onAnswer: (id: string, value: string) => void;
-}) {
-  const liveKey = lastAssistantKey(items);
-  const scroller = useRef<HTMLDivElement>(null);
-  useStickToBottom(scroller);
-  if (items.length < 40) {
-    return (
-      <div
-        ref={scroller}
-        role="log"
-        aria-label="Transcript"
-        data-transcript
-        data-transcript-scroll
-        className="h-full overflow-auto p-3"
-      >
-        <div className="space-y-3">
-          {items.map((item) => (
-            <Row key={`${item.kind}:${item.id}`} item={item} live={liveKey === `${item.kind}:${item.id}`} onAnswer={onAnswer} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return <VirtualTranscript items={items} onAnswer={onAnswer} />;
-}
-
-const BOTTOM_SLACK = 32;
+import type { PassView, TranscriptItem } from "@/lib/transcript/reducer.ts";
 
 /**
- * Follows the newest row as frames arrive. Someone who scrolled up to read stays
- * where they are; reaching the bottom again re-arms the follow.
- *
- * The scroll runs after every render of the transcript, which is what streaming
- * needs: an assistant turn can grow without the item count changing, so watching
- * `items.length` would stop following mid-turn.
+ * The transcript is a view of the event stream: user bubbles come from
+ * `turn.started`, pass progress from `pass.*`/`llm.*`, the assistant bubble from
+ * `agent.message`, and failures from `turn.failed`.
  */
-function useStickToBottom(ref: RefObject<HTMLDivElement | null>) {
-  const pinned = useRef(true);
+export function TranscriptView({ items }: { items: TranscriptItem[] }) {
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const element = ref.current;
+    const element = scroller.current;
     if (!element) return;
-    const track = () => {
-      pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK;
-    };
-    track();
-    element.addEventListener("scroll", track, { passive: true });
-    return () => element.removeEventListener("scroll", track);
-  }, [ref]);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !pinned.current) return;
     element.scrollTop = element.scrollHeight;
-  });
-}
+  }, [items]);
 
-function VirtualTranscript({
-  items,
-  onAnswer,
-}: {
-  items: TranscriptItem[];
-  onAnswer: (id: string, value: string) => void;
-}) {
-  const parent = useRef<HTMLDivElement>(null);
-  useStickToBottom(parent);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => parent.current,
-    estimateSize: () => 72,
-    overscan: 4,
-    initialRect: { width: 640, height: 384 },
-  });
   return (
-    <div ref={parent} role="log" aria-label="Transcript" data-transcript data-transcript-scroll className="h-full overflow-auto p-3">
-      <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-        {virtualizer.getVirtualItems().map((row) => {
-          const item = items[row.index];
-          if (!item) return null;
-          return (
-            <div
-              key={`${item.kind}:${item.id}`}
-              data-index={row.index}
-              ref={virtualizer.measureElement}
-              style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)` }}
-            >
-              <Row item={item} onAnswer={onAnswer} />
-            </div>
-          );
-        })}
+    <div
+      ref={scroller}
+      role="log"
+      aria-label="Transcript"
+      data-transcript
+      className="h-full overflow-auto p-3"
+    >
+      {items.length === 0 ? (
+        <p className="text-muted-foreground text-sm">Ask Metamind anything. Every step appears in the log below.</p>
+      ) : null}
+      <div className="space-y-3">
+        {items.map((item) => (
+          <Item key={`${item.kind}:${item.id}`} item={item} />
+        ))}
       </div>
     </div>
   );
 }
 
-function lastAssistantKey(items: TranscriptItem[]): string | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item && (item.kind === "final" || item.kind === "turn")) return `${item.kind}:${item.id}`;
-  }
-  return null;
-}
-
-function Row({ item, live, onAnswer }: { item: TranscriptItem; live?: boolean; onAnswer: (id: string, value: string) => void }) {
+function Item({ item }: { item: TranscriptItem }) {
   if (item.kind === "user") {
     return (
-      <p data-item={`user:${item.content}`} className="text-sm">
-        {item.content}
-      </p>
-    );
-  }
-  if (item.kind === "turn") {
-    const op = item.ops.map((call) => `${call.name}:${reasonText(call.output)}`).join("|");
-    return (
-      <div data-item={`turn:${item.phase}:${item.text}${op ? `|${op}` : ""}`} aria-live={live ? "polite" : undefined}>
-        <Turn item={item} />
-      </div>
-    );
-  }
-  if (item.kind === "input_request") {
-    return (
-      <div data-item={`input:${item.request.prompt ?? ""}`}>
-        <InputRequest request={item.request} answered={item.answered} onAnswer={(value) => onAnswer(item.id, value)} />
-      </div>
-    );
-  }
-  if (item.kind === "final") {
-    return (
-      <p data-item={`final:${item.text}`} className="text-sm" aria-live={live ? "polite" : undefined}>
+      <p data-item={`user:${item.text}`} className="text-sm font-medium">
         {item.text}
-        {item.verified === true ? (
-          <span className="ml-2 align-middle">
-            <StatusChip tone="ok" label="verified" />
-          </span>
-        ) : null}
-        {item.unbacked ? (
-          <span className="ml-2 align-middle">
-            <StatusChip tone="degraded" label="not backed by a tool" />
-          </span>
-        ) : null}
       </p>
+    );
+  }
+  if (item.kind === "passes") {
+    return (
+      <article data-item="passes" className="border-border space-y-1 rounded-md border p-2">
+        {item.passes.map((pass) => (
+          <PassRow key={`${pass.pass}:${pass.attempt}`} pass={pass} />
+        ))}
+      </article>
+    );
+  }
+  if (item.kind === "assistant") {
+    return (
+      <div data-item={`assistant:${item.text}`}>
+        <p className="text-sm whitespace-pre-wrap">{item.text}</p>
+        {item.verified ? (
+          <span className="mt-1 inline-block rounded-pill border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">
+            verified
+          </span>
+        ) : null}
+      </div>
     );
   }
   return (
-    <p data-item={`system:${item.message}`} className="text-sm text-muted-foreground">
+    <p data-item={`error:${item.message}`} className="text-sm text-red-700">
       {item.message}
-      {item.reason ? ` ${item.reason}` : ""}
+      {item.detail ? ` (${item.detail})` : ""}
     </p>
   );
 }
 
-function reasonText(output: unknown) {
-  if (!output || typeof output !== "object") return "";
-  const reason = (output as { reason?: unknown }).reason;
-  return typeof reason === "string" ? reason : "";
+function PassRow({ pass }: { pass: PassView }) {
+  return (
+    <div data-pass={`${pass.pass}:${pass.attempt}`} className="text-sm">
+      <p className="text-muted-foreground flex items-center gap-2 text-xs">
+        <span className="font-mono uppercase">{pass.pass}</span>
+        <span>{pass.status}</span>
+        {pass.model ? <span className="font-mono">{pass.model}</span> : null}
+        {pass.attempt > 1 ? <span>attempt {pass.attempt}</span> : null}
+        {pass.durationMs !== undefined ? <span>{pass.durationMs} ms</span> : null}
+      </p>
+      {pass.text ? (
+        <p className="whitespace-pre-wrap">
+          {pass.text}
+          {pass.streaming ? <span aria-hidden>▌</span> : null}
+        </p>
+      ) : null}
+      {pass.retryReason ? <p className="text-xs text-amber-700">retry: {pass.retryReason}</p> : null}
+    </div>
+  );
 }

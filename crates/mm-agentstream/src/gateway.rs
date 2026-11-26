@@ -327,6 +327,7 @@ mod tests {
         );
         assert_eq!(request_event.data["strategy"], "cm.process.v1");
         assert_eq!(request_event.data["pass"], "process");
+        assert_eq!(request_event.model.as_deref(), Some("small"));
         assert!(events
             .iter()
             .any(|event| event.event_type == EventType::LlmResponse));

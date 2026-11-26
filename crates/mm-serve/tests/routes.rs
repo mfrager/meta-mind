@@ -242,6 +242,62 @@ async fn sse_replays_the_same_bytes_as_the_jsonl() {
 }
 
 #[tokio::test]
+async fn events_and_stream_return_the_same_records_from_a_cursor() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let session_id = start_and_wait(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/api/agentstream/sessions/{session_id}/events?from=4&limit=500"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = body_json(response).await;
+    let expected = page["events"].as_array().unwrap().clone();
+    assert!(!expected.is_empty());
+    assert_eq!(page["from"], 4);
+    assert_eq!(
+        page["next"],
+        expected.last().unwrap()["seq"].as_u64().unwrap() + 1
+    );
+
+    let response = app
+        .oneshot(
+            Request::get(format!(
+                "/api/agentstream/sessions/{session_id}/stream?from=4"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let text = read_sse_until(response, "\"turn.completed\"").await;
+    let mut actual = Vec::new();
+    for block in text.split("\n\n") {
+        let event = block.lines().find_map(|line| line.strip_prefix("event: "));
+        if event == Some("resync") {
+            continue;
+        }
+        if let Some(data) = block.lines().find_map(|line| line.strip_prefix("data: ")) {
+            if let Ok(value) = serde_json::from_str::<Value>(data) {
+                actual.push(value);
+            }
+        }
+    }
+    assert_eq!(
+        actual, expected,
+        "the snapshot and the tail must serve the same records"
+    );
+}
+
+#[tokio::test]
 async fn a_cursor_below_the_retained_start_gets_a_resync_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());

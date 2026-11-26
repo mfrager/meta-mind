@@ -11,8 +11,8 @@
     "lint": "eslint . && node scripts/lint-radius.mjs",
     "lint:radius": "node scripts/lint-radius.mjs",
     "test": "vitest run",
-    "test:replay": "vitest run src/lib/transcript/reducer.test.tsx",
-    "test:e2e": "TMPDIR=\"${TMPDIR:-$HOME/tmp}\" playwright test",
+    "test:replay": "vitest run src/lib/transcript/reducer.test.ts",
+    "test:e2e": "playwright test",
     "format": "prettier --write \"**/*.{ts,tsx,css}\""
   },
   "dependencies": {

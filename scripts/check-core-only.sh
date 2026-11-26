@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fail when the workspace grows beyond the six kept crates or a kept source
-# imports a retired crate.
+# Fail when the workspace grows beyond the six kept crates, a kept source
+# imports a retired crate, or the kept frontend references a retired surface.
 set -euo pipefail
 
 actual=$(cargo metadata --no-deps --format-version 1 \
@@ -20,4 +20,10 @@ if rg -n "($archived)" crates --glob '*.rs' --glob '!target'; then
   exit 1
 fi
 
-echo "core-only guard: ok (6 crates, no archived imports)"
+retired_frontend='llm_feed|llm_activity|/api/llm-activity|@/agentgui|@/components/(inspector|trees|mindmap|docs|files|kit|sessions|state)|@/lib/store/(llm-log|inspector|status)|@/lib/api/(llm-activity|inspector|trees|data|files|focus|state)|@/lib/wire/(chat|inspector|focus|llm_activity)'
+if rg -n "($retired_frontend)" frontend/src --glob '*.{ts,tsx}'; then
+  echo "a kept frontend source references a retired surface" >&2
+  exit 1
+fi
+
+echo "core-only guard: ok (6 crates, no archived imports, no retired frontend surfaces)"

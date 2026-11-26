@@ -1,8 +1,9 @@
 # Legacy Archive Manifest
 
 > Phase 1 recorded the freeze point and the source/destination table. Phase 2
-> performed the `git mv` and wrote the six-crate cutover. The frontend move and
-> the final commit remain outstanding; frontend rows stay `planned` until Phase 4.
+> performed the `git mv` and wrote the six-crate cutover. Phase 4 moved the
+> retired frontend surfaces and replaced the console with the single
+> event-driven workspace.
 
 ## Freeze record
 
@@ -192,50 +193,54 @@ archived.
 
 | Path | Status | Reason |
 |---|---|---|
-| `src/agentgui/` | planned | second chat shell; one shell survives |
-| `src/catalog/` | planned | catalog UI retired |
-| `src/components/blocks/` | planned | dashboard blocks retired |
-| `src/components/charts/` | planned | charts retired |
-| `src/components/docs/` | planned | docs UI retired |
-| `src/components/files/` | planned | files UI retired |
-| `src/components/inspector/` | planned | replaced by agentstream log |
-| `src/components/kit/` | planned | only primitives used by kept UI remain |
-| `src/components/mindmap/` | planned | mind map retired |
-| `src/components/sessions/` | planned | simplified session picker replaces it |
-| `src/components/state/` | planned | state board retired |
-| `src/components/trees/` | planned | trees retired |
-| `src/components/chat/llm-log-*` | planned | replaced by `components/agentstream/` |
-| `src/hooks/use-llm-activity-stream.ts` | planned | replaced by `use-agentstream.ts` |
-| `src/hooks/use-trace-stream.ts` | planned | agentstream hook |
-| `src/hooks/use-status-stream.ts` | planned | no status service |
-| `src/lib/api/data.ts` | planned | data UI retired |
-| `src/lib/api/files.ts` | planned | files UI retired |
-| `src/lib/api/focus*.ts` | planned | focus UI retired |
-| `src/lib/api/inspector.ts` | planned | agentstream API |
-| `src/lib/api/llm-activity.ts` | planned | agentstream API |
-| `src/lib/api/state.ts` | planned | state projection in agentstream |
-| `src/lib/api/trees.ts` | planned | trees retired |
-| `src/lib/store/llm-log.ts` | planned | `store/agentstream.ts` |
-| `src/lib/store/inspector.ts` | planned | agentstream store |
-| `src/lib/store/documents.ts` | planned | docs retired |
-| `src/lib/store/focus.ts` | planned | focus retired |
-| `src/lib/store/pane.ts` | planned | single workspace |
-| `src/lib/store/side.ts` | planned | single workspace |
-| `src/lib/store/status.ts` | planned | agentstream projections |
-| `src/lib/live/` | planned | stage machine for the retired controller pipeline |
-| `src/lib/focus/` | planned | focus UI retired |
-| `src/lib/inspector/` | planned | agentstream log replaces the inspector projections |
-| `src/lib/trees/` | planned | trees UI retired |
-| `src/lib/logs.ts` | planned | old log helpers; agentstream store owns log rows |
-| `src/lib/transcript/reducer.ts`, `selectors.ts` | planned | ChatFrame reducer replaced by the agentstream event reducer |
-| `src/lib/transcript/fixtures/` | planned | new fixtures from JSONL captures |
-| `src/lib/api/chat-stream.test.ts` | planned | tested the retired chat SSE route |
-| `src/lib/wire/llm_activity.ts` | planned | `wire/agentstream.ts` |
-| `src/lib/wire/inspector.ts` | planned | `wire/agentstream.ts` |
-| `src/lib/wire/focus.ts` | planned | focus retired |
-| `src/lib/wire/fixtures/` | planned | replaced by agentstream event fixtures |
-| `src/routes/` | planned | single workspace route |
-| `src/catalog/`, `src/components/**` tests | planned | moved with their components |
+| `src/agentgui/` | moved | second chat shell; one shell survives |
+| `src/catalog/` | moved | catalog UI retired |
+| `src/components/blocks/` | moved | dashboard blocks retired |
+| `src/components/charts/` | moved | charts retired |
+| `src/components/docs/` | moved | docs UI retired |
+| `src/components/files/` | moved | files UI retired |
+| `src/components/inspector/` | moved | replaced by agentstream log |
+| `src/components/kit/` | moved | only primitives used by kept UI remain |
+| `src/components/mindmap/` | moved | mind map retired |
+| `src/components/sessions/` | moved | simplified session picker replaces it |
+| `src/components/state/` | moved | state board retired |
+| `src/components/trees/` | moved | trees retired |
+| `src/components/chat/llm-log-*` | moved | replaced by `components/agentstream/` |
+| `src/hooks/use-llm-activity-stream.ts` | moved | replaced by `use-agentstream.ts` |
+| `src/hooks/use-trace-stream.ts` | moved | agentstream hook |
+| `src/hooks/use-status-stream.ts` | moved | no status service |
+| `src/lib/api/data.ts` | moved | data UI retired |
+| `src/lib/api/files.ts` | moved | files UI retired |
+| `src/lib/api/focus*.ts` | moved | focus UI retired |
+| `src/lib/api/inspector.ts` | moved | agentstream API |
+| `src/lib/api/llm-activity.ts` | moved | agentstream API |
+| `src/lib/api/state.ts` | moved | state projection in agentstream |
+| `src/lib/api/trees.ts` | moved | trees retired |
+| `src/lib/store/llm-log.ts` | moved | `store/agentstream.ts` |
+| `src/lib/store/inspector.ts` | moved | agentstream store |
+| `src/lib/store/documents.ts` | moved | docs retired |
+| `src/lib/store/focus.ts` | moved | focus retired |
+| `src/lib/store/pane.ts` | moved | single workspace |
+| `src/lib/store/side.ts` | moved | single workspace |
+| `src/lib/store/status.ts` | moved | agentstream projections |
+| `src/lib/live/` | moved | stage machine for the retired controller pipeline |
+| `src/lib/focus/` | moved | focus UI retired |
+| `src/lib/inspector/` | moved | agentstream log replaces the inspector projections |
+| `src/lib/trees/` | moved | trees UI retired |
+| `src/lib/logs.ts` | moved | old log helpers; agentstream store owns log rows |
+| `src/lib/transcript/reducer.ts`, `selectors.ts` | moved | ChatFrame reducer replaced by the agentstream event reducer |
+| `src/lib/transcript/fixtures/` | moved | new fixtures from JSONL captures |
+| `src/lib/api/chat-stream.test.ts` | moved | tested the retired chat SSE route |
+| `src/lib/wire/llm_activity.ts` | moved | `wire/agentstream.ts` |
+| `src/lib/wire/inspector.ts` | moved | `wire/agentstream.ts` |
+| `src/lib/wire/focus.ts` | moved | focus retired |
+| `src/lib/wire/fixtures/` | moved | replaced by agentstream event fixtures |
+| `src/routes/` | moved | single workspace route |
+| `src/catalog/`, `src/components/**` tests | moved | moved with their components |
+| `src/components/ui/*` except `actions`, `controls`, `navigation`, `display`, `types` | moved | only the primitives the kept UI imports remain |
+| `src/components/shell/` | moved | replaced by the single workspace shell |
+| `src/lib/{commands,contrast,nav,shortcuts,tone,use-tier}.ts` and their tests | moved | single-workspace shell has no palette, tree, or tier machinery |
+| `e2e/` legacy specs and baselines | moved | replaced by the mock-server agentstream smoke test |
 
 Kept frontend: `App.tsx`, `main.tsx`, `index.css`, `test-setup.ts`,
 `vite-env.d.ts`, `styles/recipes.ts`, the chat pane/composer, the agentstream
@@ -270,7 +275,7 @@ Kept config: `config/llm.toml` (simplified), `config/three_pass.toml`
 |---|---|---|
 | `tests/e2e/` | moved | covered retired routes and agent flows |
 | `crates/*/tests` and `#[cfg(test)]` of every retired crate | moved | moved with the crate |
-| `frontend/src/**/*.test.ts(x)` of retired directories | planned | moved with the component |
+| `frontend/src/**/*.test.ts(x)` of retired directories | moved | moved with the component |
 | `bench/` | moved | benchmarks target retired systems |
 
 Core test scope after the move is defined in §9 of the plan. The archive is
@@ -281,3 +286,4 @@ excluded from `cargo test`, `vitest`, Playwright, and CI.
 | Date | Commit | Moved | Notes |
 |---|---|---|---|
 | 2026-11-25 | working tree (uncommitted) | 25 crates, `modules/`, `vendor/`, `tests/e2e`, `bench/`, `pi/`, `ontology/`, legacy `scripts/`, 7 config files, 23 prompt applications, 30 prompt fragments, `config/prompts/frames/`, the legacy `mm-serve` modules, and their tests | `git mv` only; the new code was written after the move. Kept workspace is `mm-core`, `mm-prompt`, `mm-llm`, `mm-agentstream`, `mm-cme`, `mm-serve`. |
+| 2026-11-25 | working tree (uncommitted) | `frontend/src/agentgui`, `catalog`, retired component trees, retired hooks/api/store/wire/transcript modules, unused UI primitives, and the legacy `e2e` specs, all under `archive/legacy/frontend/` | Phase 4 `git mv`; the single workspace, agentstream store/hook/dock, prompt viewer, and mock-server smoke test were written after the move. |

@@ -273,6 +273,29 @@ impl TurnPipeline {
         );
     }
 
+    /// Record staged state that was dropped because the attempt was rejected.
+    ///
+    /// The reply is correct but its state changes are not: Verify only commits
+    /// on approval, so the rejected patch is explicitly discarded here.
+    pub(crate) fn record_state_discard(
+        &self,
+        request: &TurnRequest,
+        pass: &str,
+        patch: &StatePatch,
+        reason: &str,
+    ) {
+        self.record_internal(
+            request,
+            &format!("pass.{pass}"),
+            "state.discard",
+            true,
+            0,
+            json!({ "reason": reason, "patch": patch }),
+            json!({ "changed": false }),
+            None,
+        );
+    }
+
     /// Run one turn to completion.
     pub async fn run(&self, request: TurnRequest) -> Result<TurnResult> {
         let started = Instant::now();
@@ -483,6 +506,9 @@ impl TurnPipeline {
                                     )
                                 })
                                 .collect();
+                            let mut staged = processed.patch.clone();
+                            staged.merge(verified.patch.clone());
+                            self.record_state_discard(&request, "verify", &staged, &reason);
                             let results = serde_json::to_value(&verified.results)?;
                             let _ = self.store.append(pass_retry(
                                 session,

@@ -499,12 +499,19 @@ pub fn llm_request(
     messages: Value,
     tools: Value,
 ) -> NewEvent {
+    // The model is part of the call parameters and also belongs in the
+    // envelope so every persisted model call is filterable without opening
+    // `data`.
+    let model = params
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     NewEvent::new(
         session_id,
         turn_id,
         EventType::LlmRequest,
         "llm.gateway",
-        None,
+        model,
         json!({
             "callId": call_id,
             "pass": pass,

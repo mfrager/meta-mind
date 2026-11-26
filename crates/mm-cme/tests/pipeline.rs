@@ -267,6 +267,12 @@ async fn a_rejection_retries_process_and_then_approves() {
     assert!(events
         .iter()
         .any(|event| event.event_type == EventType::PassRetry));
+    assert!(
+        events.iter().any(|event| {
+            event.event_type == EventType::InternalAction && event.data["action"] == "state.discard"
+        }),
+        "a rejected attempt must record that its staged state was discarded"
+    );
     let process_calls = events
         .iter()
         .filter(|event| {

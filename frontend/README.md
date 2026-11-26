@@ -1,41 +1,59 @@
-# Metamind web console
+# Metamind console
 
-Local UI for the kernel. `mm-serve` binds loopback and the Vite app talks to it through `/api`. Nothing in this UI invents a run, a stage timing, a budget figure, or a provider reply. When a route has no data, it shows the kernel's own reason.
+One workspace over the retained routes: session picker, transcript, composer,
+and the Agentstream dock. There is no second chat shell and no separate chat
+SSE. Everything the UI shows comes from the agentstream.
 
-## You are talking to Metamind
+## Transport
 
-The composer is a conversation with the being. Ask what you want done. A write, a gate, or a call outside the process waits for Approve. You do not need a command name.
+- `lib/api/turns.ts` — `startTurn({ sessionId, text })` posts `/api/turns` and
+  receives `202 { sessionId, turnId, seq }`.
+- `lib/api/agentstream.ts` — session list, event snapshot, SSE URL, health.
+- `hooks/use-agentstream.ts` — initial snapshot, `EventSource` from
+  `lastSeq + 1`, dedupe by `seq`, reconnect with backoff, and a snapshot refill
+  when the live stream jumps a cursor or sends `resync`.
+- `lib/store/agentstream.ts` — bounded persisted rows, `lastSeq`, live deltas by
+  call id, connection state, filters, pause/clear, and Turn → Pass grouping.
 
-`mm-serve` holds the graph while it runs. A CLI pointed at the same data directory fails on the RocksDB lock. Use another `--data-dir`, or stop this process first.
+A persisted record is a log row. A live `llm.delta` updates the open call row
+without adding one.
 
-## Run it
+## Transcript and dock
 
-From the repository root, in two terminals:
+`lib/transcript/reducer.ts` derives the transcript from events:
+`turn.started` → user item, `pass.*`/`llm.*` → pass progress with streamed text,
+`agent.message` → assistant item, `turn.completed` → verified, `turn.failed` →
+error item. A duplicate `seq` is a no-op.
+
+`components/agentstream/AgentstreamDock.tsx` groups rows Turn → Pass → Call,
+filters (all/turns/passes/calls/tools/verification/internals/errors), pauses,
+clears, collapses, resizes by drag or keyboard, and copies the visible rows as
+text.
+
+`components/agentstream/CallViewer.tsx` expands one `llm.request` with four
+tabs:
+
+- **Prompt** — every message with role and complete content, assistant tool
+  calls, and tool results.
+- **Tools** — every offered tool's name, description, and complete
+  `parameters` JSON, plus which tools the response called.
+- **Response** — full text, finish reason, usage, latency, attempt.
+- **Internals** — `prompt.rendered` variables/hash, `state.updated` before and
+  after, `verification.result`, and `internal.action`.
+
+It reads `record.data` directly; nothing is reconstructed or re-truncated.
+
+## Run and test
 
 ```bash
-cargo run -p mm-serve -- --data-dir /tmp/mm-console-data
-cd frontend && npm ci && npm run dev
+npm ci
+npm run dev        # 0.0.0.0:8900, proxies /api to 127.0.0.1:8899
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e   # Playwright against e2e/mock-server.mjs
 ```
 
-`npm run dev` listens on `0.0.0.0:8900`. Open `http://127.0.0.1:8900` on this machine, or the machine's address on port 8900 from another host. `mm-serve` stays on `127.0.0.1:8899`; the dev server proxies `/api` to it. A fresh data directory already has the four seeded budget rows (`meta_analysis`, `improvement`, `evolution`, `metacognitive`).
-
-## Pass gate
-
-From the repository root, on a machine with Rust, Node 22, and Chrome (CI installs Playwright's Chromium instead):
-
-```bash
-cargo build --workspace && cargo test --workspace
-cargo test -p mm-serve && cargo test -p mm-serve --test parity
-cargo test -p mm-serve export_types -- --ignored && git diff --exit-code frontend/src/lib/wire
-cd frontend
-npm ci && npm run typecheck && npm run lint && npm run test && npm run build
-npm run test:replay
-npm run test:e2e
-cd ..
-./scripts/ui_flows.sh --offline
-cd frontend && npm run lint:radius
-```
-
-`npm run build` writes `frontend/dist/bundle-report.json` and fails when the entry chunk is over 250 KiB gzip. `npm run test:replay` replays `chat_run_*.jsonl` to a stable outline. `npm run test:e2e` starts `mm-serve` and Vite and drives Chrome. `./scripts/ui_flows.sh --offline` boots a fresh data directory and checks Flows A–D on the API. It does not call a language model. Stop anything already bound to port 8899 or 8900 before the end-to-end step.
-
-`git diff --exit-code frontend/src/lib/wire` is clean only after the generated wire files are committed. Re-run `export_types` before that check; do not hand-edit `frontend/src/lib/wire/`.
+The Playwright smoke test starts a deterministic mock server, sends one action
+turn, and checks the transcript, the full process prompt, all four offered tool
+schemas, the judge result, and the same rows after reload.

@@ -26,7 +26,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["vite.config.ts"],
+    files: ["vite.config.ts", "playwright.config.ts", "e2e/**/*.{ts,mjs}"],
     languageOptions: {
       globals: globals.node,
     },
